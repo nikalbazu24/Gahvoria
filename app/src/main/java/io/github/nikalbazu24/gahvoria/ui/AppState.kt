@@ -66,9 +66,9 @@ class AppState(private val activity: Activity) {
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<String?>(null)
 
-    fun setPalette(id: String) { settings.palette = id; palette = id }
-    fun setMode(m: ThemeMode) { settings.mode = m; mode = m }
-    fun setAutoCheck(on: Boolean) { settings.autoCheck = on; autoCheck = on }
+    fun choosePalette(id: String) { settings.palette = id; palette = id }
+    fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
+    fun chooseAutoCheck(on: Boolean) { settings.autoCheck = on; autoCheck = on }
 
     /** Back from the game or from Android's settings. */
     fun onResume() {

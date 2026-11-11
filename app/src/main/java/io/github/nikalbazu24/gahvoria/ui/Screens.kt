@@ -220,7 +220,7 @@ fun UpdatesScreen(s: AppState) {
         }
         Glass(Modifier.fillMaxWidth()) {
             RowItem("Buscar sola", "Al abrir Gahvoria, como mucho cada 6 horas.", role = Role.Switch,
-                onClick = { s.setAutoCheck(!s.autoCheck) }) { Toggle(s.autoCheck) }
+                onClick = { s.chooseAutoCheck(!s.autoCheck) }) { Toggle(s.autoCheck) }
             Divider()
             RowItem("Última comprobación", if (s.lastCheck == 0L) "Nunca" else DateUtils.getRelativeTimeSpanString(s.lastCheck,
                 System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString())
@@ -235,11 +235,11 @@ fun SettingsScreen(s: AppState) {
     val c = LocalColors.current
     Page("Ajustes") {
         Label("Apariencia")
-        Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.setMode(ThemeMode.entries[it]) }
+        Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
         Glass(Modifier.fillMaxWidth()) {
             Palettes.all.forEachIndexed { i, p ->
                 if (i > 0) Divider()
-                RowItem(p.name, if (i == 0) "Principal" else null, role = Role.RadioButton, onClick = { s.setPalette(p.id) }) {
+                RowItem(p.name, if (i == 0) "Principal" else null, role = Role.RadioButton, onClick = { s.choosePalette(p.id) }) {
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         for (v in listOf(p.dark.accent, p.dark.accent2, p.dark.accent3))
                             Box(Modifier.size(18.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Color(v.toInt())).border(2.dp, c.bg2, CircleShape))
