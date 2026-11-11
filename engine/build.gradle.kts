@@ -33,3 +33,8 @@ android {
         checkReleaseBuilds = false
     }
 }
+
+dependencies {
+    // Sizes of the touch controls (gamepad_layout.xml uses _NNsdp)
+    implementation("com.intuit.sdp:sdp-android:1.1.0")
+}
