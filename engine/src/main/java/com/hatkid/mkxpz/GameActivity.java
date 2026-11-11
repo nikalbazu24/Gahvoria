@@ -1,0 +1,453 @@
+package com.hatkid.mkxpz;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.util.Base64;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+
+import com.hatkid.mkxpz.gamepad.Gamepad;
+import com.hatkid.mkxpz.gamepad.GamepadConfig;
+
+import org.libsdl.app.SDLActivity;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.cert.X509Certificate;
+import java.util.Locale;
+import java.util.concurrent.FutureTask;
+
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
+/**
+ * Gahvoria's game screen: hosts the mkxp-z engine (modern Ruby 3.1 or classic Ruby 1.8).
+ *
+ * The app starts it with {@link #intent}. The native engine reads {@code GAME_PATH} and calls
+ * the static methods below by name (see mkxp-z/src), so their names and signatures must not change.
+ * It runs in its own process (":game"): Ruby cannot start twice in one process, so the process
+ * ends with the game.
+ */
+public class GameActivity extends SDLActivity
+{
+    private static final String TAG = "Gahvoria[Game]";
+
+    public static final String EXTRA_GAME_PATH = "gahvoria.GAME_PATH";
+    public static final String EXTRA_TITLE = "gahvoria.TITLE";
+    public static final String EXTRA_SAVE_DIR = "gahvoria.SAVE_DIR";
+    public static final String EXTRA_ENGINE = "gahvoria.ENGINE";
+    public static final String EXTRA_SCREEN = "gahvoria.SCREEN";
+    public static final String EXTRA_RTP_ROOT = "gahvoria.RTP_ROOT";
+    public static final String EXTRA_TOUCH = "gahvoria.TOUCH";
+
+    public static final String ENGINE_MODERN = "modern";
+    public static final String ENGINE_CLASSIC = "classic";
+    public static final String SCREEN_ORIGINAL = "original";
+
+    /** Read by the native engine through JNI (main.cpp). */
+    @SuppressWarnings("unused")
+    private static String GAME_PATH = "";
+
+    private static Handler sMain;
+    private static Vibrator sVibrator;
+    private static TextView sFps;
+    private static TextView sPhase;
+    private static View sLoading;
+
+    private boolean mClassic;
+    private boolean mTouch = true;
+    private final Gamepad mGamepad = new Gamepad();
+    private boolean mPadHidden;
+    private FutureTask<File> mTrust;
+    private AlertDialog mExit;
+
+    /** Builds the intent that opens a game. */
+    public static Intent intent(Context c, File game, String title, File saveDir, String engine,
+                                String screen, File rtpRoot, boolean touch)
+    {
+        return new Intent(c, GameActivity.class)
+            .putExtra(EXTRA_GAME_PATH, game.getAbsolutePath())
+            .putExtra(EXTRA_TITLE, title)
+            .putExtra(EXTRA_SAVE_DIR, saveDir.getAbsolutePath())
+            .putExtra(EXTRA_ENGINE, engine)
+            .putExtra(EXTRA_SCREEN, screen)
+            .putExtra(EXTRA_RTP_ROOT, rtpRoot == null ? "" : rtpRoot.getAbsolutePath())
+            .putExtra(EXTRA_TOUCH, touch);
+    }
+
+    /** True when this APK carries the classic engine (Ruby 1.8). */
+    public static boolean classicAvailable(Context c)
+    {
+        return new File(c.getApplicationInfo().nativeLibraryDir, "libmkxp-z-legacy.so").isFile();
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState)
+    {
+        Intent i = getIntent();
+        String path = i == null ? null : i.getStringExtra(EXTRA_GAME_PATH);
+        boolean valid = path != null && new File(path).isDirectory();
+        if (valid) GAME_PATH = path;
+        mClassic = i != null && ENGINE_CLASSIC.equals(i.getStringExtra(EXTRA_ENGINE)) && classicAvailable(this);
+        mTouch = i == null || i.getBooleanExtra(EXTRA_TOUCH, true);
+        sMain = new Handler(Looper.getMainLooper());
+        sVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        if (valid) {
+            mTrust = new FutureTask<>(() -> trustFile(getApplicationContext()));
+            new Thread(mTrust, "GahvoriaTrust").start();
+            prepareEnvironment(new File(path), i);
+        }
+
+        super.onCreate(savedInstanceState);
+        if (!valid) {
+            Log.e(TAG, "No game folder: " + path);
+            finish();
+            return;
+        }
+        if (mLayout == null) return;
+
+        GamepadConfig config = new GamepadConfig();
+        mGamepad.init(config, !mTouch);
+        mGamepad.setOnKeyDownListener(k -> SDLActivity.onNativeKeyDown(k));
+        mGamepad.setOnKeyUpListener(k -> SDLActivity.onNativeKeyUp(k));
+        if (mTouch) mGamepad.attachTo(this, mLayout);
+        mPadHidden = !mTouch;
+
+        sFps = new TextView(this);
+        sFps.setTextColor(Color.argb(150, 255, 255, 255));
+        sFps.setTextSize(12);
+        sFps.setPadding(24, 16, 0, 0);
+        sFps.setVisibility(View.GONE);
+        mLayout.addView(sFps, new RelativeLayout.LayoutParams(-2, -2));
+
+        sLoading = loadingView(i.getStringExtra(EXTRA_TITLE));
+        mLayout.addView(sLoading, new RelativeLayout.LayoutParams(-1, -1));
+    }
+
+    /** Settings the engine and its compatibility scripts read from the environment. */
+    private void prepareEnvironment(File game, Intent i)
+    {
+        try {
+            String save = i.getStringExtra(EXTRA_SAVE_DIR);
+            File saveDir = save == null || save.isEmpty() ? game : new File(save);
+            //noinspection ResultOfMethodCallIgnored
+            saveDir.mkdirs();
+            setenv("ESSENTIA_DATA_DIR", saveDir.getAbsolutePath());
+            String screen = i.getStringExtra(EXTRA_SCREEN);
+            setenv("ESSENTIA_SCREEN_MODE", screen == null || screen.isEmpty() ? SCREEN_ORIGINAL : screen);
+            setenv("ESSENTIA_ORIENTATION", "landscape");
+            setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
+            setenv("ESSENTIA_ERROR_FILE", new File(getFilesDir(), "last_error.txt").getAbsolutePath());
+            File scripts = new File(getCacheDir(), "scripts/v" + versionCode() + "/" + digest(game.getAbsolutePath()));
+            //noinspection ResultOfMethodCallIgnored
+            scripts.mkdirs();
+            setenv("ESSENTIA_ISEQ_DIR", scripts.getAbsolutePath());
+            // Windows folders some games use (e.g. Dir.chdir(ENV["TEMP"]))
+            File tmp = new File(getCacheDir(), "game-tmp");
+            //noinspection ResultOfMethodCallIgnored
+            tmp.mkdirs();
+            for (String k : new String[]{"TEMP", "TMP", "TMPDIR"}) setenv(k, tmp.getAbsolutePath());
+            String rtp = i.getStringExtra(EXTRA_RTP_ROOT);
+            setenv("ESSENTIA_RTP", rtp == null || rtp.isEmpty() ? "" : findRtp(game, new File(rtp)));
+            setenv("SDL_ACCELEROMETER_AS_JOYSTICK", "0");
+            if (!mClassic) {
+                // Fewer garbage-collection pauses in big Essentials games (modern engine only)
+                setenv("RUBY_GC_HEAP_INIT_SLOTS", "600000");
+                setenv("RUBY_GC_HEAP_FREE_SLOTS", "150000");
+                setenv("RUBY_GC_HEAP_GROWTH_FACTOR", "1.4");
+                setenv("RUBY_GC_MALLOC_LIMIT", "50331648");
+                setenv("RUBY_GC_MALLOC_LIMIT_MAX", "201326592");
+                setenv("RUBY_GC_OLDMALLOC_LIMIT", "50331648");
+                setenv("RUBY_GC_OLDMALLOC_LIMIT_MAX", "201326592");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not prepare the game environment", e);
+        }
+    }
+
+    private static void setenv(String k, String v) throws Exception
+    {
+        android.system.Os.setenv(k, v, true);
+    }
+
+    private int versionCode()
+    {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static String digest(String s)
+    {
+        try {
+            byte[] h = MessageDigest.getInstance("SHA-1").digest(s.getBytes("UTF-8"));
+            StringBuilder b = new StringBuilder();
+            for (int k = 0; k < 8; k++) b.append(String.format(Locale.ROOT, "%02x", h[k]));
+            return b.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(s.hashCode());
+        }
+    }
+
+    /** RPG Maker RTP folders under the RTP root that match this game's RPG Maker version. */
+    static String findRtp(File game, File root)
+    {
+        String kind = "XP";
+        File data = null;
+        String[] names = game.list();
+        if (names != null) for (String n : names) {
+            String l = n.toLowerCase(Locale.ROOT);
+            if (l.equals("game.rgss3a")) kind = "VXAce";
+            else if (l.equals("game.rgss2a") && !kind.equals("VXAce")) kind = "VX";
+            else if (l.equals("data")) data = new File(game, n);
+        }
+        if (data != null && kind.equals("XP")) {
+            String[] d = data.list();
+            if (d != null) for (String n : d) {
+                String l = n.toLowerCase(Locale.ROOT);
+                if (l.endsWith(".rvdata2")) { kind = "VXAce"; break; }
+                if (l.endsWith(".rvdata")) kind = "VX";
+            }
+        }
+        String[] wanted = kind.equals("XP") ? new String[]{"XP", "RPGXP", "RMXP", "Standard"}
+            : kind.equals("VX") ? new String[]{"VX", "RPGVX", "RMVX"}
+            : new String[]{"VXAce", "VX Ace", "RPGVXAce", "RMVXAce", "VXA", "Ace"};
+        String[] present = root.list();
+        if (present == null) return "";
+        StringBuilder out = new StringBuilder();
+        for (String w : wanted) for (String p : present) {
+            if (p.equalsIgnoreCase(w) && new File(root, p).isDirectory()) {
+                if (out.length() > 0) out.append(':');
+                out.append(new File(root, p).getAbsolutePath());
+            }
+        }
+        return out.toString();
+    }
+
+    /** Android's trusted roots as a PEM file, so HTTPS inside games works with OpenSSL. */
+    private static File trustFile(Context c) throws Exception
+    {
+        TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        factory.init((KeyStore) null);
+        StringBuilder pem = new StringBuilder();
+        for (TrustManager m : factory.getTrustManagers()) if (m instanceof X509TrustManager) {
+            for (X509Certificate cert : ((X509TrustManager) m).getAcceptedIssuers()) {
+                pem.append("-----BEGIN CERTIFICATE-----\n");
+                String enc = Base64.encodeToString(cert.getEncoded(), Base64.NO_WRAP);
+                for (int o = 0; o < enc.length(); o += 64) pem.append(enc, o, Math.min(o + 64, enc.length())).append('\n');
+                pem.append("-----END CERTIFICATE-----\n");
+            }
+        }
+        if (pem.length() == 0) throw new IOException("No trusted certificates");
+        File dest = new File(c.getCacheDir(), "android-trust.pem");
+        File temp = new File(c.getCacheDir(), "android-trust-" + java.util.UUID.randomUUID() + ".tmp");
+        try {
+            try (FileOutputStream out = new FileOutputStream(temp)) {
+                out.write(pem.toString().getBytes("US-ASCII"));
+                out.getFD().sync();
+            }
+            if (!temp.renameTo(dest)) throw new IOException("Could not write trusted roots");
+            return dest;
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            temp.delete();
+        }
+    }
+
+    private View loadingView(String title)
+    {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(Color.parseColor("#0D0E12"));
+        TextView name = new TextView(this);
+        name.setText(title == null ? "" : title);
+        name.setTextColor(Color.parseColor("#F2F2F6"));
+        name.setTextSize(22);
+        name.setGravity(Gravity.CENTER);
+        box.addView(name);
+        sPhase = new TextView(this);
+        sPhase.setText("Cargando…");
+        sPhase.setTextColor(Color.parseColor("#FFB38A"));
+        sPhase.setTextSize(14);
+        sPhase.setGravity(Gravity.CENTER);
+        sPhase.setPadding(0, 24, 0, 0);
+        box.addView(sPhase);
+        box.setClickable(false);
+        return box;
+    }
+
+    @Override
+    protected String[] getLibraries()
+    {
+        if (mClassic) return new String[]{"SDL2", "SDL2_image", "SDL2_ttf", "SDL2_sound", "openal", "mkxp-z-legacy"};
+        return super.getLibraries();
+    }
+
+    @Override
+    protected String[] getArguments()
+    {
+        try {
+            String trust = mTrust.get().getAbsolutePath();
+            setenv("ESSENTIA_CA_FILE", trust);
+            setenv("SSL_CERT_FILE", trust);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not prepare trusted roots for the game");
+        }
+        return new String[]{};
+    }
+
+    // ------------------------------------------------------------ input
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent evt)
+    {
+        int code = evt.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BACK) {
+            if (evt.getAction() == KeyEvent.ACTION_UP) askExit();
+            return true;
+        }
+        boolean volume = code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN
+            || code == KeyEvent.KEYCODE_VOLUME_MUTE || code == KeyEvent.KEYCODE_HEADSETHOOK;
+        if (!volume && !mPadHidden) {
+            // A physical controller or keyboard is in use: hide the touch controls.
+            mGamepad.hideView();
+            mPadHidden = true;
+        }
+        if (mGamepad.processGamepadEvent(evt)) return true;
+        return super.dispatchKeyEvent(evt);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent evt)
+    {
+        if (mPadHidden && mTouch) {
+            mGamepad.showView();
+            mPadHidden = false;
+        }
+        return super.dispatchTouchEvent(evt);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent evt)
+    {
+        mGamepad.processDPadEvent(evt);
+        mGamepad.processStickEvent(evt);
+        return super.dispatchGenericMotionEvent(evt);
+    }
+
+    private void askExit()
+    {
+        if (mExit != null && mExit.isShowing()) return;
+        mExit = new AlertDialog.Builder(this)
+            .setTitle("¿Salir del juego?")
+            .setMessage("Lo que no hayas guardado dentro del juego se pierde.")
+            .setPositiveButton("Salir", (d, w) -> finish())
+            .setNegativeButton("Seguir jugando", null)
+            .show();
+    }
+
+    @Override
+    protected void onDestroy()
+    {
+        if (mTrust != null) mTrust.cancel(true);
+        super.onDestroy();
+        // Ruby cannot start again in the same process: end it together with the game.
+        System.exit(0);
+    }
+
+    // ------------------------------------------------------------ called by the native engine
+
+    @SuppressWarnings("unused")
+    private static void onLoadPhase(String phase)
+    {
+        if (sMain == null) return;
+        sMain.post(() -> {
+            if (sPhase == null) return;
+            if ("files".equals(phase)) sPhase.setText("Leyendo archivos…");
+            else if ("scripts".equals(phase)) sPhase.setText("Preparando scripts…");
+            else if ("start".equals(phase)) sPhase.setText("Abriendo…");
+        });
+    }
+
+    @SuppressWarnings("unused")
+    private static void onGameReady()
+    {
+        if (sMain == null) return;
+        sMain.post(() -> {
+            if (sLoading != null && sLoading.getParent() instanceof ViewGroup)
+                ((ViewGroup) sLoading.getParent()).removeView(sLoading);
+            sLoading = null;
+        });
+    }
+
+    @SuppressWarnings("unused")
+    private static void updateFPSText(int num)
+    {
+        if (sMain != null) sMain.post(() -> { if (sFps != null) sFps.setText(num + " FPS"); });
+    }
+
+    @SuppressWarnings("unused")
+    private static void setFPSVisibility(boolean visible)
+    {
+        if (sMain != null) sMain.post(() -> { if (sFps != null) sFps.setVisibility(visible ? View.VISIBLE : View.GONE); });
+    }
+
+    @SuppressWarnings("unused")
+    private static String getSystemLanguage()
+    {
+        return Locale.getDefault().toString();
+    }
+
+    @SuppressWarnings("unused")
+    private static boolean hasVibrator()
+    {
+        return sVibrator != null && sVibrator.hasVibrator();
+    }
+
+    @SuppressWarnings("unused")
+    private static void vibrate(int duration)
+    {
+        if (sVibrator == null) return;
+        duration = Math.min(duration, 10000);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            sVibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+        else
+            sVibrator.vibrate(duration);
+    }
+
+    @SuppressWarnings("unused")
+    private static void vibrateStop()
+    {
+        if (sVibrator != null) sVibrator.cancel();
+    }
+
+    @SuppressWarnings("unused")
+    private static boolean inMultiWindow(Activity activity)
+    {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity.isInMultiWindowMode();
+    }
+}

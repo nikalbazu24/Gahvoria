@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window behind Compose: graphite, so there is no white flash on start -->
+    <style name="Gahvoria" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/graphite</item>
+        <item name="android:statusBarColor">@color/graphite</item>
+        <item name="android:navigationBarColor">@color/graphite</item>
+    </style>
+    <color name="graphite">#0D0E12</color>
+</resources>

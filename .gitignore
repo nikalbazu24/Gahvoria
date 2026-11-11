@@ -1,0 +1,25 @@
+.gradle/
+build/
+local.properties
+*.jks
+*.keystore
+.idea/
+.cxx/
+.externalNativeBuild/
+# Native dependencies downloaded and built in CI
+engine/jni/build-*/
+engine/jni/libiconv/
+engine/jni/libogg/
+engine/jni/libtheora/
+engine/jni/libvorbis/
+engine/jni/openal/
+engine/jni/openssl/
+engine/jni/physfs/
+engine/jni/pixman/
+engine/jni/ruby/
+engine/jni/SDL2*/
+engine/jni/uchardet/
+engine/jni/ruby18-*/
+engine/jni/downloads/
+engine/obj/
+engine/libs/

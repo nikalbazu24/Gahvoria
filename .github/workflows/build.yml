@@ -1,0 +1,177 @@
+# Compila Gahvoria (APK Android de 64 bits) en cada cambio y la publica desde main.
+# La versión "dev" de Releases es el canal del actualizador de la app.
+
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GAHVORIA_BUILD_NUMBER: ${{ github.run_number }}
+  NDK_VERSION: 25.2.9519653
+  ABI: arm64-v8a
+  HOST: aarch64-linux-android
+  TARGET: aarch64-linux-android
+  API: 21
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Preparar Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Preparar Ruby del sistema (necesario para compilar el Ruby de Android)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+
+      - name: Revisar los scripts de compatibilidad del motor
+        run: find engine/src/main/assets/essentia_preload -name '*.rb' -exec ruby -c {} \;
+
+      - name: Instalar herramientas de compilación
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool bison gperf pkg-config wget xxd
+
+      - name: Instalar Android NDK
+        timeout-minutes: 12
+        run: |
+          ndk_compiler="$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          for attempt in 1 2; do
+            if [ -x "$ndk_compiler" ]; then break; fi
+            echo "Preparando Android NDK (intento $attempt de 2)"
+            if yes | timeout 300 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;${NDK_VERSION}"; then break; fi
+          done
+          test -x "$ndk_compiler"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      # Las librerías nativas tardan mucho la primera vez; después se recuperan de la caché.
+      - name: Recuperar librerías compiladas antes
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            engine/jni/build-arm64-v8a
+            engine/jni/libiconv
+            engine/jni/libogg
+            engine/jni/libtheora
+            engine/jni/libvorbis
+            engine/jni/openal
+            engine/jni/openssl
+            engine/jni/physfs
+            engine/jni/pixman
+            engine/jni/ruby
+            engine/jni/SDL2
+            engine/jni/SDL2_image
+            engine/jni/SDL2_sound
+            engine/jni/SDL2_ttf
+            engine/jni/uchardet
+          key: deps-${{ env.ABI }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('engine/jni/get_deps.sh', 'engine/jni/Makefile') }}
+
+      - name: Descargar dependencias del motor
+        working-directory: engine/jni
+        run: ./get_deps.sh
+
+      - name: Compilar dependencias nativas (iconv, OpenAL, OpenSSL, Ruby)
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        working-directory: engine/jni
+        run: ARCH=linux-x86_64 make -j"$(nproc)"
+
+      - name: Incrustar ícono, fuentes y shaders en el motor
+        working-directory: engine/jni/mkxp-z
+        run: sh ./make_xxd.sh
+
+      # Motor clásico (Ruby 1.8.7) para juegos antiguos. Ambos motores son obligatorios.
+      - name: Recuperar Ruby 1.8 compilado antes
+        id: ruby18-cache
+        uses: actions/cache@v4
+        with:
+          path: engine/jni/ruby18-out
+          key: ruby18-${{ env.ABI }}-ndk${{ env.NDK_VERSION }}-${{ hashFiles('engine/jni/build_ruby18.sh') }}
+
+      - name: Compilar Ruby 1.8 (motor clásico)
+        if: steps.ruby18-cache.outputs.cache-hit != 'true'
+        working-directory: engine/jni
+        run: ./build_ruby18.sh
+
+      - name: Preparar la firma de Gahvoria
+        env:
+          KS_B64: ${{ secrets.GAHVORIA_KEYSTORE_B64 }}
+          KS_PASSWORD: ${{ secrets.GAHVORIA_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASSWORD" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/gahvoria.jks"
+            echo "GAHVORIA_KEYSTORE_FILE=$RUNNER_TEMP/gahvoria.jks" >> "$GITHUB_ENV"
+            echo "GAHVORIA_KEYSTORE_PASSWORD=$KS_PASSWORD" >> "$GITHUB_ENV"
+            echo "GAHVORIA_SIGNED=true" >> "$GITHUB_ENV"
+          else
+            echo "GAHVORIA_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::Sin los secretos GAHVORIA_KEYSTORE_*: el APK usa una firma de prueba."
+          fi
+
+      - name: Pruebas y APK
+        run: |
+          if ./gradlew --no-daemon :app:testReleaseUnitTest assembleRelease > "$RUNNER_TEMP/gradle.log" 2>&1; then
+            tail -5 "$RUNNER_TEMP/gradle.log"
+          else
+            grep -n -E "^e: |error:|undefined reference|FAILED|What went wrong|Test.*FAILED" -A3 "$RUNNER_TEMP/gradle.log" | head -150 || true
+            tail -40 "$RUNNER_TEMP/gradle.log"
+            exit 1
+          fi
+
+      - name: Comprobar el APK
+        run: |
+          cp app/build/outputs/apk/release/*.apk gahvoria.apk
+          python3 tools/release_manifest.py app/build/outputs/apk/release/output-metadata.json version.json
+          cat version.json
+          python3 tools/verify_apk.py gahvoria.apk version.json
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$GAHVORIA_SIGNED" != "true" ]; then
+            echo "::error::La distribución requiere la firma fija de Gahvoria."
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose gahvoria.apk
+
+      - name: Guardar el APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: gahvoria-apk
+          path: |
+            gahvoria.apk
+            version.json
+
+      - name: Publicar en Releases (versión dev, canal del actualizador)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Gahvoria (versión de desarrollo)
+          prerelease: true
+          make_latest: false
+          body: |
+            Compilación automática del último cambio (${{ github.sha }}).
+            Descarga gahvoria.apk e instálala en tu Android de 64 bits.
+            Gahvoria avisa sola cuando hay una versión nueva.
+          files: |
+            gahvoria.apk
+            version.json
