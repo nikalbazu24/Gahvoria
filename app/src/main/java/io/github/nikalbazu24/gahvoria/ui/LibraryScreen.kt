@@ -60,11 +60,12 @@ fun LibraryScreen(s: AppState) {
             val game = s.games[pager.currentPage.coerceIn(0, s.games.lastIndex)]
             val coverH = if (wide) (maxHeight - 40.dp).coerceAtMost(320.dp) else 300.dp
             val coverW = coverH * .75f
+            val railWidth = if (wide) maxWidth / 2 else maxWidth
             val carousel = @Composable { mod: Modifier ->
                 Column(mod, horizontalAlignment = Alignment.CenterHorizontally) {
                     HorizontalPager(
                         state = pager,
-                        contentPadding = PaddingValues(horizontal = ((if (wide) maxWidth / 2 else maxWidth) - coverW) / 2),
+                        contentPadding = PaddingValues(horizontal = ((railWidth - coverW) / 2).coerceAtLeast(0.dp)),
                         pageSpacing = 14.dp,
                         modifier = Modifier.fillMaxWidth().height(coverH + 24.dp),
                     ) { page ->

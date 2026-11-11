@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -77,7 +78,7 @@ private fun Modifier.focusRingClickableImpl(shape: Shape, enabled: Boolean, role
 }
 
 private fun Modifier.focusRingClickable(shape: Shape, enabled: Boolean, role: Role, onClick: () -> Unit): Modifier =
-    androidx.compose.ui.composed { focusRingClickableImpl(shape, enabled, role, onClick) }
+    this.composed { focusRingClickableImpl(shape, enabled, role, onClick) }
 
 /** Translucent card. */
 @Composable
