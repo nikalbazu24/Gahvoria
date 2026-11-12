@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.Game
+import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.core.LoadTimes
 import io.github.nikalbazu24.gahvoria.core.Palettes
 import io.github.nikalbazu24.gahvoria.core.Saves
@@ -127,6 +128,13 @@ fun GameScreen(s: AppState, g: Game) {
                     else "Sin imagen: dibujada por Gahvoria."
         }
         Glass(Modifier.fillMaxWidth()) { RowItem("Carátula", coverText) }
+        val lastErr = remember(g.path, s.coverVersion) { s.lastReport(g) }
+        Glass(Modifier.fillMaxWidth()) {
+            if (lastErr == null) RowItem("Informe de error", "Este juego no ha dejado errores.")
+            else RowItem("Enviar último informe", "Error del " + DateUtils.getRelativeTimeSpanString(lastErr.first,
+                System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) + ": " + GameReport.firstLine(lastErr.second),
+                onClick = { s.sendReport(g, lastErr.second) }) { T("Enviar", 12.sp, FontWeight.Bold, c.accent) }
+        }
         Spacer(Modifier.height(4.dp))
         var step by remember(g.path) { mutableIntStateOf(0) }
         Glass(Modifier.fillMaxWidth()) {

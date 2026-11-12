@@ -118,7 +118,8 @@ class AppState(private val activity: Activity) {
             val played = System.currentTimeMillis() - at
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
-            GameReport.errorSince(activity, at)?.let { err ->
+            val played0 = library.load().firstOrNull { it.path == path }
+            GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })?.let { err ->
                 val title = library.load().firstOrNull { it.path == path }?.title.orEmpty()
                 val report = "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: $title\n\n$err"
                 if (GameReport.canSend()) {
@@ -178,6 +179,26 @@ class AppState(private val activity: Activity) {
     fun lastLoad(game: Game): LoadRecord? = Launcher.lastLoad(activity, game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)
+
+    /** Sends (or copies, if this build cannot send) the last error this game left, whenever it happened. */
+    fun lastReport(game: Game) = GameReport.latest(activity, File(game.path), saveDir(game))
+
+    fun sendReport(game: Game, text: String) {
+        val report = "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: ${game.title}\n\n$text"
+        if (!GameReport.canSend()) {
+            GameReport.copy(activity, report)
+            say("Informe copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK)
+            return
+        }
+        say("Enviando informe…", NoticeKind.INFO)
+        worker.execute {
+            val ok = runCatching { GameReport.send("informe-" + game.title, report) }
+            activity.runOnUiThread {
+                ok.onSuccess { say("Informe enviado. Gracias.", NoticeKind.OK) }
+                    .onFailure { say("No se pudo enviar: " + (it.message ?: "sin conexión") + ".", NoticeKind.WARN) }
+            }
+        }
+    }
 
     // ---------------------------------------------------------------- add
 

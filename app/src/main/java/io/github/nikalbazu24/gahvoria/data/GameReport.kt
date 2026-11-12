@@ -12,11 +12,29 @@ import java.net.URL
 /** What the engine left behind when a game closed with an error. It lives on the device only; sending it is the player's choice. */
 object GameReport {
 
-    /** The error of the game session that started at {@code since}, or null. The game screen deletes old ones when it starts. */
-    fun errorSince(a: Activity, since: Long): String? {
-        val f = File(a.filesDir, "last_error.txt")
-        if (!f.isFile || f.lastModified() < since) return null
-        return runCatching { f.readText().take(4000) }.getOrNull()?.takeIf { it.isNotBlank() }
+    /**
+     * The error of the game session that started at {@code since}, or null. Two places: what the engine wrote
+     * (Ruby errors it catches) and errorlog.txt, which Pokémon Essentials writes itself in the game's folder or its
+     * save folder when its own error screen appears. The game screen deletes old engine errors when it starts.
+     */
+    fun errorSince(a: Activity, since: Long, game: File? = null, saves: File? = null): String? {
+        val engine = File(a.filesDir, "last_error.txt")
+        if (engine.isFile && engine.lastModified() >= since)
+            runCatching { engine.readText().take(4000) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        for (dir in listOfNotNull(game, saves)) {
+            val f = File(dir, "errorlog.txt")
+            if (f.isFile && f.lastModified() >= since)
+                runCatching { f.readText().take(4000) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return "Registro del juego (errorlog.txt):\n$it" }
+        }
+        return null
+    }
+
+    /** The most recent error left by this game, whenever it happened (for the "send last report" row). */
+    fun latest(a: Activity, game: File?, saves: File?): Pair<Long, String>? {
+        val files = listOf(File(a.filesDir, "last_error.txt")) + listOfNotNull(game, saves).map { File(it, "errorlog.txt") }
+        val f = files.filter { it.isFile && it.length() > 0 }.maxByOrNull { it.lastModified() } ?: return null
+        val text = runCatching { f.readText().take(4000) }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        return f.lastModified() to text
     }
 
     /** "Script 'X' line 12: SystemStackError occured." */
