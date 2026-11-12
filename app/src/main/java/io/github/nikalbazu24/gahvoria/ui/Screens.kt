@@ -128,7 +128,7 @@ fun GameScreen(s: AppState, g: Game) {
                 Glass(Modifier.fillMaxWidth()) {
                     val options = listOf(
                         Triple(Game.ENGINE_AUTO, "Automático",
-                            (if (profile.label.isNotEmpty()) "${profile.label}: " else "") + "usa el motor $autoPick."),
+                            (if (profile.label.isNotEmpty()) "${profile.label}: " else "") + "usa el motor $autoPick. Si falla al abrir, prueba el otro y recuerda el que funciona."),
                         Triple(Game.ENGINE_MODERN, "Moderno", "Ruby 3.1. Para la mayoría de juegos."),
                         Triple(Game.ENGINE_CLASSIC, "Clásico", if (classic) "Ruby 1.8. Para juegos antiguos de RPG Maker XP." else "No incluido en esta versión."),
                     )

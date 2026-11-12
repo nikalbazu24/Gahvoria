@@ -30,7 +30,7 @@ object Launcher {
 
     /** The engine a game really starts with. The classic one only when the APK carries it. */
     fun engineFor(a: Activity, game: Game): String {
-        val wanted = if (game.engine == Game.ENGINE_AUTO) autoEngine(game) else game.engine
+        val wanted = if (game.engine == Game.ENGINE_AUTO) (Settings(a).learnedEngine(game.path) ?: autoEngine(game)) else game.engine
         return if (wanted == Game.ENGINE_CLASSIC && classicAvailable(a)) GameActivity.ENGINE_CLASSIC else GameActivity.ENGINE_MODERN
     }
 
@@ -53,10 +53,19 @@ object Launcher {
     fun lastLoad(a: Activity, game: Game): LoadRecord? =
         runCatching { LoadTimes.lastFor(LoadTimes.parse(File(a.filesDir, "load_times.tsv").readText()), game.title) }.getOrNull()
 
-    fun play(a: Activity, game: Game) {
+    /** The other engine, or null when it is not in this APK. */
+    fun otherEngine(a: Activity, used: String): String? = when {
+        used == GameActivity.ENGINE_CLASSIC -> GameActivity.ENGINE_MODERN
+        classicAvailable(a) -> GameActivity.ENGINE_CLASSIC
+        else -> null
+    }
+
+    /** Opens the game; [override] forces one engine (the automatic retry). Returns the engine it started with. */
+    fun play(a: Activity, game: Game, override: String? = null): String {
         val dir = File(game.path)
         val saves = saveDir(game)
-        val engine = engineFor(a, game)
+        val engine = override ?: engineFor(a, game)
+        Settings(a).setLastEngine(game.path, engine)
         val cover = Covers(a) { false }.bestFile(game)?.absolutePath.orEmpty()
         a.startActivity(
             GameActivity.intent(a, dir, game.title, saves, engine, GameActivity.SCREEN_ORIGINAL,
@@ -64,5 +73,6 @@ object Launcher {
                 .putExtra(GameActivity.EXTRA_PAD, Settings(a).pad(game.path))
                 .putExtra(GameActivity.EXTRA_COVER, cover)
         )
+        return engine
     }
 }

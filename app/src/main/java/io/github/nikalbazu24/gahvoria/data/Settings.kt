@@ -37,6 +37,20 @@ class Settings(context: Context) {
     fun setPad(path: String, spec: String) =
         prefs.edit().apply { if (spec.isEmpty()) remove("pad:$path") else putString("pad:$path", spec) }.apply()
 
+    /** The engine ("modern"/"classic") a game was last opened with, to know which one failed or worked. */
+    fun lastEngine(path: String): String? = prefs.getString("engine_last:$path", null)
+    fun setLastEngine(path: String, engine: String) = prefs.edit().putString("engine_last:$path", engine).apply()
+
+    /** The engine that worked for an "automatic" game, learned from real runs. It beats the script analysis. */
+    fun learnedEngine(path: String): String? = prefs.getString("engine_ok:$path", null)
+    fun setLearnedEngine(path: String, engine: String?) =
+        prefs.edit().apply { if (engine == null) remove("engine_ok:$path") else putString("engine_ok:$path", engine) }.apply()
+
+    /** The game failed and was already reopened once with the other engine (so it is not tried a third time). */
+    fun retried(path: String): Boolean = prefs.getBoolean("engine_retry:$path", false)
+    fun setRetried(path: String, on: Boolean) =
+        prefs.edit().apply { if (on) putBoolean("engine_retry:$path", true) else remove("engine_retry:$path") }.apply()
+
     /** The introduction was finished or skipped once. */
     var introSeen: Boolean
         get() = prefs.getBoolean("intro_seen", false)

@@ -143,6 +143,8 @@ class AppState(private val activity: Activity) {
 
     private fun bumpCovers() = activity.runOnUiThread { coverVersion++ }
 
+    private var retryWith: Pair<Game, String>? = null
+
     /** Back from the game or from Android's settings. */
     fun onResume() {
         hasAccess = Storage.hasAccess(activity)
@@ -151,15 +153,32 @@ class AppState(private val activity: Activity) {
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
             val played0 = library.load().firstOrNull { it.path == path }
-            GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })?.let { raw ->
-                if (played0 != null) {
-                    val err = GameReport.withScript(File(path), raw)
-                    val modern = Launcher.engineFor(activity, played0) != "classic"
+            val errRaw = GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })
+            val usedEngine = settings.lastEngine(path)
+            val auto = played0 != null && played0.engine == Game.ENGINE_AUTO
+            if (errRaw == null) {
+                // It ran: for "automatic" games remember the engine that worked, so the next start uses it directly.
+                if (auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
+                settings.setRetried(path, false)
+            } else if (played0 != null) {
+                val other = usedEngine?.let { Launcher.otherEngine(activity, it) }
+                if (auto && other != null && !settings.retried(path) && played < 90_000) {
+                    // Failed while starting: reopen once with the other engine, without asking.
+                    settings.setRetried(path, true)
+                    settings.setLearnedEngine(path, null)
+                    val name = if (other == "classic") "clásico" else "moderno"
+                    say("${played0.title} falló al abrir. Lo vuelvo a abrir con el motor $name.", NoticeKind.WARN)
+                    retryWith = played0 to other
+                } else {
+                    settings.setRetried(path, false)
+                    val err = GameReport.withScript(File(path), errRaw)
+                    val modern = (usedEngine ?: Launcher.engineFor(activity, played0)) != "classic"
                     val d = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.diagnose(err, modern, classicAvailable())
                     errorReport = ErrorReport(played0, err, d)
                 }
             }
         }
+        retryWith?.let { (g, e) -> retryWith = null; play(g, e) }
         games = Library.ordered(library.load())
         if (selected >= games.size) selected = 0
         if (autoCheck && System.currentTimeMillis() - lastCheck > 6L * 3600_000 && update is UpdateState.Idle) checkUpdate()
@@ -170,7 +189,7 @@ class AppState(private val activity: Activity) {
 
     // ---------------------------------------------------------------- library
 
-    fun play(game: Game) {
+    fun play(game: Game, engine: String? = null) {
         val dir = File(game.path)
         if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
@@ -178,7 +197,8 @@ class AppState(private val activity: Activity) {
         val now = System.currentTimeMillis()
         library.update(game.path) { it.copy(lastPlayed = now) }
         settings.startSession(game.path, now)
-        Launcher.play(activity, game)
+        if (engine == null) settings.setRetried(game.path, false)
+        Launcher.play(activity, game, engine)
         selected = 0
     }
 
