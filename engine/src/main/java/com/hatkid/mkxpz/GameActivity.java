@@ -74,10 +74,18 @@ public class GameActivity extends SDLActivity
     public static final String EXTRA_PAD = "gahvoria.PAD";
     /** A small copy of the game's cover, for the blurred background of the loading screen ("" if none). */
     public static final String EXTRA_COVER = "gahvoria.COVER";
+    /** Translation: the folder that keeps this game's translations, the provider, the target language and the DeepL key. */
+    public static final String EXTRA_TR_DIR = "gahvoria.TR_DIR";
+    public static final String EXTRA_TR_PROVIDER = "gahvoria.TR_PROVIDER";
+    public static final String EXTRA_TR_TARGET = "gahvoria.TR_TARGET";
+    public static final String EXTRA_TR_KEY = "gahvoria.TR_KEY";
+    /** Picture style ("crt" = old TV lines) and the wide-screen mode value. */
+    public static final String EXTRA_FILTER = "gahvoria.FILTER";
 
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
     public static final String SCREEN_ORIGINAL = "original";
+    public static final String SCREEN_WIDE = "wide_safe";
 
     /** Read by the native engine through JNI (main.cpp). */
     @SuppressWarnings("unused")
@@ -187,6 +195,27 @@ public class GameActivity extends SDLActivity
         mLayout.addView(sScreen, new RelativeLayout.LayoutParams(-1, -1));
     }
 
+    private com.hatkid.mkxpz.translate.TranslatorService mTranslator;
+
+    /** When this game is set to be translated, tells the Ruby side where the translations live and starts the translator. */
+    private void startTranslator(Intent i) throws Exception
+    {
+        String dir = i.getStringExtra(EXTRA_TR_DIR);
+        if (dir == null || dir.isEmpty()) {
+            setenv("ESSENTIA_TR_FILE", "");
+            setenv("ESSENTIA_TR_REQ", "");
+            return;
+        }
+        File folder = new File(dir);
+        //noinspection ResultOfMethodCallIgnored
+        folder.mkdirs();
+        mTranslator = new com.hatkid.mkxpz.translate.TranslatorService(this, folder,
+            i.getStringExtra(EXTRA_TR_PROVIDER), i.getStringExtra(EXTRA_TR_TARGET), i.getStringExtra(EXTRA_TR_KEY));
+        setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
+        setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
+        mTranslator.start();
+    }
+
     /** Settings the engine and its compatibility scripts read from the environment. */
     private void prepareEnvironment(File game, Intent i)
     {
@@ -199,6 +228,9 @@ public class GameActivity extends SDLActivity
             String screen = i.getStringExtra(EXTRA_SCREEN);
             setenv("ESSENTIA_SCREEN_MODE", screen == null || screen.isEmpty() ? SCREEN_ORIGINAL : screen);
             setenv("ESSENTIA_ORIENTATION", "landscape");
+            String filter = i.getStringExtra(EXTRA_FILTER);
+            setenv("ESSENTIA_FILTER", filter == null ? "" : filter);
+            startTranslator(i);
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
             File errorFile = new File(getFilesDir(), "last_error.txt");
             //noinspection ResultOfMethodCallIgnored

@@ -51,6 +51,39 @@ class Settings(context: Context) {
     fun setRetried(path: String, on: Boolean) =
         prefs.edit().apply { if (on) putBoolean("engine_retry:$path", true) else remove("engine_retry:$path") }.apply()
 
+    /** Translation. Off until the player turns it on, and then also on for each game they want it in. */
+    var translateOn: Boolean
+        get() = prefs.getBoolean("tr_on", false)
+        set(v) = prefs.edit().putBoolean("tr_on", v).apply()
+
+    /** "mlkit" (on the phone, free) or "deepl" (the player's own key). */
+    var translateProvider: String
+        get() = prefs.getString("tr_provider", "mlkit") ?: "mlkit"
+        set(v) = prefs.edit().putString("tr_provider", v).apply()
+
+    /** The player's own DeepL key. Stays on this phone; Gahvoria ships none. */
+    var deeplKey: String
+        get() = prefs.getString("tr_deepl_key", "") ?: ""
+        set(v) = prefs.edit().putString("tr_deepl_key", v.trim()).apply()
+
+    var translateTarget: String
+        get() = prefs.getString("tr_target", "es") ?: "es"
+        set(v) = prefs.edit().putString("tr_target", v).apply()
+
+    fun translateGame(path: String): Boolean = prefs.getBoolean("tr_game:$path", false)
+    fun setTranslateGame(path: String, on: Boolean) = prefs.edit().putBoolean("tr_game:$path", on).apply()
+
+    /** Wide screen for one game (the original 4:3 picture otherwise) and the old-TV lines. */
+    fun wide(path: String): Boolean = prefs.getBoolean("wide:$path", false)
+    fun setWide(path: String, on: Boolean) = prefs.edit().putBoolean("wide:$path", on).apply()
+    fun retro(path: String): Boolean = prefs.getBoolean("retro:$path", false)
+    fun setRetro(path: String, on: Boolean) = prefs.edit().putBoolean("retro:$path", on).apply()
+
+    /** Everything kept about one game (touch layout, translation, screen, engine memory) when it is deleted. */
+    fun forgetGame(path: String) = prefs.edit().apply {
+        for (k in listOf("pad", "tr_game", "wide", "retro", "engine_last", "engine_ok", "engine_retry")) remove("$k:$path")
+    }.apply()
+
     /** The introduction was finished or skipped once. */
     var introSeen: Boolean
         get() = prefs.getBoolean("intro_seen", false)

@@ -79,7 +79,7 @@ fun GameScreen(s: AppState, g: Game) {
     BackHandler { s.optionsFor = null }
     var tab by remember(g.path) { mutableIntStateOf(0) }
     Page(g.title, onBack = { s.optionsFor = null }) {
-        Segmented(listOf("Partidas", "Mando", "Motor"), tab) { tab = it }
+        Segmented(listOf("Partidas", "Mando", "Pantalla", "Motor"), tab) { tab = it }
         when (tab) {
             0 -> {
                 val dir = remember(g.path) { s.saveDir(g) }
@@ -120,6 +120,27 @@ fun GameScreen(s: AppState, g: Game) {
                         onClick = { s.changeGame(g.path) { it.copy(touch = !it.touch) } }) { Toggle(g.touch) }
                 }
                 if (g.touch) PadEditor(s, g)
+            }
+            2 -> {
+                var rev by remember(g.path) { mutableIntStateOf(0) }
+                val wide = remember(g.path, rev) { s.wide(g) }
+                val retro = remember(g.path, rev) { s.retro(g) }
+                val tr = remember(g.path, rev) { s.translateGame(g) }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Traducir este juego",
+                        if (!s.translateOn) "Primero activa «Traducir mientras juegas» en Ajustes → Traducción."
+                        else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "Falta tu clave de DeepL en Ajustes → Traducción."
+                        else "Traduce el texto del juego al idioma elegido. Las frases quedan guardadas para la próxima vez. No traduce texto dibujado en imágenes.",
+                        role = Role.Switch, onClick = { s.setTranslateGame(g, !tr); rev++ }) { Toggle(tr) }
+                }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Pantalla panorámica", "Más mapa a los lados en juegos hechos para 4:3; menús y batallas conservan su forma. Todavía en pruebas: avísame si algún juego se ve mal.",
+                        role = Role.Switch, onClick = { s.setWide(g, !wide); rev++ }) { Toggle(wide) }
+                    Divider()
+                    RowItem("Pantalla retro", "Líneas finas como de tele antigua sobre la imagen.",
+                        role = Role.Switch, onClick = { s.setRetro(g, !retro); rev++ }) { Toggle(retro) }
+                }
+                T("Los cambios se aplican la próxima vez que abras el juego.", 12.sp, FontWeight.Medium, c.muted)
             }
             else -> {
                 val classic = s.classicAvailable()
@@ -285,7 +306,7 @@ private enum class Sec(val title: String, val hint: String, val words: String) {
     FILES("Archivos y accesos", "Launchers como Díptico", "accesos launcher diptico daijisho es-de carpeta atajos"),
     COVERS("Carátulas", "Imágenes de los juegos", "caratulas portadas imagenes internet catalogo"),
     REPORTS("Informes", "Cuando un juego falla", "informes errores enviar drive"),
-    TRANSLATE("Traducción", "Pronto", "traduccion traductor idioma ingles"),
+    TRANSLATE("Traducción", "Juegos en otro idioma", "traduccion traductor idioma ingles"),
     ABOUT("Acerca de", "Versión e introducción", "acerca version introduccion licencias motor");
 
     fun matches(q: String): Boolean {
@@ -441,9 +462,54 @@ private fun SecContent(s: AppState, sec: Sec) {
                 Divider()
                 RowItem("Último error de cada juego", "Está en las opciones de ese juego.")
             }
-            Sec.TRANSLATE -> Glass(Modifier.fillMaxWidth()) {
-                RowItem("Traductor automático", "En camino: traducir mientras juegas los juegos en otro idioma. Todavía no está disponible.") {
-                    T("Pronto", 12.sp, FontWeight.Bold, c.faint)
+            Sec.TRANSLATE -> {
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Traducir mientras juegas", "Apagado hasta que lo actives. Después eliges en qué juegos, en sus opciones → Pantalla.",
+                        role = Role.Switch, onClick = { s.chooseTranslateOn(!s.translateOn) }) { Toggle(s.translateOn) }
+                }
+                if (s.translateOn) {
+                    Label("Con qué traducir")
+                    Glass(Modifier.fillMaxWidth()) {
+                        RowItem("En el teléfono (gratis)", "Traductor de Google sin conexión. Baja un paquete de idioma la primera vez (necesita Internet). Calidad modesta.",
+                            role = Role.RadioButton, onClick = { s.chooseTranslateProvider("mlkit") }) { Radio(s.translateProvider == "mlkit") }
+                        Divider()
+                        RowItem("DeepL con tu propia clave", "Mejor calidad. La clave y el gasto son tuyos; Gahvoria no incluye ninguna.",
+                            role = Role.RadioButton, onClick = { s.chooseTranslateProvider("deepl") }) { Radio(s.translateProvider == "deepl") }
+                        if (s.translateProvider == "deepl") {
+                            Divider()
+                            var key by remember { mutableStateOf("") }
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                val shape = RoundedCornerShape(14.dp)
+                                androidx.compose.foundation.text.BasicTextField(
+                                    key, { key = it }, singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Montserrat),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accent),
+                                    modifier = Modifier.fillMaxWidth().background(c.glass, shape).border(1.dp, c.line, shape).padding(14.dp),
+                                    decorationBox = { inner -> Box { if (key.isEmpty()) T(if (s.hasDeeplKey) "Clave guardada en este teléfono" else "Pega tu clave de DeepL", 14.sp, FontWeight.Medium, c.faint); inner() } },
+                                )
+                                SecondaryButton("Guardar clave", Modifier.fillMaxWidth(), enabled = key.isNotBlank()) { s.saveDeeplKey(key); key = "" }
+                            }
+                        }
+                    }
+                    Label("Traducir a")
+                    Glass(Modifier.fillMaxWidth()) {
+                        listOf("es" to "Español", "en" to "Inglés", "pt" to "Portugués").forEachIndexed { i, (id, name) ->
+                            if (i > 0) Divider()
+                            RowItem(name, null, role = Role.RadioButton, onClick = { s.chooseTranslateTarget(id) }) { Radio(s.translateTarget == id) }
+                        }
+                    }
+                    Label("Memoria")
+                    val total = remember(s.translationsVersion, s.coverVersion) { s.translationsTotal() }
+                    val status = remember(s.translationsVersion, s.coverVersion) { s.translateStatus() }
+                    Glass(Modifier.fillMaxWidth()) {
+                        RowItem("Traducciones guardadas", "${total.first} frases · ${io.github.nikalbazu24.gahvoria.data.Translations.humanSize(total.second)}. Se reutilizan al reabrir el juego, sin esperar.")
+                        if (status != null) { Divider(); RowItem("Último aviso del traductor", status.second) }
+                        Divider()
+                        RowItem("Borrar traducciones guardadas", "Solo borra esta memoria. No toca juegos ni partidas.",
+                            titleColor = c.accent, onClick = { s.clearTranslations() }) { T("Borrar", 12.sp, FontWeight.Bold, c.accent) }
+                    }
+                    T("Traduce el texto que el juego escribe; no el que viene dibujado dentro de imágenes. Con alfabetos como el japonés la calidad baja. Los códigos del juego (colores, nombres) se conservan; si uno no se puede conservar, esa frase queda sin traducir.", 12.sp, FontWeight.Medium, c.muted)
                 }
             }
             Sec.ABOUT -> Glass(Modifier.fillMaxWidth()) {

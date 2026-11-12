@@ -67,12 +67,21 @@ object Launcher {
         val engine = override ?: engineFor(a, game)
         Settings(a).setLastEngine(game.path, engine)
         val cover = Covers(a) { false }.bestFile(game)?.absolutePath.orEmpty()
-        a.startActivity(
-            GameActivity.intent(a, dir, game.title, saves, engine, GameActivity.SCREEN_ORIGINAL,
-                Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
-                .putExtra(GameActivity.EXTRA_PAD, Settings(a).pad(game.path))
-                .putExtra(GameActivity.EXTRA_COVER, cover)
-        )
+        val st = Settings(a)
+        val intent = GameActivity.intent(a, dir, game.title, saves, engine,
+            if (st.wide(game.path)) GameActivity.SCREEN_WIDE else GameActivity.SCREEN_ORIGINAL,
+            Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
+            .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
+            .putExtra(GameActivity.EXTRA_COVER, cover)
+            .putExtra(GameActivity.EXTRA_FILTER, if (st.retro(game.path)) "crt" else "")
+        // Translation runs only when it is on in Ajustes AND for this game, and DeepL only with a key.
+        if (st.translateOn && st.translateGame(game.path) && (st.translateProvider != "deepl" || st.deeplKey.isNotEmpty())) {
+            intent.putExtra(GameActivity.EXTRA_TR_DIR, Translations.dirFor(a, game).absolutePath)
+                .putExtra(GameActivity.EXTRA_TR_PROVIDER, st.translateProvider)
+                .putExtra(GameActivity.EXTRA_TR_TARGET, st.translateTarget)
+                .putExtra(GameActivity.EXTRA_TR_KEY, st.deeplKey)
+        }
+        a.startActivity(intent)
         return engine
     }
 }

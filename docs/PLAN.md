@@ -31,3 +31,10 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - Borrar juego por completo: explicación + respaldo opcional, y escribir el nombre. Se niega a borrar carpetas sueltas en la raíz o que contengan otro juego. «Quitar de la biblioteca» no cambia.
 - Respaldo de partidas en .zip e importación desde .zip o carpeta de otro emulador; lo reemplazado queda como `.antes`.
 - Pendiente: probar en teléfono y Thor (editor táctil, carga con desenfoque, borrado en una copia de un juego).
+
+## 0.3 «Más juegos» (primera parte, en pruebas)
+- Traductor: el motor ya pedía y leía traducciones por archivos (`essentia_translate.rb`); la app ahora los responde dentro del proceso del juego (`TranslatorService`): ML Kit en el teléfono (gratis, baja el idioma la primera vez) o DeepL con clave del usuario. Memoria por juego en `filesDir/translations/<juego>/<idioma>.tsv`, se borra con el juego. Códigos del juego protegidos; si no se pueden conservar, la frase queda sin traducir.
+- Pantalla por juego: panorámica (`wide_safe`, en pruebas) y pantalla retro.
+- Motor automático con reintento y memoria del motor que funcionó (0.2.1).
+- No hecho aún: FXAA y nitidez (necesitan código nativo y medir en la Thor), importar de Kirin/Navia XP por rutas conocidas, panorámica «pulida».
+- Pendiente: probar en la Thor con un juego en inglés (ML Kit puede no funcionar si el equipo no tiene servicios de Google; DeepL no los necesita).

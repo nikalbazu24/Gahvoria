@@ -37,4 +37,7 @@ android {
 dependencies {
     // Sizes of the touch controls (gamepad_layout.xml uses _NNsdp)
     implementation("com.intuit.sdp:sdp-android:1.1.0")
+    // Translator that works on the phone (free). The player's own DeepL key is the other option.
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:language-id:17.0.6")
 }

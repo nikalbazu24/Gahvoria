@@ -32,6 +32,12 @@ object Intro {
             Slide("Respaldo de partidas", "Guarda un .zip de tus partidas e impórtalas desde un respaldo o desde otro emulador. Antes de reemplazar, te pregunta."),
             Slide("Borrar un juego", "Si quieres, lo borras por completo con dos confirmaciones y un respaldo opcional. «Quitar de la biblioteca» sigue sin borrar nada."),
         ),
+        3 to listOf(
+            Slide("Juegos en otro idioma", "Activa el traductor en Ajustes y elige en qué juegos. Traduce mientras juegas y guarda las frases para no esperar la próxima vez."),
+            Slide("Gratis o con tu clave", "Puede traducir en tu teléfono sin costo, o con tu propia clave de DeepL para mejor calidad."),
+            Slide("Pantalla por juego", "En cada juego, elige pantalla panorámica (en pruebas) o pantalla retro."),
+            Slide("Motor automático", "Si un juego falla al abrir, Gahvoria lo reabre con el otro motor y recuerda el que funciona."),
+        ),
     )
 
     val LATEST: Int get() = UPDATES.maxOfOrNull { it.first } ?: 0

@@ -226,6 +226,33 @@ class AppState(private val activity: Activity) {
 
     fun savePad(game: Game, layout: io.github.nikalbazu24.gahvoria.core.TouchLayout) = settings.setPad(game.path, layout.encode())
 
+    // ---------------------------------------------------------------- translation, screen
+
+    var translateOn by mutableStateOf(settings.translateOn)
+    var translateProvider by mutableStateOf(settings.translateProvider)
+    var translateTarget by mutableStateOf(settings.translateTarget)
+    var hasDeeplKey by mutableStateOf(settings.deeplKey.isNotEmpty())
+    /** Bumps to refresh the sizes shown in Ajustes after clearing. */
+    var translationsVersion by mutableIntStateOf(0)
+
+    fun chooseTranslateOn(on: Boolean) { settings.translateOn = on; translateOn = on }
+    fun chooseTranslateProvider(p: String) { settings.translateProvider = p; translateProvider = p }
+    fun chooseTranslateTarget(t: String) { settings.translateTarget = t; translateTarget = t }
+    fun saveDeeplKey(key: String) { settings.deeplKey = key; hasDeeplKey = key.isNotBlank() }
+    fun translateGame(g: Game) = settings.translateGame(g.path)
+    fun setTranslateGame(g: Game, on: Boolean) { settings.setTranslateGame(g.path, on); coverVersion++ }
+    fun wide(g: Game) = settings.wide(g.path)
+    fun setWide(g: Game, on: Boolean) { settings.setWide(g.path, on); coverVersion++ }
+    fun retro(g: Game) = settings.retro(g.path)
+    fun setRetro(g: Game, on: Boolean) { settings.setRetro(g.path, on); coverVersion++ }
+    fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)
+    fun translateStatus() = io.github.nikalbazu24.gahvoria.data.Translations.status(activity)
+    fun clearTranslations() {
+        io.github.nikalbazu24.gahvoria.data.Translations.clearAll(activity)
+        translationsVersion++
+        say("Borré las traducciones guardadas. Tus juegos y partidas no se tocaron.", NoticeKind.OK)
+    }
+
     // ---------------------------------------------------------------- delete and backup
 
     /** The game being deleted for good (the two confirmations are shown while this is set). */
@@ -244,13 +271,14 @@ class AppState(private val activity: Activity) {
         deleting = null
         worker.execute {
             val r = GameRemoval.execute(plan)
+            runCatching { io.github.nikalbazu24.gahvoria.data.Translations.clear(activity, g) }
             runCatching {
                 val f = File(activity.filesDir, "load_times.tsv")
                 if (f.isFile) f.writeText(f.readLines().filterNot { it.split('\t').getOrNull(2) == g.title }.joinToString("") { it + "\n" })
             }
             activity.runOnUiThread {
                 games = Library.ordered(library.remove(g.path))
-                settings.setPad(g.path, "")
+                settings.forgetGame(g.path)
                 covers.prune(games)
                 optionsFor = null
                 selected = 0
