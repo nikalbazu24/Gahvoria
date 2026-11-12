@@ -421,4 +421,13 @@ class CoreTest {
         assertFalse(File(base, "Mi Juego.part").exists())
         assertEquals("", ZipInstaller.plan(listOf("Game.ini", "Data/Scripts.rxdata"))!!.root)
     }
+
+    @Test fun compressedFilesAreToldApartByTheirFirstBytes() {
+        fun b(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
+        assertEquals(ArchiveKind.ZIP, ArchiveKind.detect(b(0x50, 0x4B, 3, 4, 0, 0)))
+        assertEquals(ArchiveKind.SEVEN_Z, ArchiveKind.detect(b(0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C)))
+        assertEquals(ArchiveKind.RAR, ArchiveKind.detect(b(0x52, 0x61, 0x72, 0x21, 0x1A, 7, 0)))
+        assertEquals(ArchiveKind.UNKNOWN, ArchiveKind.detect(b(0x4D, 0x5A, 0x90, 0)))
+        assertEquals(ArchiveKind.UNKNOWN, ArchiveKind.detect(ByteArray(0)))
+    }
 }

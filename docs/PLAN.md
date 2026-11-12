@@ -44,4 +44,7 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - «Instalar desde .zip»: busca la carpeta del juego dentro del .zip, descomprime a `Juegos/<nombre>` por una carpeta temporal `.part`, nunca sobre una carpeta existente, ignora rutas que se salgan del destino.
 - Formulario para creadores: manda el enlace al mismo buzón privado de informes; se revisa a mano.
 - Entradas iniciales con enlaces de Nicolás; todas «Sin probar». Insurgence entrega un instalador de Windows (.exe) y no se puede instalar directo. Solar Eclipse: la página no se pudo abrir desde aquí para revisarla.
-- Pendiente: soporte .rar/.7z, actualizador automático de fan games, descarga directa si un creador la autoriza, revisión de marcas antes de publicar.
+- Pendiente: soporte .rar/.7z, actualizador automático de fan games, descarga directa si un creador la autoriza, 
+
+- Instalación desde .7z y .rar (Commons Compress y junrar), detectados por sus primeros bytes. RAR versión 5 y archivos con contraseña: aviso claro, sin instalar. Sin probar en el teléfono.
+- Nombre «Gahvoria»: confirmado por Nicolás (11 nov: sin choques de marca). Los títulos de juegos de la tienda siguen sin la palabra «Pokémon».

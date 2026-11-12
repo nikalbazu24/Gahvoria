@@ -433,7 +433,8 @@ class AppState(private val activity: Activity) {
             .onFailure { say("No encontré un navegador para abrir la página.", NoticeKind.WARN) }
     }
 
-    data class ZipPick(val uri: Uri, val name: String, val plan: ZipInstaller.Plan?, val problem: String?)
+    data class ZipPick(val uri: Uri, val name: String, val plan: ZipInstaller.Plan?, val problem: String?,
+                       val kind: io.github.nikalbazu24.gahvoria.core.ArchiveKind = io.github.nikalbazu24.gahvoria.core.ArchiveKind.ZIP)
     var zipPick by mutableStateOf<ZipPick?>(null)
     /** What the installation is doing now ("Descomprimiendo… 120 archivos"), or null when idle. */
     var zipProgress by mutableStateOf<String?>(null)
@@ -444,18 +445,21 @@ class AppState(private val activity: Activity) {
         }
     }.getOrNull() ?: "juego.zip"
 
-    /** Looks inside the chosen .zip without extracting anything. */
+    /** Looks inside the chosen .zip, .7z or .rar without extracting anything. */
     fun pickZip(uri: Uri) {
         zipPick = null
         val name = displayName(uri)
         worker.execute {
-            val r = runCatching { activity.contentResolver.openInputStream(uri)!!.use { ZipInstaller.listNames(it) } }
-            val pick = r.fold(
-                { names ->
-                    val plan = ZipInstaller.plan(names)
-                    ZipPick(uri, name, plan, if (plan == null) "No encontré un juego de RPG Maker dentro. Si es un instalador (.exe) o un archivo .rar/.7z, por ahora no se puede instalar aquí." else null)
-                },
-                { ZipPick(uri, name, null, "No pude leer ese archivo. Gahvoria instala archivos .zip.") },
+            val kind = runCatching { io.github.nikalbazu24.gahvoria.data.Archives.kindOf(activity, uri) }
+                .getOrDefault(io.github.nikalbazu24.gahvoria.core.ArchiveKind.UNKNOWN)
+            val pick = if (kind == io.github.nikalbazu24.gahvoria.core.ArchiveKind.UNKNOWN) {
+                ZipPick(uri, name, null, "Ese archivo no es un .zip, .7z ni .rar. Si es un instalador (.exe), no se puede instalar aquí.", kind)
+            } else runCatching {
+                val src = io.github.nikalbazu24.gahvoria.data.Archives.open(activity, uri, kind)
+                ZipInstaller.plan(ZipInstaller.listNames(src))
+            }.fold(
+                { plan -> ZipPick(uri, name, plan, if (plan == null) "No encontré un juego de RPG Maker dentro de ese archivo." else null, kind) },
+                { ZipPick(uri, name, null, it.message?.takeIf { m -> m.isNotBlank() } ?: "No pude leer ese archivo.", kind) },
             )
             activity.runOnUiThread { zipPick = pick }
         }
@@ -473,9 +477,8 @@ class AppState(private val activity: Activity) {
                 val base = File(Storage.root(), "Juegos").also { it.mkdirs() }
                 val title = plan.root.trimEnd('/').substringAfterLast('/').ifEmpty { pick.name.substringBeforeLast('.') }
                 val dest = ZipInstaller.freeFolder(base, title)
-                val n = activity.contentResolver.openInputStream(pick.uri)!!.use { input ->
-                    ZipInstaller.extract(input, plan, dest) { c -> activity.runOnUiThread { zipProgress = "Descomprimiendo… $c de ${plan.files} archivos" } }
-                }
+                val src = io.github.nikalbazu24.gahvoria.data.Archives.open(activity, pick.uri, pick.kind)
+                val n = ZipInstaller.extract(src, plan, dest) { c -> activity.runOnUiThread { zipProgress = "Descomprimiendo… $c de ${plan.files} archivos" } }
                 dest to n
             }
             activity.runOnUiThread {

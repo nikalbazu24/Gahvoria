@@ -77,7 +77,7 @@ fun StoreScreen(s: AppState) {
             }
             Label("Ya lo descargaste")
             Glass(Modifier.fillMaxWidth()) {
-                RowItem("Instalar un juego desde un .zip", "Para lo que bajaste de una página oficial. Gahvoria lo descomprime, lo revisa y lo agrega a tu biblioteca.",
+                RowItem("Instalar un juego desde un archivo", "Para lo que bajaste de una página oficial (.zip, .7z o .rar). Gahvoria lo descomprime, lo revisa y lo agrega a tu biblioteca.",
                     onClick = { sel = null; view = 2 }) { T("›", 18.sp, FontWeight.Bold, c.faint) }
                 Divider()
                 RowItem("¿Eres creador? Envía tu juego", "Propones el enlace a tu página oficial. Se revisa antes de aparecer.",
@@ -119,7 +119,7 @@ private fun GameSheet(s: AppState, g: StoreGame, onBack: () -> Unit, onInstall: 
         if (g.note.isNotEmpty()) T(g.note, 12.sp, FontWeight.Medium, c.warn)
         Label("Cómo jugarlo en Gahvoria")
         Glass(Modifier.fillMaxWidth()) {
-            RowItem("1 · Descárgalo en su página oficial", "Se abre en tu navegador. Busca la versión de Windows en .zip.")
+            RowItem("1 · Descárgalo en su página oficial", "Se abre en tu navegador. Busca la versión de Windows (.zip, .7z o .rar).")
             Divider()
             RowItem("2 · Instálalo aquí", "Vuelve a Gahvoria y toca «Ya lo descargué». Lo encuentras en Descargas.")
             Divider()
@@ -136,9 +136,9 @@ private fun ZipView(s: AppState, onBack: () -> Unit) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) s.pickZip(uri) }
     val pick = s.zipPick
     val busy = s.zipProgress != null
-    Page("Instalar desde .zip", onBack = onBack) {
-        SecondaryButton("Elegir el .zip", Modifier.fillMaxWidth(), enabled = !busy) {
-            picker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+    Page("Instalar desde archivo", onBack = onBack) {
+        SecondaryButton("Elegir el archivo (.zip, .7z o .rar)", Modifier.fillMaxWidth(), enabled = !busy) {
+            picker.launch(arrayOf("*/*"))
         }
         if (pick == null) {
             T("Elige el archivo que descargaste. Gahvoria no instala nada hasta que tú lo confirmes.", 13.sp, FontWeight.Medium, c.muted)
