@@ -37,6 +37,12 @@ object GameReport {
         return f.lastModified() to text
     }
 
+    /** The error text plus the lines of the game's script where it happened, when they can be read. */
+    fun withScript(game: File, text: String): String {
+        val code = runCatching { io.github.nikalbazu24.gahvoria.core.GameProfile.excerpt(game, text) }.getOrNull() ?: return text
+        return text + "\n\nScript del juego alrededor de la línea del error:\n" + code
+    }
+
     /** "Script 'X' line 12: SystemStackError occured." */
     fun firstLine(text: String): String =
         text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().take(140)

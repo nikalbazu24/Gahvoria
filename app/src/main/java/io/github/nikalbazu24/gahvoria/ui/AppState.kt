@@ -89,6 +89,9 @@ class AppState(private val activity: Activity) {
         private set
     var shortcutsOn by mutableStateOf(settings.shortcutsFolder != null)
         private set
+    /** Where the shortcuts live (null: not created yet). */
+    var shortcutsPath by mutableStateOf(settings.shortcutsFolder)
+        private set
 
     fun say(text: String, kind: NoticeKind = NoticeKind.INFO, action: String? = null, onAction: (() -> Unit)? = null) {
         notice = Notice(text, kind, action, onAction)
@@ -125,8 +128,9 @@ class AppState(private val activity: Activity) {
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
             val played0 = library.load().firstOrNull { it.path == path }
-            GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })?.let { err ->
+            GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })?.let { raw ->
                 if (played0 != null) {
+                    val err = GameReport.withScript(File(path), raw)
                     val modern = Launcher.engineFor(activity, played0) != "classic"
                     val d = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.diagnose(err, modern, classicAvailable())
                     errorReport = ErrorReport(played0, err, d)
@@ -183,6 +187,7 @@ class AppState(private val activity: Activity) {
 
     /** Sends (or copies, if this build cannot send) the last error this game left, whenever it happened. */
     fun lastReport(game: Game) = GameReport.latest(activity, File(game.path), saveDir(game))
+        ?.let { (at, text) -> at to GameReport.withScript(File(game.path), text) }
 
     fun sendReport(game: Game, text: String) {
         val report = "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: ${game.title}\n\n$text"
@@ -230,15 +235,15 @@ class AppState(private val activity: Activity) {
     // ---------------------------------------------------------------- other launchers
 
     /** One shortcut file per game in ROMs/Gahvoria, for Díptico, Daijishō, ES-DE and the like. */
-    fun createShortcuts() {
+    fun createShortcuts(target: File? = null) {
         if (!hasAccess) { say("Primero da acceso a tus archivos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
-        val folder = File(Storage.root(), Shortcuts.FOLDER)
+        val folder = target ?: settings.shortcutsFolder?.let { File(it) } ?: File(Storage.root(), Shortcuts.FOLDER)
         val list = games
         worker.execute {
             val n = Shortcuts.export(list, folder)
             activity.runOnUiThread {
-                if (n > 0) { settings.shortcutsFolder = folder.absolutePath; shortcutsOn = true }
-                if (n > 0) say("Creé $n accesos en ${Shortcuts.FOLDER}. Tu launcher ya puede abrir esos juegos con Gahvoria.", NoticeKind.OK)
+                if (n > 0) { settings.shortcutsFolder = folder.absolutePath; shortcutsOn = true; shortcutsPath = folder.absolutePath }
+                if (n > 0) say("Creé $n accesos en ${folder.absolutePath}. Apunta tu launcher a esa carpeta.", NoticeKind.OK)
                 else say("Todavía no hay juegos que se puedan jugar para crear accesos.", NoticeKind.WARN)
             }
         }

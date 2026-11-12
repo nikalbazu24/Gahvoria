@@ -45,6 +45,36 @@ data class GameProfile(
             return runCatching { parse(readSections(scripts.readBytes(), 400)) }.getOrDefault(GameProfile())
         }
 
+        /**
+         * A few lines of the game's own script around where an error happened (from "Script 'X' line N" in the report),
+         * so the report says what the code was doing. It is only shown to the player and sent if they choose to send.
+         */
+        fun excerpt(dir: File, errorText: String, radius: Int = 10): String? {
+            val m = Regex("Script '([^']+)' line (\\d+)").find(errorText) ?: return null
+            val scripts = scriptsFile(dir) ?: return null
+            val code = runCatching { codeOf(scripts.readBytes(), m.groupValues[1]) }.getOrNull() ?: return null
+            return excerptOf(code, m.groupValues[2].toInt(), radius)
+        }
+
+        internal fun excerptOf(code: String, line: Int, radius: Int): String? {
+            val lines = code.lines()
+            if (line < 1 || line > lines.size) return null
+            val from = maxOf(1, line - radius)
+            val to = minOf(lines.size, line + radius)
+            return (from..to).joinToString("\n") { n -> String.format(Locale.ROOT, "%5d%s %s", n, if (n == line) ">" else " ", lines[n - 1].trimEnd().take(200)) }
+        }
+
+        private fun codeOf(data: ByteArray, name: String): String? {
+            val root = Marshal(data).value() as? List<*> ?: return null
+            for (o in root) {
+                val e = o as? List<*> ?: continue
+                if (e.size < 3) continue
+                if ((e[1] as? ByteArray)?.toString(Charsets.UTF_8) != name) continue
+                return (e[2] as? ByteArray)?.let { inflate(it) }
+            }
+            return null
+        }
+
         internal fun parse(sections: List<Pair<String, String?>>): GameProfile {
             var essentials = false
             var version = ""

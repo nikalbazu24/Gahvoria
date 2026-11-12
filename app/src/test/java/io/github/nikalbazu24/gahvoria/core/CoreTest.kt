@@ -305,4 +305,15 @@ class CoreTest {
         assertTrue(unknown.detail.contains("RuntimeError"))
         assertEquals(Fix.NONE, ErrorDiagnosis.diagnose("", true, true).fix)
     }
+
+    @Test fun theReportShowsTheScriptLinesAroundTheError() {
+        val code = (1..30).joinToString("\n") { "linea $it" }
+        val out = GameProfile.excerptOf(code, 15, 2)!!
+        assertEquals(5, out.lines().size)
+        assertTrue(out.contains("   15> linea 15"))
+        assertTrue(out.lines().first().contains("linea 13"))
+        assertEquals(3, GameProfile.excerptOf(code, 1, 2)!!.lines().size)
+        assertNull(GameProfile.excerptOf(code, 99, 2))
+        assertNull(GameProfile.excerptOf(code, 0, 2))
+    }
 }

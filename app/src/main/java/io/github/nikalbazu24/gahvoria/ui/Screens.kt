@@ -286,9 +286,19 @@ fun SettingsScreen(s: AppState) {
                 role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
         }
         Label("Otros launchers")
+        val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) Storage.pathOf(uri)?.let { s.createShortcuts(it) }
+        }
         Glass(Modifier.fillMaxWidth()) {
-            RowItem("Crear accesos de mis juegos", "Carpeta ROMs/Gahvoria. Díptico, Daijishō, ES-DE y otros abren tus juegos desde ahí.",
-                onClick = { s.createShortcuts() }) {
+            RowItem("Carpeta de accesos", (s.shortcutsPath ?: "Todavía no creada. Se propone ROMs/Gahvoria.") +
+                "\nDíptico, Daijishō, ES-DE y otros abren tus juegos desde esa carpeta."
+            )
+            Divider()
+            RowItem("Elegir carpeta y crear accesos", "Tú decides dónde quedan. Los archivos de los juegos no se tocan.",
+                onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+            Divider()
+            RowItem(if (s.shortcutsOn) "Actualizar accesos" else "Crear accesos en la carpeta propuesta",
+                "Agrega los juegos nuevos. Nunca borra accesos.", onClick = { s.createShortcuts() }) {
                 T(if (s.shortcutsOn) "Actualizar" else "Crear", 12.sp, FontWeight.Bold, c.accent)
             }
         }
