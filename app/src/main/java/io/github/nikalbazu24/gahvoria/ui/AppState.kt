@@ -120,9 +120,21 @@ class AppState(private val activity: Activity) {
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
             GameReport.errorSince(activity, at)?.let { err ->
                 val title = library.load().firstOrNull { it.path == path }?.title.orEmpty()
-                say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Copiar informe") {
-                    GameReport.copy(activity, "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: $title\n\n$err")
-                    say("Informe copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK)
+                val report = "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: $title\n\n$err"
+                if (GameReport.canSend()) {
+                    say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Enviar informe") {
+                        say("Enviando informe…", NoticeKind.INFO)
+                        worker.execute {
+                            val msg = runCatching { GameReport.send("informe-" + title, report) }
+                                .fold({ "Informe enviado. Gracias." }, { "No se pudo enviar: " + (it.message ?: "sin conexión") + ". Puedes copiarlo y mandarlo tú." })
+                            activity.runOnUiThread { say(msg, if (msg.startsWith("Informe")) NoticeKind.OK else NoticeKind.WARN) }
+                        }
+                    }
+                } else {
+                    say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Copiar informe") {
+                        GameReport.copy(activity, report)
+                        say("Informe copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK)
+                    }
                 }
             }
         }

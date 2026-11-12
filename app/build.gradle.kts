@@ -23,6 +23,9 @@ android {
         versionCode = maxOf(1, buildNumber)
         versionName = "0.1.$buildNumber"
         buildConfigField("String", "UPDATE_BASE", "\"https://github.com/nikalbazu24/Gahvoria/releases/download/dev/\"")
+        buildConfigField("String", "REPORT_URL", "\"https://script.google.com/macros/s/AKfycbxMUM_5NoCyJCmurvDWFRJ5zTgk70F5-9s4_RessUcL8YbmeRpkEYA6WEdON6Ym_Cyn/exec\"")
+        // Secret from GitHub (GAHVORIA_REPORT_TOKEN). Empty in local builds: then reports are only copied.
+        buildConfigField("String", "REPORT_TOKEN", "\"" + (System.getenv("GAHVORIA_REPORT_TOKEN") ?: "").replace("\"", "") + "\"")
         ndk { abiFilters += "arm64-v8a" }
     }
 
