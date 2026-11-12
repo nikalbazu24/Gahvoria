@@ -26,6 +26,11 @@ class Settings(context: Context) {
         get() = prefs.getString("shortcuts_folder", null)
         set(v) = prefs.edit().putString("shortcuts_folder", v).apply()
 
+    /** Look for the official image of a game on the Internet (only games in the public catalog have one). */
+    var coversOnline: Boolean
+        get() = prefs.getBoolean("covers_online", true)
+        set(v) = prefs.edit().putBoolean("covers_online", v).apply()
+
     var lastCheck: Long
         get() = prefs.getLong("last_check", 0)
         set(v) = prefs.edit().putLong("last_check", v).apply()

@@ -119,6 +119,14 @@ fun GameScreen(s: AppState, g: Game) {
                 }
             }
         }
+        val coverSource = s.covers.source(g)
+        val coverText = when (coverSource) {
+            io.github.nikalbazu24.gahvoria.data.Covers.Source.WEB -> s.covers.credit(g) ?: "Imagen oficial de Internet."
+            io.github.nikalbazu24.gahvoria.data.Covers.Source.FOLDER -> "Imagen de la carpeta del juego."
+            else -> if (s.coversOnline) "Sin imagen: dibujada por Gahvoria. Si el juego trae una o está en el catálogo, aparecerá sola."
+                    else "Sin imagen: dibujada por Gahvoria."
+        }
+        Glass(Modifier.fillMaxWidth()) { RowItem("Carátula", coverText) }
         Spacer(Modifier.height(4.dp))
         var step by remember(g.path) { mutableIntStateOf(0) }
         Glass(Modifier.fillMaxWidth()) {
@@ -263,6 +271,11 @@ fun SettingsScreen(s: AppState) {
                 onClick = if (s.hasAccess) null else ({ s.askAccess() })) {
                 T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
             }
+        }
+        Label("Carátulas")
+        Glass(Modifier.fillMaxWidth()) {
+            RowItem("Buscar imágenes en Internet", "Usa la imagen oficial que publicaron los creadores, cuando el juego está en el catálogo. Si no, usa una de la carpeta del juego.",
+                role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
         }
         Label("Otros launchers")
         Glass(Modifier.fillMaxWidth()) {

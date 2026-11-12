@@ -16,6 +16,7 @@ import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.LoadRecord
 import io.github.nikalbazu24.gahvoria.data.AppUpdater
+import io.github.nikalbazu24.gahvoria.data.Covers
 import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
@@ -74,6 +75,12 @@ class AppState(private val activity: Activity) {
         private set
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<Notice?>(null)
+    var coversOnline by mutableStateOf(settings.coversOnline)
+        private set
+    val covers = Covers(activity) { settings.coversOnline }
+    /** Goes up each time a cover changes, so the screens that draw covers look again. */
+    var coverVersion by mutableIntStateOf(0)
+        private set
     var shortcutsOn by mutableStateOf(settings.shortcutsFolder != null)
         private set
 
@@ -84,6 +91,25 @@ class AppState(private val activity: Activity) {
     fun choosePalette(id: String) { settings.palette = id; palette = id }
     fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
     fun chooseAutoCheck(on: Boolean) { settings.autoCheck = on; autoCheck = on }
+
+    fun chooseCoversOnline(on: Boolean) {
+        settings.coversOnline = on; coversOnline = on
+        if (on) refreshCovers()
+    }
+
+    /** Two steps, so the library never waits: images from the game folders first (no network), then the official ones. */
+    fun refreshCovers() {
+        val list = games
+        worker.execute {
+            covers.prune(list)
+            var changed = false
+            for (g in list) if (covers.refreshLocal(g)) changed = true
+            if (changed) bumpCovers()
+            for (g in list) if (covers.refreshOnline(g)) bumpCovers()
+        }
+    }
+
+    private fun bumpCovers() = activity.runOnUiThread { coverVersion++ }
 
     /** Back from the game or from Android's settings. */
     fun onResume() {
@@ -103,6 +129,7 @@ class AppState(private val activity: Activity) {
         games = Library.ordered(library.load())
         if (selected >= games.size) selected = 0
         if (autoCheck && System.currentTimeMillis() - lastCheck > 6L * 3600_000 && update is UpdateState.Idle) checkUpdate()
+        refreshCovers()
     }
 
     fun askAccess() = Storage.askAccess(activity)
@@ -163,6 +190,7 @@ class AppState(private val activity: Activity) {
         tab = Tab.LIBRARY
         say("${g.title} está en tu biblioteca.", NoticeKind.OK)
         refreshShortcuts()
+        refreshCovers()
     }
 
     // ---------------------------------------------------------------- other launchers

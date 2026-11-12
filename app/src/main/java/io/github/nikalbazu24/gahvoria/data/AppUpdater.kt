@@ -81,7 +81,7 @@ object AppUpdater {
         return c.inputStream
     }
 
-    private fun open(url: String): HttpURLConnection {
+    internal fun open(url: String): HttpURLConnection {
         var target = url
         repeat(5) {
             val c = URL(target).openConnection() as HttpURLConnection

@@ -1,7 +1,11 @@
 package io.github.nikalbazu24.gahvoria.ui
 
 import android.text.format.DateUtils
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +30,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -33,7 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,7 +52,9 @@ import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.absoluteValue
 
@@ -70,7 +83,7 @@ fun LibraryScreen(s: AppState) {
                         modifier = Modifier.fillMaxWidth().height(coverH + 24.dp),
                     ) { page ->
                         val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).absoluteValue.coerceAtMost(1f)
-                        Cover(s.games[page], page, Modifier.size(coverW, coverH).graphicsLayer {
+                        Cover(s, s.games[page], page, Modifier.size(coverW, coverH).graphicsLayer {
                             val k = 1f - offset * .12f
                             scaleX = k; scaleY = k; alpha = 1f - offset * .45f
                         }) { scope.launch { if (page == pager.currentPage) s.play(s.games[page]) else pager.animateScrollToPage(page) } }
@@ -115,7 +128,7 @@ private fun Header(s: AppState) {
 }
 
 @Composable
-private fun Cover(g: Game, index: Int, modifier: Modifier, onClick: () -> Unit) {
+private fun Cover(s: AppState, g: Game, index: Int, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(26.dp)
     val colors = listOf(c.accent, c.accent2, c.accent3)
@@ -124,6 +137,19 @@ private fun Cover(g: Game, index: Int, modifier: Modifier, onClick: () -> Unit) 
         .border(1.dp, c.line, shape)) {
         val base = if (c.dark) c.bg2 else Color(0xFF22232C)
         Canvas(Modifier.fillMaxSize()) { drawFacets(seed, base, colors[(seed and 0xff) % 3], colors[((seed shr 8) and 0xff) % 3]) }
+        // The real image fades in over the drawn cover. The copy in memory shows at once; the one on disk takes a moment.
+        val bmp by produceState(s.covers.peekMemory(g), g.path, s.coverVersion) {
+            value = withContext(Dispatchers.IO) { s.covers.peek(g) }
+        }
+        val shown = bmp
+        if (shown != null) {
+            val instant = remember(g.path) { s.covers.peekMemory(g) != null }
+            var on by remember(g.path) { mutableStateOf(instant) }
+            LaunchedEffect(Unit) { on = true }
+            val a by animateFloatAsState(if (on) 1f else 0f, if (instant) snap() else tween(220), label = "cover")
+            Image(shown.asImageBitmap(), null, Modifier.fillMaxSize().graphicsLayer { alpha = a }, contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xCC080810))))
+        }
         T(g.kind.label.uppercase(), 10.sp, FontWeight.Bold, Color(0xFFF2F2F6),
             Modifier.padding(14.dp).clip(CircleShape).background(Color(0x80080810)).padding(horizontal = 10.dp, vertical = 5.dp), spacing = 1.sp)
         T(g.title, 20.sp, FontWeight.ExtraBold, Color(0xFFF2F2F6), Modifier.align(Alignment.BottomStart).padding(16.dp), maxLines = 3)

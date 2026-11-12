@@ -227,4 +227,55 @@ class CoreTest {
         assertNull(LoadTimes.lastFor(all, "No existe"))
         assertEquals(emptyList<LoadRecord>(), LoadTimes.parse(""))
     }
+
+    // ---- covers ------------------------------------------------------------------------------
+
+    private val catalogJson = """
+        {"version":3,"games":[
+          {"id":"pokemon-anil","title":"A\u00f1il","aliases":["Pokemon Anil","Pok\u00e9mon A\u00f1il Definitive Edition"],
+           "cover":"https://whackahack.com/a.png","logo":"https://whackahack.com/b.png","media_credit":"EricLostie \u00b7 Whack a Hack!","n":1.5,"ok":true,"x":null},
+          {"id":"sin-imagen","title":"Nada","aliases":[]},
+          {"id":"solo-logo","title":"Cristal","logo":"https://x.org/c.jpg"},
+          {"id":"http","title":"Inseguro","cover":"http://x.org/c.jpg"}
+        ]}
+    """.trimIndent()
+
+    @Test fun theCoverCatalogIsReadWithoutLibrariesAndOnlyKeepsHttpsImages() {
+        val list = CoverCatalog.parse(catalogJson)
+        assertEquals(listOf("pokemon-anil", "solo-logo"), list.map { it.id })
+        val anil = list[0]
+        assertEquals("A\u00f1il", anil.title)
+        assertEquals(listOf("https://whackahack.com/a.png", "https://whackahack.com/b.png"), anil.urls)
+        assertEquals("EricLostie \u00b7 Whack a Hack!", anil.credit)
+        assertEquals(emptyList<CoverEntry>(), CoverCatalog.parse("no es json"))
+        assertEquals(emptyList<CoverEntry>(), CoverCatalog.parse(""))
+    }
+
+    @Test fun gamesMatchTheirCatalogEntryByTitleAliasOrFolderName() {
+        val list = CoverCatalog.parse(catalogJson)
+        assertEquals("anil", CoverCatalog.norm("Pok\u00e9mon A\u00f1il 4.0"))
+        assertEquals("pokemon-anil", CoverCatalog.match(list, "Pok\u00e9mon A\u00f1il", "x")?.id)
+        assertEquals("pokemon-anil", CoverCatalog.match(list, "Otro nombre", "Pokemon_Anil_v4")?.id)
+        assertEquals("solo-logo", CoverCatalog.match(list, "Cristal", "")?.id)
+        assertNull(CoverCatalog.match(list, "Juego desconocido", "carpeta"))
+        assertNull(CoverCatalog.match(list, "", ""))
+    }
+
+    private fun image(f: File, size: Int) { f.parentFile.mkdirs(); f.writeBytes(ByteArray(size)) }
+
+    @Test fun theCoverIsTakenFromTheGameFolderInPriorityOrder() {
+        val dir = Files.createTempDirectory("game").toFile()
+        assertNull(CoverFinder.find(dir))
+        image(File(dir, "Graphics/Pictures/title.png"), 5000)
+        assertEquals("title.png", CoverFinder.find(dir)?.name)
+        image(File(dir, "Graphics/Titles/zzz.jpg"), 5000)
+        assertEquals("zzz.jpg", CoverFinder.find(dir)?.name)
+        image(File(dir, "Graphics/Titles/title.png"), 5000)
+        assertEquals("title.png", CoverFinder.find(dir)?.parentFile?.name?.let { "title.png" })
+        assertEquals("Titles", CoverFinder.find(dir)?.parentFile?.name)
+        image(File(dir, "cover.png"), 5000)
+        assertEquals(dir, CoverFinder.find(dir)?.parentFile)
+        image(File(dir, "Graphics/Titles/tiny.png"), 10)
+        assertTrue(CoverFinder.find(dir)!!.length() >= 2000)
+    }
 }
