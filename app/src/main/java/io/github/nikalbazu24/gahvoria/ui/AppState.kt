@@ -22,12 +22,16 @@ import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
 import android.net.Uri
+import android.content.Intent
+import io.github.nikalbazu24.gahvoria.core.StoreCatalog
+import io.github.nikalbazu24.gahvoria.core.StoreGame
+import io.github.nikalbazu24.gahvoria.core.ZipInstaller
 import io.github.nikalbazu24.gahvoria.core.GameRemoval
 import io.github.nikalbazu24.gahvoria.core.SaveBackup
 import java.io.File
 import java.util.concurrent.Executors
 
-enum class Tab { LIBRARY, ADD, UPDATES, SETTINGS }
+enum class Tab { LIBRARY, ADD, STORE, UPDATES, SETTINGS }
 
 enum class NoticeKind { INFO, OK, WARN, ERROR }
 
@@ -399,6 +403,109 @@ class AppState(private val activity: Activity) {
         say("${g.title} está en tu biblioteca.", NoticeKind.OK)
         refreshShortcuts()
         refreshCovers()
+    }
+
+    // ---------------------------------------------------------------- store
+
+    var storeGames by mutableStateOf<List<StoreGame>>(emptyList())
+
+    /** The store's list: the one shipped with the app, replaced by a newer one from the repository when there is Internet. */
+    fun loadStore() {
+        val cache = File(activity.filesDir, "store-${BuildConfig.VERSION_CODE}.json")
+        val bundled = runCatching { activity.assets.open("store.json").bufferedReader().use { it.readText() } }.getOrDefault("")
+        storeGames = StoreCatalog.parse(runCatching { cache.readText() }.getOrDefault("")).ifEmpty { StoreCatalog.parse(bundled) }
+        worker.execute {
+            runCatching {
+                val c = AppUpdater.open(StoreCatalog.URL)
+                try {
+                    val text = c.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
+                    val list = StoreCatalog.parse(text)
+                    if (list.isNotEmpty()) { cache.writeText(text); activity.runOnUiThread { storeGames = list } }
+                } finally { c.disconnect() }
+            }
+        }
+    }
+
+    /** Opens a creator's official page in the browser. Only secure links come from the catalog. */
+    fun openPage(url: String) {
+        if (!url.startsWith("https://")) return
+        runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { say("No encontré un navegador para abrir la página.", NoticeKind.WARN) }
+    }
+
+    data class ZipPick(val uri: Uri, val name: String, val plan: ZipInstaller.Plan?, val problem: String?)
+    var zipPick by mutableStateOf<ZipPick?>(null)
+    /** What the installation is doing now ("Descomprimiendo… 120 archivos"), or null when idle. */
+    var zipProgress by mutableStateOf<String?>(null)
+
+    private fun displayName(uri: Uri): String = runCatching {
+        activity.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    }.getOrNull() ?: "juego.zip"
+
+    /** Looks inside the chosen .zip without extracting anything. */
+    fun pickZip(uri: Uri) {
+        zipPick = null
+        val name = displayName(uri)
+        worker.execute {
+            val r = runCatching { activity.contentResolver.openInputStream(uri)!!.use { ZipInstaller.listNames(it) } }
+            val pick = r.fold(
+                { names ->
+                    val plan = ZipInstaller.plan(names)
+                    ZipPick(uri, name, plan, if (plan == null) "No encontré un juego de RPG Maker dentro. Si es un instalador (.exe) o un archivo .rar/.7z, por ahora no se puede instalar aquí." else null)
+                },
+                { ZipPick(uri, name, null, "No pude leer ese archivo. Gahvoria instala archivos .zip.") },
+            )
+            activity.runOnUiThread { zipPick = pick }
+        }
+    }
+
+    /** Extracts the game to Juegos/<name> (never over an existing folder) and adds it to the library. */
+    fun installZip() {
+        val pick = zipPick ?: return
+        val plan = pick.plan ?: return
+        if (!hasAccess) { say("Primero da acceso a tus archivos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
+        if (zipProgress != null) return
+        zipProgress = "Preparando…"
+        worker.execute {
+            val result = runCatching {
+                val base = File(Storage.root(), "Juegos").also { it.mkdirs() }
+                val title = plan.root.trimEnd('/').substringAfterLast('/').ifEmpty { pick.name.substringBeforeLast('.') }
+                val dest = ZipInstaller.freeFolder(base, title)
+                val n = activity.contentResolver.openInputStream(pick.uri)!!.use { input ->
+                    ZipInstaller.extract(input, plan, dest) { c -> activity.runOnUiThread { zipProgress = "Descomprimiendo… $c de ${plan.files} archivos" } }
+                }
+                dest to n
+            }
+            activity.runOnUiThread {
+                zipProgress = null
+                result.onSuccess { (dest, _) ->
+                    val i = GameInspector.inspect(dest)
+                    val g = Game(dest.absolutePath, i.title, i.kind, i.essentials, addedAt = System.currentTimeMillis())
+                    games = Library.ordered(library.add(g))
+                    selected = games.indexOfFirst { it.path == g.path }.coerceAtLeast(0)
+                    zipPick = null
+                    say("${g.title} está instalado en ${dest.absolutePath} y en tu biblioteca.", NoticeKind.OK)
+                    refreshShortcuts()
+                    refreshCovers()
+                }.onFailure { say("No pude instalar el juego: " + (it.message ?: "error desconocido") + ". No quedó nada a medias.", NoticeKind.ERROR) }
+            }
+        }
+    }
+
+    /** A creator proposes a game: the link and a short description go to the review box (the same private place as reports). */
+    fun sendProposal(name: String, page: String, lang: String, contact: String, done: (Boolean) -> Unit) {
+        if (!GameReport.canSend()) { say("Esta versión no puede enviar propuestas.", NoticeKind.WARN); done(false); return }
+        val text = "Propuesta para la tienda\nJuego: $name\nPágina oficial: $page\nIdioma: $lang\nContacto: $contact\n"
+        worker.execute {
+            val ok = runCatching { GameReport.send("tienda-" + name, text) }
+            activity.runOnUiThread {
+                ok.onSuccess { say("Propuesta enviada. Se revisa antes de aparecer en la tienda.", NoticeKind.OK) }
+                    .onFailure { say("No se pudo enviar: " + (it.message ?: "sin conexión") + ".", NoticeKind.WARN) }
+                done(ok.isSuccess)
+            }
+        }
     }
 
     // ---------------------------------------------------------------- other launchers

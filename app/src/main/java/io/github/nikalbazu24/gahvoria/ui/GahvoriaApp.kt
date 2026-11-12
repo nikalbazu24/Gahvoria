@@ -89,6 +89,7 @@ private fun Content(s: AppState) {
     when (s.tab) {
         Tab.LIBRARY -> LibraryScreen(s)
         Tab.ADD -> AddScreen(s)
+        Tab.STORE -> StoreScreen(s)
         Tab.UPDATES -> UpdatesScreen(s)
         Tab.SETTINGS -> SettingsScreen(s)
     }
@@ -157,12 +158,12 @@ private fun NoticeIcon(kind: NoticeKind, tint: Color) {
     }
 }
 
-/** The glass bar: Biblioteca, Añadir, Actualizar, Ajustes. Vertical on wide screens (Thor). */
+/** The glass bar: Biblioteca, Añadir, Tienda, Actualizar, Ajustes. Vertical on wide screens (Thor). */
 @Composable
 private fun Bar(s: AppState, vertical: Boolean, modifier: Modifier) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(24.dp)
-    val items = listOf(Tab.LIBRARY to "Biblioteca", Tab.ADD to "Añadir", Tab.UPDATES to "Actualizar", Tab.SETTINGS to "Ajustes")
+    val items = listOf(Tab.LIBRARY to "Biblioteca", Tab.ADD to "Añadir", Tab.STORE to "Tienda", Tab.UPDATES to "Actualizar", Tab.SETTINGS to "Ajustes")
     val pending = s.update.let { it is UpdateState.Available || it is UpdateState.Ready }
     val inner = @Composable { mod: Modifier, t: Tab, label: String ->
         val on = s.tab == t && s.optionsFor == null
@@ -199,8 +200,14 @@ private fun TabIcon(t: Tab, color: Color) {
             Tab.LIBRARY -> for ((x, y) in listOf(3.5f to 3.5f, 13.5f to 3.5f, 3.5f to 13.5f, 13.5f to 13.5f))
                 drawRoundRect(color, o(x, y), Size(7f * k, 7f * k), androidx.compose.ui.geometry.CornerRadius(2f * k), style = st)
             Tab.ADD -> { drawLine(color, o(12f, 5f), o(12f, 19f), st.width, StrokeCap.Round); drawLine(color, o(5f, 12f), o(19f, 12f), st.width, StrokeCap.Round) }
+            Tab.STORE -> {
+                drawRoundRect(color, o(4f, 8f), Size(16f * k, 12f * k), androidx.compose.ui.geometry.CornerRadius(3f * k), style = st)
+                drawLine(color, o(8.5f, 8f), o(8.5f, 6.5f), st.width, StrokeCap.Round)
+                drawLine(color, o(15.5f, 8f), o(15.5f, 6.5f), st.width, StrokeCap.Round)
+                drawLine(color, o(8.5f, 6.5f), o(15.5f, 6.5f), st.width, StrokeCap.Round)
+            }
             Tab.UPDATES -> {
-                drawLine(color, o(12f, 4f), o(12f, 15f), st.width, StrokeCap.Round)
+                drawLine(color, o(12f, 4f), o(12f, 15f), o(12f, 15f), st.width, StrokeCap.Round)
                 drawLine(color, o(12f, 15f), o(8f, 11f), st.width, StrokeCap.Round)
                 drawLine(color, o(12f, 15f), o(16f, 11f), st.width, StrokeCap.Round)
                 drawLine(color, o(5f, 20f), o(19f, 20f), st.width, StrokeCap.Round)

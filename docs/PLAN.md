@@ -38,3 +38,10 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - Motor automático con reintento y memoria del motor que funcionó (0.2.1).
 - No hecho aún: FXAA y nitidez (necesitan código nativo y medir en la Thor), importar de Kirin/Navia XP por rutas conocidas, panorámica «pulida».
 - Pendiente: probar en la Thor con un juego en inglés (ML Kit puede no funcionar si el equipo no tiene servicios de Google; DeepL no los necesita).
+
+## Tienda (0.3c, en pruebas)
+- Pestaña «Tienda»: lista (`assets/store.json`, se actualiza desde el repositorio sin nuevo APK), ficha con enlace a la página oficial del creador, filtros por idioma y «Probados». Gahvoria no aloja ni descarga juegos de terceros.
+- «Instalar desde .zip»: busca la carpeta del juego dentro del .zip, descomprime a `Juegos/<nombre>` por una carpeta temporal `.part`, nunca sobre una carpeta existente, ignora rutas que se salgan del destino.
+- Formulario para creadores: manda el enlace al mismo buzón privado de informes; se revisa a mano.
+- Entradas iniciales con enlaces de Nicolás; todas «Sin probar». Insurgence entrega un instalador de Windows (.exe) y no se puede instalar directo. Solar Eclipse: la página no se pudo abrir desde aquí para revisarla.
+- Pendiente: soporte .rar/.7z, actualizador automático de fan games, descarga directa si un creador la autoriza, revisión de marcas antes de publicar.

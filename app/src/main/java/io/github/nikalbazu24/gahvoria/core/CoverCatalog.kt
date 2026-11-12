@@ -49,7 +49,7 @@ object CoverCatalog {
     }
 
     /** A small JSON reader (objects, arrays, strings, numbers, true/false/null): enough for the catalog, no libraries. */
-    private class Json(private val s: String) {
+    internal class Json(private val s: String) {
         private var i = 0
 
         fun value(): Any? {

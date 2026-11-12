@@ -37,6 +37,7 @@ object Intro {
             Slide("Gratis o con tu clave", "Puede traducir en tu teléfono sin costo, o con tu propia clave de DeepL para mejor calidad."),
             Slide("Pantalla por juego", "En cada juego, elige panorámica completa con batallas (en pruebas), panorámica solo en el mapa, o pantalla retro."),
             Slide("Clave de DeepL comprobada", "Al guardar tu clave, Gahvoria te dice si funciona y cuánto te queda."),
+            Slide("Tienda de fan games", "Una lista con la página oficial de cada juego. Lo bajas allí y Gahvoria lo instala desde el .zip y lo agrega a tu biblioteca."),
             Slide("Motor automático", "Si un juego falla al abrir, Gahvoria lo reabre con el otro motor y recuerda el que funciona."),
         ),
     )

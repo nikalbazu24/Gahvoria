@@ -404,7 +404,7 @@ fun SettingsScreen(s: AppState) {
 }
 
 @Composable
-private fun SettingsSearch(query: String, onChange: (String) -> Unit) {
+internal fun SettingsSearch(query: String, onChange: (String) -> Unit, hint: String = "Buscar un ajuste") {
     val c = LocalColors.current
     val shape = RoundedCornerShape(14.dp)
     androidx.compose.foundation.text.BasicTextField(
@@ -412,7 +412,7 @@ private fun SettingsSearch(query: String, onChange: (String) -> Unit) {
         textStyle = androidx.compose.ui.text.TextStyle(color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Montserrat),
         cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accent),
         modifier = Modifier.fillMaxWidth().background(c.glass, shape).border(1.dp, c.line, shape).padding(horizontal = 14.dp, vertical = 12.dp),
-        decorationBox = { inner -> Box { if (query.isEmpty()) T("Buscar un ajuste", 14.sp, FontWeight.Medium, c.faint); inner() } },
+        decorationBox = { inner -> Box { if (query.isEmpty()) T(hint, 14.sp, FontWeight.Medium, c.faint); inner() } },
     )
 }
 

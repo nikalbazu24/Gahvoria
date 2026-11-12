@@ -388,4 +388,37 @@ class CoreTest {
         assertEquals("viejo", File(b, "Save1.rxdata.antes").readText())
         assertEquals(1, SaveBackup.readFolder(a).size)
     }
+
+    @Test fun theStoreCatalogOnlyKeepsSecurePagesAndFilters() {
+        val json = File("app/src/main/assets/store.json").takeIf { it.exists() }?.readText()
+            ?: File("../app/src/main/assets/store.json").readText()
+        val all = StoreCatalog.parse(json)
+        assertTrue(all.size >= 8)
+        assertTrue(all.all { it.page.startsWith("https://") && !it.tested })
+        assertEquals(1, StoreCatalog.parse("{\"games\":[{\"title\":\"A\",\"page\":\"https://x.y\"},{\"title\":\"B\",\"page\":\"http://x.y\"}]}").size)
+        assertTrue(StoreCatalog.filter(all, "all", false, "Pokémon Insurgence").isNotEmpty())
+        assertTrue(StoreCatalog.filter(all, "en", false, "").all { it.lang == "en" })
+        assertTrue(StoreCatalog.filter(all, "all", true, "").isEmpty())
+        assertEquals("Insurgence", StoreCatalog.filter(all, "all", false, "insurgence").first().title)
+    }
+
+    @Test fun aZipIsInstalledOnlyAsAGameAndNeverEscapes() {
+        fun zip(vararg e: Pair<String, String>): ByteArray {
+            val b = java.io.ByteArrayOutputStream()
+            java.util.zip.ZipOutputStream(b).use { z -> for ((n, t) in e) { z.putNextEntry(java.util.zip.ZipEntry(n)); z.write(t.toByteArray()); z.closeEntry() } }
+            return b.toByteArray()
+        }
+        assertNull(ZipInstaller.plan(listOf("readme.txt", "Setup.exe")))
+        val z = zip("Mi Juego/Game.ini" to "x", "Mi Juego/Data/Scripts.rxdata" to "y", "Mi Juego/Audio/a.ogg" to "z", "../evil.txt" to "no", "Mi Juego/../evil2.txt" to "no")
+        val plan = ZipInstaller.plan(ZipInstaller.listNames(z.inputStream()))!!
+        assertEquals("Mi Juego/", plan.root)
+        val base = Files.createTempDirectory("zi").toFile()
+        val dest = ZipInstaller.freeFolder(base, "Mi Juego")
+        assertEquals(3, ZipInstaller.extract(z.inputStream(), plan, dest))
+        assertTrue(File(dest, "Game.ini").exists() && File(dest, "Audio/a.ogg").exists())
+        assertFalse(File(base, "evil.txt").exists() || File(dest.parentFile, "evil2.txt").exists())
+        assertEquals("Mi Juego (2)", ZipInstaller.freeFolder(base, "Mi Juego").name)
+        assertFalse(File(base, "Mi Juego.part").exists())
+        assertEquals("", ZipInstaller.plan(listOf("Game.ini", "Data/Scripts.rxdata"))!!.root)
+    }
 }

@@ -1,0 +1,144 @@
+{
+ "version": 1,
+ "games": [
+  {
+   "id": "insurgence",
+   "title": "Insurgence",
+   "creator": "Equipo de Insurgence",
+   "lang": "en",
+   "page": "https://p-insurgence.com/",
+   "host": "p-insurgence.com",
+   "format": "installer",
+   "status": "untested",
+   "description": "Fan game con su propio sitio. En su página, la versión actual para Windows viene como instalador.",
+   "note": "Windows lo entrega como instalador (.exe), que no se puede abrir en el teléfono. Para jugarlo aquí hay que sacar sus archivos en un computador y luego agregar la carpeta. Sin probar.",
+   "aliases": [
+    "Pokémon Insurgence",
+    "Pokemon Insurgence"
+   ]
+  },
+  {
+   "id": "solar-eclipse",
+   "title": "Solar Eclipse",
+   "creator": "Ver la ficha",
+   "lang": "en",
+   "page": "https://eeveeexpo.com/threads/9048/",
+   "host": "Eevee Expo",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game marcado como completado en su hilo de Eevee Expo.",
+   "note": "No pude abrir esta página para revisarla; el enlace viene de la lista de Nicolás. Sin probar.",
+   "aliases": [
+    "Pokémon Solar Eclipse",
+    "Pokémon Eclipse Solar",
+    "Eclipse Solar"
+   ]
+  },
+  {
+   "id": "nova",
+   "title": "Nova",
+   "creator": "PhionGames",
+   "lang": "?",
+   "page": "https://phiongames.blogspot.com/2026/06/v1.html",
+   "host": "MEGA",
+   "format": "zip",
+   "status": "untested",
+   "description": "Página de descarga en inglés de PhionGames, con enlace a MEGA.",
+   "note": "El idioma del juego no está confirmado. Sin probar.",
+   "aliases": [
+    "Pokémon Nova"
+   ]
+  },
+  {
+   "id": "reminiscencia",
+   "title": "Reminiscencia",
+   "creator": "PhionGames",
+   "lang": "?",
+   "page": "https://phiongames.blogspot.com/2023/10/descargar-pokemon-reminiscencia.html",
+   "host": "MEGA",
+   "format": "zip",
+   "status": "untested",
+   "description": "Fan game de PhionGames. Su blog está en español y enlaza a MEGA.",
+   "note": "El idioma del juego no está confirmado. Sin probar.",
+   "aliases": [
+    "Pokémon Reminiscencia"
+   ]
+  },
+  {
+   "id": "relict",
+   "title": "Relict",
+   "creator": "PhionGames",
+   "lang": "?",
+   "page": "https://phiongames.blogspot.com/2025/12/descarga-pokemon-relict.html",
+   "host": "MEGA",
+   "format": "zip",
+   "status": "untested",
+   "description": "Fan game de PhionGames. Su blog está en español y enlaza a MEGA.",
+   "note": "El idioma del juego no está confirmado. Sin probar.",
+   "aliases": [
+    "Pokémon Relict"
+   ]
+  },
+  {
+   "id": "azabache",
+   "title": "Azabache",
+   "creator": "Ver la ficha",
+   "lang": "es",
+   "page": "https://pokeliberty.net/fangames/pokemon-azabache-82",
+   "host": "MediaFire",
+   "format": "zip",
+   "status": "untested",
+   "description": "Fan game en español, en beta según su ficha de PokéLiberty.",
+   "note": "Sin probar.",
+   "aliases": [
+    "Pokémon Azabache"
+   ]
+  },
+  {
+   "id": "edicion-sombria",
+   "title": "Edición Sombría",
+   "creator": "Pkmn Sombria",
+   "lang": "es",
+   "page": "https://pokeliberty.net/fangames/pokemon-edicion-sombria-128",
+   "host": "Blog del equipo",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game en español, en beta según su ficha de PokéLiberty. La descarga está en el blog de su equipo.",
+   "note": "Sin probar.",
+   "aliases": [
+    "Pokémon Edición Sombría",
+    "Pokemon Edicion Sombria"
+   ]
+  },
+  {
+   "id": "cronicas-de-cintia",
+   "title": "Crónicas de Cintia",
+   "creator": "Davor",
+   "lang": "es",
+   "page": "https://pokeliberty.net/fangames/pokemon-cronicas-de-cintia-92",
+   "host": "Pastebin",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game en español, en beta 2 según su ficha de PokéLiberty. Su enlace de descarga está en una nota de Pastebin.",
+   "note": "Sin probar.",
+   "aliases": [
+    "Pokémon Crónicas de Cintia"
+   ]
+  },
+  {
+   "id": "gs-vitro",
+   "title": "GS Vitro",
+   "creator": "Ver la ficha",
+   "lang": "es",
+   "page": "https://pokeliberty.net/fangames/pokemon-gs-vitro-140",
+   "host": "Blog del equipo",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game en español, en beta según su ficha de PokéLiberty. La descarga está en el blog del proyecto.",
+   "note": "Tuvo fallos de audio, tirones y fondos de batalla en pruebas anteriores. Úsalo con «Original (4:3)» en Pantalla. Sin probar en Gahvoria.",
+   "aliases": [
+    "Pokémon GS Vitro"
+   ]
+  }
+ ]
+}
