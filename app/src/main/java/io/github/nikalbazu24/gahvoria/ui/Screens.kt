@@ -138,7 +138,7 @@ fun GameScreen(s: AppState, g: Game) {
                     RowItem("Original (4:3)", "La forma con que se hizo el juego, con barras a los lados.", role = Role.RadioButton,
                         onClick = { s.setScreenMode(g, "original"); rev++ }) { Radio(mode == "original") }
                     Divider()
-                    RowItem("Panorámica completa", "Todo el juego ancho, batallas incluidas. Todavía en pruebas: avísame si algo se ve mal.", role = Role.RadioButton,
+                    RowItem("Panorámica completa (experimental)", "Modo experimental: en batallas y menús todavía hay bugs visuales.", role = Role.RadioButton,
                         onClick = { s.setScreenMode(g, "wide"); rev++ }) { Radio(mode == "wide") }
                     Divider()
                     RowItem("Panorámica solo en el mapa", "Más mapa a los lados; menús y batallas conservan su forma, con los lados difuminados.", role = Role.RadioButton,
