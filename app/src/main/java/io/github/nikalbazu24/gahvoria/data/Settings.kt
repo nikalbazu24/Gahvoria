@@ -48,6 +48,9 @@ class Settings(context: Context) {
     /** The game that was opened last and when, to add up the time played when the player comes back. */
     fun startSession(path: String, at: Long) = prefs.edit().putString("session_path", path).putLong("session_at", at).apply()
 
+    /** A game was opened and Gahvoria hasn't counted its time yet: the player is coming back from it. */
+    fun hasSession() = prefs.contains("session_path")
+
     fun takeSession(): Pair<String, Long>? {
         val path = prefs.getString("session_path", null) ?: return null
         val at = prefs.getLong("session_at", 0)

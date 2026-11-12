@@ -78,6 +78,12 @@ class AppState(private val activity: Activity) {
         private set
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<Notice?>(null)
+    /** The welcome animation: once per app start, never when coming back from a game. */
+    var splash by mutableStateOf(!splashDone && !settings.hasSession())
+        private set
+
+    fun endSplash() { splash = false; splashDone = true }
+
     /** Screens of the introduction or of a big update's changes, shown over the app (null: none). */
     var intro by mutableStateOf<List<io.github.nikalbazu24.gahvoria.core.Slide>?>(
         io.github.nikalbazu24.gahvoria.core.Intro.pending(settings.introSeen, settings.seenUpdate, games.isNotEmpty()))
@@ -309,3 +315,6 @@ class AppState(private val activity: Activity) {
 
     fun installReady(s: UpdateState.Ready) = AppUpdater.install(activity, s.apk)
 }
+
+/** Survives the screen turning (the activity is recreated) but not the app closing: the animation shows once per start. */
+private var splashDone = false

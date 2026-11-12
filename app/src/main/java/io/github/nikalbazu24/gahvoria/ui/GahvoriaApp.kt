@@ -67,6 +67,7 @@ fun GahvoriaApp(s: AppState) {
                 }
                 s.errorReport?.let { ErrorDialog(s, it) }
                 s.intro?.let { IntroScreen(it, s.introIsUpdate) { s.finishIntro() } }
+                if (s.splash) Splash { s.endSplash() }
                 s.notice?.let { n ->
                     NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
                 }
