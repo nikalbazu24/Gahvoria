@@ -238,11 +238,26 @@ class AppState(private val activity: Activity) {
     fun chooseTranslateOn(on: Boolean) { settings.translateOn = on; translateOn = on }
     fun chooseTranslateProvider(p: String) { settings.translateProvider = p; translateProvider = p }
     fun chooseTranslateTarget(t: String) { settings.translateTarget = t; translateTarget = t }
-    fun saveDeeplKey(key: String) { settings.deeplKey = key; hasDeeplKey = key.isNotBlank() }
+    /** What happened when the DeepL key was checked, shown under the key field. */
+    var deeplState by mutableStateOf<String?>(null)
+
+    /** Saves the key and asks DeepL if it works, so the player knows right away. */
+    fun saveDeeplKey(key: String) {
+        settings.deeplKey = key; hasDeeplKey = key.isNotBlank()
+        if (key.isBlank()) { deeplState = null; return }
+        deeplState = "Comprobando la clave…"
+        worker.execute {
+            val r = io.github.nikalbazu24.gahvoria.data.Deepl.verify(key.trim())
+            activity.runOnUiThread {
+                deeplState = r.message
+                say(r.message, if (r.ok) NoticeKind.OK else if (r.saved) NoticeKind.WARN else NoticeKind.ERROR)
+            }
+        }
+    }
     fun translateGame(g: Game) = settings.translateGame(g.path)
     fun setTranslateGame(g: Game, on: Boolean) { settings.setTranslateGame(g.path, on); coverVersion++ }
-    fun wide(g: Game) = settings.wide(g.path)
-    fun setWide(g: Game, on: Boolean) { settings.setWide(g.path, on); coverVersion++ }
+    fun screenMode(g: Game) = settings.screen(g.path)
+    fun setScreenMode(g: Game, mode: String) { settings.setScreen(g.path, mode); coverVersion++ }
     fun retro(g: Game) = settings.retro(g.path)
     fun setRetro(g: Game, on: Boolean) { settings.setRetro(g.path, on); coverVersion++ }
     fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)

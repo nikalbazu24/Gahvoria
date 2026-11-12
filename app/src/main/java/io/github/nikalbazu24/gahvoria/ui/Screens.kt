@@ -123,7 +123,7 @@ fun GameScreen(s: AppState, g: Game) {
             }
             2 -> {
                 var rev by remember(g.path) { mutableIntStateOf(0) }
-                val wide = remember(g.path, rev) { s.wide(g) }
+                val mode = remember(g.path, rev) { s.screenMode(g) }
                 val retro = remember(g.path, rev) { s.retro(g) }
                 val tr = remember(g.path, rev) { s.translateGame(g) }
                 Glass(Modifier.fillMaxWidth()) {
@@ -134,9 +134,16 @@ fun GameScreen(s: AppState, g: Game) {
                         role = Role.Switch, onClick = { s.setTranslateGame(g, !tr); rev++ }) { Toggle(tr) }
                 }
                 Glass(Modifier.fillMaxWidth()) {
-                    RowItem("Pantalla panorámica", "Más mapa a los lados en juegos hechos para 4:3; menús y batallas conservan su forma. Todavía en pruebas: avísame si algún juego se ve mal.",
-                        role = Role.Switch, onClick = { s.setWide(g, !wide); rev++ }) { Toggle(wide) }
+                    RowItem("Original (4:3)", "La forma con que se hizo el juego, con barras a los lados.", role = Role.RadioButton,
+                        onClick = { s.setScreenMode(g, "original"); rev++ }) { Radio(mode == "original") }
                     Divider()
+                    RowItem("Panorámica completa", "Todo el juego ancho, batallas incluidas. Todavía en pruebas: avísame si algo se ve mal.", role = Role.RadioButton,
+                        onClick = { s.setScreenMode(g, "wide"); rev++ }) { Radio(mode == "wide") }
+                    Divider()
+                    RowItem("Panorámica solo en el mapa", "Más mapa a los lados; menús y batallas conservan su forma, con los lados difuminados.", role = Role.RadioButton,
+                        onClick = { s.setScreenMode(g, "wide_safe"); rev++ }) { Radio(mode == "wide_safe") }
+                }
+                Glass(Modifier.fillMaxWidth()) {
                     RowItem("Pantalla retro", "Líneas finas como de tele antigua sobre la imagen.",
                         role = Role.Switch, onClick = { s.setRetro(g, !retro); rev++ }) { Toggle(retro) }
                 }
@@ -301,8 +308,8 @@ fun UpdatesScreen(s: AppState) {
 
 /** The settings sections, always visible at the side on wide screens (Díptico style). Each option lives in exactly one. */
 private enum class Sec(val title: String, val hint: String, val words: String) {
-    ESSENTIAL("Lo esencial", "Acceso a archivos y tema", "acceso permiso archivos tema oscuro claro sistema"),
-    LOOK("Apariencia", "Colores", "apariencia colores paleta estilo"),
+    ESSENTIAL("Lo esencial", "Acceso a tus archivos", "acceso permiso archivos"),
+    LOOK("Apariencia", "Claro, oscuro y colores", "apariencia colores paleta estilo tema modo oscuro claro sistema"),
     FILES("Archivos y accesos", "Launchers como Díptico", "accesos launcher diptico daijisho es-de carpeta atajos"),
     COVERS("Carátulas", "Imágenes de los juegos", "caratulas portadas imagenes internet catalogo"),
     REPORTS("Informes", "Cuando un juego falla", "informes errores enviar drive"),
@@ -422,9 +429,10 @@ private fun SecContent(s: AppState, sec: Sec) {
                         T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
                     }
                 }
-                Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
             }
-            Sec.LOOK -> Glass(Modifier.fillMaxWidth()) {
+            Sec.LOOK -> {
+                Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
+                Glass(Modifier.fillMaxWidth()) {
                 Palettes.all.forEachIndexed { i, p ->
                     if (i > 0) Divider()
                     RowItem(p.name, if (i == 0) "Principal" else null, role = Role.RadioButton, onClick = { s.choosePalette(p.id) }) {
@@ -435,6 +443,7 @@ private fun SecContent(s: AppState, sec: Sec) {
                         Spacer(Modifier.size(12.dp))
                         Radio(s.palette == p.id)
                     }
+                }
                 }
             }
             Sec.FILES -> {
@@ -488,7 +497,8 @@ private fun SecContent(s: AppState, sec: Sec) {
                                     modifier = Modifier.fillMaxWidth().background(c.glass, shape).border(1.dp, c.line, shape).padding(14.dp),
                                     decorationBox = { inner -> Box { if (key.isEmpty()) T(if (s.hasDeeplKey) "Clave guardada en este teléfono" else "Pega tu clave de DeepL", 14.sp, FontWeight.Medium, c.faint); inner() } },
                                 )
-                                SecondaryButton("Guardar clave", Modifier.fillMaxWidth(), enabled = key.isNotBlank()) { s.saveDeeplKey(key); key = "" }
+                                SecondaryButton("Guardar y comprobar clave", Modifier.fillMaxWidth(), enabled = key.isNotBlank()) { s.saveDeeplKey(key); key = "" }
+                                s.deeplState?.let { T(it, 12.sp, FontWeight.SemiBold, c.muted) }
                             }
                         }
                     }

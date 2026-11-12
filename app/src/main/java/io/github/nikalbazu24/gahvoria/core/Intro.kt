@@ -35,7 +35,8 @@ object Intro {
         3 to listOf(
             Slide("Juegos en otro idioma", "Activa el traductor en Ajustes y elige en qué juegos. Traduce mientras juegas y guarda las frases para no esperar la próxima vez."),
             Slide("Gratis o con tu clave", "Puede traducir en tu teléfono sin costo, o con tu propia clave de DeepL para mejor calidad."),
-            Slide("Pantalla por juego", "En cada juego, elige pantalla panorámica (en pruebas) o pantalla retro."),
+            Slide("Pantalla por juego", "En cada juego, elige panorámica completa con batallas (en pruebas), panorámica solo en el mapa, o pantalla retro."),
+            Slide("Clave de DeepL comprobada", "Al guardar tu clave, Gahvoria te dice si funciona y cuánto te queda."),
             Slide("Motor automático", "Si un juego falla al abrir, Gahvoria lo reabre con el otro motor y recuerda el que funciona."),
         ),
     )

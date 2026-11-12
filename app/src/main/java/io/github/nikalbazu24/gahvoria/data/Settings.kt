@@ -73,15 +73,16 @@ class Settings(context: Context) {
     fun translateGame(path: String): Boolean = prefs.getBoolean("tr_game:$path", false)
     fun setTranslateGame(path: String, on: Boolean) = prefs.edit().putBoolean("tr_game:$path", on).apply()
 
-    /** Wide screen for one game (the original 4:3 picture otherwise) and the old-TV lines. */
-    fun wide(path: String): Boolean = prefs.getBoolean("wide:$path", false)
-    fun setWide(path: String, on: Boolean) = prefs.edit().putBoolean("wide:$path", on).apply()
+    /** Screen for one game: "original", "wide" (wide everywhere, battles too) or "wide_safe" (wide only on the map). */
+    fun screen(path: String): String =
+        prefs.getString("screen:$path", null) ?: if (prefs.getBoolean("wide:$path", false)) "wide_safe" else "original"
+    fun setScreen(path: String, mode: String) = prefs.edit().putString("screen:$path", mode).apply()
     fun retro(path: String): Boolean = prefs.getBoolean("retro:$path", false)
     fun setRetro(path: String, on: Boolean) = prefs.edit().putBoolean("retro:$path", on).apply()
 
     /** Everything kept about one game (touch layout, translation, screen, engine memory) when it is deleted. */
     fun forgetGame(path: String) = prefs.edit().apply {
-        for (k in listOf("pad", "tr_game", "wide", "retro", "engine_last", "engine_ok", "engine_retry")) remove("$k:$path")
+        for (k in listOf("pad", "tr_game", "wide", "screen", "retro", "engine_last", "engine_ok", "engine_retry")) remove("$k:$path")
     }.apply()
 
     /** The introduction was finished or skipped once. */

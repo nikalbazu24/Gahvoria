@@ -85,7 +85,10 @@ public class GameActivity extends SDLActivity
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
     public static final String SCREEN_ORIGINAL = "original";
+    /** Wide only on the map; menus and battles keep their own shape in the middle. */
     public static final String SCREEN_WIDE = "wide_safe";
+    /** Wide everywhere, battles included. */
+    public static final String SCREEN_WIDE_FULL = "wide";
 
     /** Read by the native engine through JNI (main.cpp). */
     @SuppressWarnings("unused")
@@ -228,6 +231,11 @@ public class GameActivity extends SDLActivity
             String screen = i.getStringExtra(EXTRA_SCREEN);
             setenv("ESSENTIA_SCREEN_MODE", screen == null || screen.isEmpty() ? SCREEN_ORIGINAL : screen);
             setenv("ESSENTIA_ORIENTATION", "landscape");
+            setenv("ESSENTIA_WIDE_BATTLES", SCREEN_WIDE_FULL.equals(screen) ? "1" : "0");
+            // The wide picture takes the shape of this screen (a 16:9 console, a 20:9 phone...)
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            float aspect = Math.max(dm.widthPixels, dm.heightPixels) / (float) Math.max(1, Math.min(dm.widthPixels, dm.heightPixels));
+            setenv("ESSENTIA_ASPECT", String.format(Locale.US, "%.4f", aspect));
             String filter = i.getStringExtra(EXTRA_FILTER);
             setenv("ESSENTIA_FILTER", filter == null ? "" : filter);
             startTranslator(i);

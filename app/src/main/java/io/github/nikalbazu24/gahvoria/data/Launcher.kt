@@ -69,7 +69,11 @@ object Launcher {
         val cover = Covers(a) { false }.bestFile(game)?.absolutePath.orEmpty()
         val st = Settings(a)
         val intent = GameActivity.intent(a, dir, game.title, saves, engine,
-            if (st.wide(game.path)) GameActivity.SCREEN_WIDE else GameActivity.SCREEN_ORIGINAL,
+            when (st.screen(game.path)) {
+                "wide" -> GameActivity.SCREEN_WIDE_FULL
+                "wide_safe" -> GameActivity.SCREEN_WIDE
+                else -> GameActivity.SCREEN_ORIGINAL
+            },
             Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
             .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
             .putExtra(GameActivity.EXTRA_COVER, cover)
