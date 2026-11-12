@@ -205,3 +205,60 @@ class Proc
   alias_method :===, :call
   alias_method :yield, :call
 end
+
+# ---------------------------------------------------------------------------
+# Some games replace File.open with their own version (for example to read
+# packed or encrypted files) that only knows how to read. Writing a small file
+# then fails with "not opened for writing" (Pokémon Z: LastSave.dat in
+# pbStoredLastPlayed). When a game defines its own File.open, it is wrapped:
+# if, for a writing mode, the game's version gives back something that can't be
+# written, Ruby's own File.open is used for that file. Games whose version writes
+# fine, and every read, keep going through the game's own code. A plain method
+# (not "prepend") so games that "alias" File.open keep working.
+if RUBY_VERSION >= '2.0'
+  module EssentiaWritableOpen
+    ORIGINAL = IO.singleton_class.instance_method(:open)
+
+    def self.writing?(mode)
+      case mode
+      when String then mode =~ /[wa+]/ ? true : false
+      when Integer then (mode & (File::WRONLY | File::RDWR | File::APPEND)) != 0
+      else false
+      end
+    end
+
+    def self.call(klass, inner, args, block)
+      mode = args[1]
+      mode = args.last[:mode] if mode.nil? && args.last.is_a?(Hash)
+      return klass.send(inner, *args, &block) unless writing?(mode)
+      f = klass.send(inner, *args)
+      begin
+        # an empty write that still checks: IO#write('') skips the check, syswrite doesn't
+        f.is_a?(IO) ? f.syswrite('') : f.write('')
+      rescue IOError, NoMethodError
+        f.close rescue nil
+        f = ORIGINAL.bind(klass).call(*args)
+      end
+      return f unless block
+      begin
+        block.call(f)
+      ensure
+        f.close unless (f.closed? rescue true)
+      end
+    end
+  end
+
+  def File.singleton_method_added(name)
+    return unless name == :open
+    return if Thread.current[:essentia_wrapping_open]
+    Thread.current[:essentia_wrapping_open] = true
+    begin
+      @essentia_open_n = (@essentia_open_n || 0) + 1
+      inner = :"essentia_game_open_#{@essentia_open_n}"
+      singleton_class.send(:alias_method, inner, :open)
+      define_singleton_method(:open) { |*args, &block| EssentiaWritableOpen.call(self, inner, args, block) }
+    ensure
+      Thread.current[:essentia_wrapping_open] = false
+    end
+  end
+end

@@ -47,6 +47,8 @@ fun GahvoriaApp(s: AppState) {
     val scheme = Palettes.scheme(s.palette, s.mode, dark)
     val colors = Colors.from(scheme, scheme === Palettes.byId(s.palette).dark)
     GahvoriaTheme(colors) {
+      // The welcome animation covers the whole screen, status bar included, so it sits outside the safe padding.
+      Box(Modifier.fillMaxSize()) {
         val c = LocalColors.current
         Box(
             Modifier.fillMaxSize().background(c.bg)
@@ -67,12 +69,13 @@ fun GahvoriaApp(s: AppState) {
                 }
                 s.errorReport?.let { ErrorDialog(s, it) }
                 s.intro?.let { IntroScreen(it, s.introIsUpdate) { s.finishIntro() } }
-                if (s.splash) Splash { s.endSplash() }
                 s.notice?.let { n ->
                     NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
                 }
             }
         }
+        if (s.splash) Splash { s.endSplash() }
+      }
     }
 }
 
