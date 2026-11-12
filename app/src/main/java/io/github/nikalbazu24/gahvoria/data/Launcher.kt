@@ -24,7 +24,7 @@ object Launcher {
     fun autoEngine(game: Game): String = profile(game).recommendedEngine
 
     /** The engine a game really starts with. The classic one only when the APK carries it. */
-    fun engineFor(a: Activity, game: Game): Int {
+    fun engineFor(a: Activity, game: Game): String {
         val wanted = if (game.engine == Game.ENGINE_AUTO) autoEngine(game) else game.engine
         return if (wanted == Game.ENGINE_CLASSIC && classicAvailable(a)) GameActivity.ENGINE_CLASSIC else GameActivity.ENGINE_MODERN
     }
