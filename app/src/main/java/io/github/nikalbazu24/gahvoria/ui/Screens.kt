@@ -259,6 +259,13 @@ fun SettingsScreen(s: AppState) {
                 T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
             }
         }
+        Label("Otros launchers")
+        Glass(Modifier.fillMaxWidth()) {
+            RowItem("Crear accesos de mis juegos", "Carpeta ROMs/Gahvoria. Díptico, Daijishō, ES-DE y otros abren tus juegos desde ahí.",
+                onClick = { s.createShortcuts() }) {
+                T(if (s.shortcutsOn) "Actualizar" else "Crear", 12.sp, FontWeight.Bold, c.accent)
+            }
+        }
         Label("Acerca de")
         Glass(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

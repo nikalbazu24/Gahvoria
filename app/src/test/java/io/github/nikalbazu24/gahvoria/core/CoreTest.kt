@@ -180,4 +180,34 @@ class CoreTest {
         assertTrue(text.contains("protected void onStart()"))
         assertTrue(text.contains("resumeNativeThread()"))
     }
+
+    // ---- shortcuts for other launchers --------------------------------------------------------
+
+    private fun game(title: String, dir: File, kind: EngineKind = EngineKind.RPG_MAKER_XP) =
+        Game(dir.absolutePath, title, kind, essentials = true)
+
+    @Test fun shortcutsPointToTheGameFolderAndNeverTouchTheGames() {
+        val a = folder("Game.ini"); val b = folder("Game.ini"); val godot = folder("project.godot")
+        val out = Files.createTempDirectory("roms").toFile()
+        val n = Shortcuts.export(listOf(game("Pokemon Anil", a), game("Pokemon Anil", b), game("Otro: juego?", b),
+            game("Godot", godot, EngineKind.GODOT)), File(out, "ROMs/Gahvoria"))
+        assertEquals(3, n)  // the Godot game cannot be played yet: no shortcut
+        val names = File(out, "ROMs/Gahvoria").list()!!.sorted()
+        assertEquals(listOf("Otro juego.gahvoria", "Pokemon Anil (2).gahvoria", "Pokemon Anil.gahvoria"), names)
+        assertEquals(a.absolutePath, Shortcuts.pathIn(File(out, "ROMs/Gahvoria/Pokemon Anil.gahvoria").readText()))
+        assertTrue(File(a, "Game.ini").exists() && File(b, "Game.ini").exists())  // games untouched
+    }
+
+    @Test fun launchersCanSendTheShortcutTheFolderOrAFileInsideTheGame() {
+        val dir = folder("Game.ini", "Data/Scripts.rxdata")
+        val shortcut = File(Files.createTempDirectory("roms").toFile(), "Juego.gahvoria")
+        shortcut.writeText("\uFEFF# comentario\n\n  " + dir.absolutePath + "  \n")
+        assertEquals(dir, Shortcuts.resolve(shortcut))
+        assertEquals(dir, Shortcuts.resolve(dir))
+        assertEquals(dir, Shortcuts.resolve(File(dir, "Game.ini")))
+        shortcut.writeText("/no/existe/esta/carpeta\n")
+        assertNull(Shortcuts.resolve(shortcut))
+        assertNull(Shortcuts.resolve(File("/no/existe/nada.gahvoria")))
+        assertNull(Shortcuts.pathIn("# solo comentarios\n\n"))
+    }
 }

@@ -21,6 +21,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("auto_check", true)
         set(v) = prefs.edit().putBoolean("auto_check", v).apply()
 
+    /** Where the shortcuts for other launchers were written (null: never). New games add theirs there. */
+    var shortcutsFolder: String?
+        get() = prefs.getString("shortcuts_folder", null)
+        set(v) = prefs.edit().putString("shortcuts_folder", v).apply()
+
     var lastCheck: Long
         get() = prefs.getLong("last_check", 0)
         set(v) = prefs.edit().putLong("last_check", v).apply()

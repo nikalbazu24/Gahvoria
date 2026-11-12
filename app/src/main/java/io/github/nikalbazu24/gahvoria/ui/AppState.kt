@@ -11,6 +11,7 @@ import io.github.nikalbazu24.gahvoria.core.GameInspector
 import io.github.nikalbazu24.gahvoria.core.Inspection
 import io.github.nikalbazu24.gahvoria.core.Library
 import io.github.nikalbazu24.gahvoria.core.Release
+import io.github.nikalbazu24.gahvoria.core.Shortcuts
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.data.AppUpdater
 import io.github.nikalbazu24.gahvoria.data.Launcher
@@ -65,6 +66,8 @@ class AppState(private val activity: Activity) {
         private set
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<String?>(null)
+    var shortcutsOn by mutableStateOf(settings.shortcutsFolder != null)
+        private set
 
     fun choosePalette(id: String) { settings.palette = id; palette = id }
     fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
@@ -139,6 +142,32 @@ class AppState(private val activity: Activity) {
         addMessage = null
         tab = Tab.LIBRARY
         notice = "${g.title} está en tu biblioteca."
+        refreshShortcuts()
+    }
+
+    // ---------------------------------------------------------------- other launchers
+
+    /** One shortcut file per game in ROMs/Gahvoria, for Díptico, Daijishō, ES-DE and the like. */
+    fun createShortcuts() {
+        if (!hasAccess) { notice = "Primero da acceso a tus archivos."; return }
+        val folder = File(Storage.root(), Shortcuts.FOLDER)
+        val list = games
+        worker.execute {
+            val n = Shortcuts.export(list, folder)
+            activity.runOnUiThread {
+                if (n > 0) { settings.shortcutsFolder = folder.absolutePath; shortcutsOn = true }
+                notice = if (n > 0) "Creé $n accesos en ${Shortcuts.FOLDER}. Tu launcher ya puede abrir esos juegos con Gahvoria."
+                else "Todavía no hay juegos que se puedan jugar para crear accesos."
+            }
+        }
+    }
+
+    /** New games get their shortcut too, once the player has created them. Nothing is ever deleted. */
+    private fun refreshShortcuts() {
+        val folder = settings.shortcutsFolder ?: return
+        if (!hasAccess) return
+        val list = games
+        worker.execute { Shortcuts.export(list, File(folder)) }
     }
 
     // ---------------------------------------------------------------- updates

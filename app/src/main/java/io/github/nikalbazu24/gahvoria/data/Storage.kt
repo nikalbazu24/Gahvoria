@@ -37,6 +37,12 @@ object Storage {
     /** A folder chosen with the system picker, as a path ("primary:Juegos/Ópalo" -> /storage/emulated/0/Juegos/Ópalo). */
     fun pathOf(tree: Uri): File? {
         val id = runCatching { DocumentsContract.getTreeDocumentId(tree) }.getOrNull() ?: return null
+        return pathOfDocumentId(id)
+    }
+
+    /** A document id ("primary:ROMs/Gahvoria/Juego.gahvoria") as a path on the device's storage. */
+    fun pathOfDocumentId(id: String): File? {
+        if (':' !in id) return null
         val volume = id.substringBefore(':')
         val rel = id.substringAfter(':', "")
         val base = if (volume.equals("primary", ignoreCase = true)) root() else File("/storage/$volume")

@@ -35,6 +35,26 @@
             </intent-filter>
         </activity>
 
+        <!-- The door for other launchers (Díptico, Daijishō, ES-DE, Cocoon, iiSU...): no screen, starts the game and closes. -->
+        <activity
+            android:name=".LaunchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.gahvoria" />
+                <data android:pathPattern=".*\\..*\\.gahvoria" />
+                <data android:pathPattern=".*\\..*\\..*\\.gahvoria" />
+            </intent-filter>
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
