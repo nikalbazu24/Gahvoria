@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,8 +63,10 @@ fun GahvoriaApp(s: AppState) {
                     Box(Modifier.weight(1f).fillMaxWidth()) { Content(s) }
                     Bar(s, vertical = false, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
                 }
+                s.notice?.let { n ->
+                    NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
+                }
             }
-            s.notice?.let { Notice(it, Modifier.align(Alignment.TopCenter)) { s.notice = null } }
         }
     }
 }
@@ -81,13 +84,67 @@ private fun Content(s: AppState) {
     }
 }
 
+/** A short message in the app's style: a colored icon by kind, the text and, if there is one, an action. */
 @Composable
-private fun Notice(text: String, modifier: Modifier, onDone: () -> Unit) {
+private fun NoticeCard(n: Notice, modifier: Modifier, onDone: () -> Unit) {
     val c = LocalColors.current
-    LaunchedEffect(text) { delay(4500); onDone() }
-    val shape = RoundedCornerShape(16.dp)
-    Box(modifier.padding(16.dp).press(shape, onClick = onDone).background(c.bg2, shape).border(1.dp, c.line, shape)
-        .padding(horizontal = 16.dp, vertical = 12.dp)) { T(text, 13.sp, FontWeight.SemiBold) }
+    LaunchedEffect(n) { delay(if (n.action != null) 8000L else 4000L); onDone() }
+    val tint = when (n.kind) {
+        NoticeKind.INFO -> c.accent3
+        NoticeKind.OK -> c.ok
+        NoticeKind.WARN -> c.warn
+        NoticeKind.ERROR -> if (c.dark) Color(0xFFFF8E8E) else Color(0xFFC62F3A)
+    }
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier.padding(horizontal = 16.dp).widthIn(max = 520.dp)
+            .press(shape, onClick = onDone).background(c.bg2.copy(alpha = .95f), shape).border(1.dp, c.line, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NoticeIcon(n.kind, tint)
+        Spacer(Modifier.width(12.dp))
+        T(n.text, 13.sp, FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+        if (n.action != null) {
+            Spacer(Modifier.width(12.dp))
+            val chip = RoundedCornerShape(10.dp)
+            Box(Modifier.press(chip) { n.onAction?.invoke(); onDone() }.padding(horizontal = 6.dp, vertical = 6.dp)) {
+                T(n.action, 12.sp, FontWeight.ExtraBold, c.accent)
+            }
+        }
+    }
+}
+
+/** The small symbol of each kind of notice, drawn in code so it takes the palette's colors. */
+@Composable
+private fun NoticeIcon(kind: NoticeKind, tint: Color) {
+    Canvas(Modifier.size(30.dp)) {
+        drawCircle(tint.copy(alpha = .2f))
+        val k = 17.dp.toPx() / 24f
+        val ox = (size.width - 24f * k) / 2f
+        val oy = (size.height - 24f * k) / 2f
+        fun o(x: Float, y: Float) = Offset(ox + x * k, oy + y * k)
+        val w = 2f * k
+        fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(tint, o(x1, y1), o(x2, y2), w, StrokeCap.Round)
+        when (kind) {
+            NoticeKind.INFO -> {
+                drawCircle(tint, 9f * k, o(12f, 12f), style = Stroke(w))
+                line(12f, 11f, 12f, 16f); drawCircle(tint, 1.1f * k, o(12f, 8f))
+            }
+            NoticeKind.OK -> { line(5f, 12.5f, 9.5f, 17f); line(9.5f, 17f, 19f, 7.5f) }
+            NoticeKind.WARN -> {
+                val tri = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(o(12f, 4f).x, o(12f, 4f).y); lineTo(o(21f, 20f).x, o(21f, 20f).y); lineTo(o(3f, 20f).x, o(3f, 20f).y); close()
+                }
+                drawPath(tri, tint, style = Stroke(w, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                line(12f, 10f, 12f, 14f); drawCircle(tint, 1.1f * k, o(12f, 17f))
+            }
+            NoticeKind.ERROR -> {
+                drawCircle(tint, 9f * k, o(12f, 12f), style = Stroke(w))
+                line(9f, 9f, 15f, 15f); line(15f, 9f, 9f, 15f)
+            }
+        }
+    }
 }
 
 /** The glass bar: Biblioteca, Añadir, Actualizar, Ajustes. Vertical on wide screens (Thor). */

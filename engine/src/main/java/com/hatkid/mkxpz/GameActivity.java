@@ -1,14 +1,19 @@
 package com.hatkid.mkxpz;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Base64;
@@ -30,6 +35,7 @@ import org.libsdl.app.SDLActivity;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.security.KeyStore;
 import java.security.MessageDigest;
@@ -60,6 +66,10 @@ public class GameActivity extends SDLActivity
     public static final String EXTRA_SCREEN = "gahvoria.SCREEN";
     public static final String EXTRA_RTP_ROOT = "gahvoria.RTP_ROOT";
     public static final String EXTRA_TOUCH = "gahvoria.TOUCH";
+    /** Short line under the title on the loading screen ("Essentials 17.2 · motor clásico"). */
+    public static final String EXTRA_INFO = "gahvoria.INFO";
+    /** The palette in use: bg, bg2, ink, muted, accent, accent2, accent3, onAccent, ok, warn (ARGB ints). */
+    public static final String EXTRA_COLORS = "gahvoria.COLORS";
 
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
@@ -72,19 +82,20 @@ public class GameActivity extends SDLActivity
     private static Handler sMain;
     private static Vibrator sVibrator;
     private static TextView sFps;
-    private static TextView sPhase;
-    private static View sLoading;
+    private static LoadingScreen sScreen;
 
     private boolean mClassic;
     private boolean mTouch = true;
     private final Gamepad mGamepad = new Gamepad();
     private boolean mPadHidden;
     private FutureTask<File> mTrust;
-    private AlertDialog mExit;
+    private Dialog mExit;
+    private Look mLook;
+    private String mTitle = "";
 
     /** Builds the intent that opens a game. */
     public static Intent intent(Context c, File game, String title, File saveDir, String engine,
-                                String screen, File rtpRoot, boolean touch)
+                                String screen, File rtpRoot, boolean touch, String info, int[] colors)
     {
         return new Intent(c, GameActivity.class)
             .putExtra(EXTRA_GAME_PATH, game.getAbsolutePath())
@@ -93,7 +104,9 @@ public class GameActivity extends SDLActivity
             .putExtra(EXTRA_ENGINE, engine)
             .putExtra(EXTRA_SCREEN, screen)
             .putExtra(EXTRA_RTP_ROOT, rtpRoot == null ? "" : rtpRoot.getAbsolutePath())
-            .putExtra(EXTRA_TOUCH, touch);
+            .putExtra(EXTRA_TOUCH, touch)
+            .putExtra(EXTRA_INFO, info == null ? "" : info)
+            .putExtra(EXTRA_COLORS, colors);
     }
 
     /** True when this APK carries the classic engine (Ruby 1.8). */
@@ -105,8 +118,12 @@ public class GameActivity extends SDLActivity
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
+        long loadingStarted = SystemClock.elapsedRealtime();
         Intent i = getIntent();
+        mLook = new Look(this, i == null ? null : i.getIntArrayExtra(EXTRA_COLORS));
         String path = i == null ? null : i.getStringExtra(EXTRA_GAME_PATH);
+        String givenTitle = i == null ? null : i.getStringExtra(EXTRA_TITLE);
+        mTitle = givenTitle == null ? "" : givenTitle;
         boolean valid = path != null && new File(path).isDirectory();
         if (valid) GAME_PATH = path;
         mClassic = i != null && ENGINE_CLASSIC.equals(i.getStringExtra(EXTRA_ENGINE)) && classicAvailable(this);
@@ -141,8 +158,28 @@ public class GameActivity extends SDLActivity
         sFps.setVisibility(View.GONE);
         mLayout.addView(sFps, new RelativeLayout.LayoutParams(-2, -2));
 
-        sLoading = loadingView(i.getStringExtra(EXTRA_TITLE));
-        mLayout.addView(sLoading, new RelativeLayout.LayoutParams(-1, -1));
+        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), loadingStarted, new LoadingScreen.Host()
+        {
+            @Override
+            public void exit()
+            {
+                finish();
+            }
+
+            @Override
+            public void copyReport(long[] times, long totalMs)
+            {
+                copyText(buildReport(times, totalMs));
+                notice("Informe copiado. Pégalo donde quieras enviarlo.", mLook.ok);
+            }
+
+            @Override
+            public void loaded(long[] times, long totalMs)
+            {
+                saveLoadTimes(times, totalMs);
+            }
+        });
+        mLayout.addView(sScreen, new RelativeLayout.LayoutParams(-1, -1));
     }
 
     /** Settings the engine and its compatibility scripts read from the environment. */
@@ -158,7 +195,10 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_SCREEN_MODE", screen == null || screen.isEmpty() ? SCREEN_ORIGINAL : screen);
             setenv("ESSENTIA_ORIENTATION", "landscape");
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
-            setenv("ESSENTIA_ERROR_FILE", new File(getFilesDir(), "last_error.txt").getAbsolutePath());
+            File errorFile = new File(getFilesDir(), "last_error.txt");
+            //noinspection ResultOfMethodCallIgnored
+            errorFile.delete();  // only an error of this session may be reported
+            setenv("ESSENTIA_ERROR_FILE", errorFile.getAbsolutePath());
             File scripts = new File(getCacheDir(), "scripts/v" + versionCode() + "/" + digest(game.getAbsolutePath()));
             //noinspection ResultOfMethodCallIgnored
             scripts.mkdirs();
@@ -277,29 +317,6 @@ public class GameActivity extends SDLActivity
         }
     }
 
-    private View loadingView(String title)
-    {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        box.setBackgroundColor(Color.parseColor("#0D0E12"));
-        TextView name = new TextView(this);
-        name.setText(title == null ? "" : title);
-        name.setTextColor(Color.parseColor("#F2F2F6"));
-        name.setTextSize(22);
-        name.setGravity(Gravity.CENTER);
-        box.addView(name);
-        sPhase = new TextView(this);
-        sPhase.setText("Cargando…");
-        sPhase.setTextColor(Color.parseColor("#FFB38A"));
-        sPhase.setTextSize(14);
-        sPhase.setGravity(Gravity.CENTER);
-        sPhase.setPadding(0, 24, 0, 0);
-        box.addView(sPhase);
-        box.setClickable(false);
-        return box;
-    }
-
     /**
      * This engine's SDLActivity does not start the native thread on its own (on Android 7+ it waits for
      * the activity to ask). Without this call the game never starts and the loading screen stays forever.
@@ -337,6 +354,7 @@ public class GameActivity extends SDLActivity
     public boolean dispatchKeyEvent(KeyEvent evt)
     {
         int code = evt.getKeyCode();
+        if (sScreen != null && sScreen.handleKey(evt)) return true;
         if (code == KeyEvent.KEYCODE_BACK) {
             if (evt.getAction() == KeyEvent.ACTION_UP) askExit();
             return true;
@@ -373,12 +391,96 @@ public class GameActivity extends SDLActivity
     private void askExit()
     {
         if (mExit != null && mExit.isShowing()) return;
-        mExit = new AlertDialog.Builder(this)
-            .setTitle("¿Salir del juego?")
-            .setMessage("Lo que no hayas guardado dentro del juego se pierde.")
-            .setPositiveButton("Salir", (d, w) -> finish())
-            .setNegativeButton("Seguir jugando", null)
-            .show();
+        mExit = new GameDialog(this, mLook, "¿Salir del juego?", "Lo que no hayas guardado dentro del juego se pierde.",
+            "Seguir jugando", "Salir", this::finish);
+        mExit.show();
+    }
+
+    // ------------------------------------------------------------ notices, report and load times
+
+    /** A short notice in the app's style (palette colors), over the game. */
+    private void notice(String text, int color)
+    {
+        if (mLayout == null || sMain == null) return;
+        sMain.post(() -> {
+            TextView t = new TextView(this);
+            t.setText(text);
+            t.setTextColor(mLook.ink);
+            t.setTextSize(13);
+            t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            t.setPadding(mLook.dp(14), mLook.dp(11), mLook.dp(18), mLook.dp(11));
+            t.setBackground(mLook.box(Look.withAlpha(mLook.bg2, 0xF0), 18, mLook.line));
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setColor(color);
+            dot.setSize(mLook.dp(10), mLook.dp(10));
+            t.setCompoundDrawablesWithIntrinsicBounds(dot, null, null, null);
+            t.setCompoundDrawablePadding(mLook.dp(10));
+            RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(-2, -2);
+            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+            lp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+            lp.bottomMargin = mLook.dp(28);
+            t.setAlpha(0f);
+            mLayout.addView(t, lp);
+            t.animate().alpha(1f).setDuration(200).start();
+            sMain.postDelayed(() -> t.animate().alpha(0f).setDuration(300).withEndAction(() -> mLayout.removeView(t)).start(), 3500);
+        });
+    }
+
+    private void copyText(String text)
+    {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Informe de Gahvoria", text));
+    }
+
+    private String buildReport(long[] t, long totalMs)
+    {
+        StringBuilder b = new StringBuilder();
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            b.append("Gahvoria ").append(info.versionName).append(" (código ").append(info.versionCode).append(")\n");
+        } catch (Exception ignored) { }
+        b.append("Juego: ").append(mTitle).append('\n');
+        b.append("Motor: ").append(mClassic ? "clásico" : "moderno").append('\n');
+        b.append("Android ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append("), ")
+            .append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
+        b.append("Pasos: leyendo archivos ").append(LoadingScreen.sec(t[0])).append(", preparando scripts ")
+            .append(LoadingScreen.sec(t[1])).append(", abriendo ").append(LoadingScreen.sec(t[2])).append('\n');
+        b.append("Tiempo: ").append(LoadingScreen.sec(totalMs)).append('\n');
+        File err = new File(getFilesDir(), "last_error.txt");
+        if (err.isFile()) {
+            try (java.io.FileInputStream in = new java.io.FileInputStream(err)) {
+                byte[] buf = new byte[3000];
+                int n = in.read(buf);
+                if (n > 0) b.append("\nError del juego:\n").append(new String(buf, 0, n, "UTF-8"));
+            } catch (Exception ignored) { }
+        }
+        return b.toString();
+    }
+
+    /** One line per load, kept on the device only: when, version, game, engine and the three steps. Last 200 are kept. */
+    private void saveLoadTimes(long[] t, long totalMs)
+    {
+        new Thread(() -> {
+            try {
+                File f = new File(getFilesDir(), "load_times.tsv");
+                java.util.List<String> keep = new java.util.ArrayList<>();
+                if (f.isFile()) {
+                    try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"))) {
+                        String line;
+                        while ((line = r.readLine()) != null) keep.add(line);
+                    }
+                }
+                keep.add(System.currentTimeMillis() + "\t" + versionCode() + "\t" + mTitle.replace('\t', ' ').replace('\n', ' ')
+                    + "\t" + (mClassic ? ENGINE_CLASSIC : ENGINE_MODERN) + "\t" + t[0] + "\t" + t[1] + "\t" + t[2] + "\t" + totalMs);
+                while (keep.size() > 200) keep.remove(0);
+                try (FileWriter w = new FileWriter(f, false)) {
+                    for (String line : keep) w.write(line + "\n");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not save load times", e);
+            }
+        }, "GahvoriaLoadTimes").start();
     }
 
     @Override
@@ -396,12 +498,7 @@ public class GameActivity extends SDLActivity
     private static void onLoadPhase(String phase)
     {
         if (sMain == null) return;
-        sMain.post(() -> {
-            if (sPhase == null) return;
-            if ("files".equals(phase)) sPhase.setText("Leyendo archivos…");
-            else if ("scripts".equals(phase)) sPhase.setText("Preparando scripts…");
-            else if ("start".equals(phase)) sPhase.setText("Abriendo…");
-        });
+        sMain.post(() -> { if (sScreen != null) sScreen.setPhase(phase); });
     }
 
     @SuppressWarnings("unused")
@@ -409,9 +506,8 @@ public class GameActivity extends SDLActivity
     {
         if (sMain == null) return;
         sMain.post(() -> {
-            if (sLoading != null && sLoading.getParent() instanceof ViewGroup)
-                ((ViewGroup) sLoading.getParent()).removeView(sLoading);
-            sLoading = null;
+            if (sScreen != null) sScreen.finishLoading();
+            sScreen = null;
         });
     }
 

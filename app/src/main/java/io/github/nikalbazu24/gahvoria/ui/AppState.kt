@@ -13,7 +13,10 @@ import io.github.nikalbazu24.gahvoria.core.Library
 import io.github.nikalbazu24.gahvoria.core.Release
 import io.github.nikalbazu24.gahvoria.core.Shortcuts
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
+import io.github.nikalbazu24.gahvoria.BuildConfig
+import io.github.nikalbazu24.gahvoria.core.LoadRecord
 import io.github.nikalbazu24.gahvoria.data.AppUpdater
+import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
@@ -21,6 +24,11 @@ import java.io.File
 import java.util.concurrent.Executors
 
 enum class Tab { LIBRARY, ADD, UPDATES, SETTINGS }
+
+enum class NoticeKind { INFO, OK, WARN, ERROR }
+
+/** A short message in the app's style. With an action it stays longer (8 s instead of 4 s). */
+data class Notice(val text: String, val kind: NoticeKind = NoticeKind.INFO, val action: String? = null, val onAction: (() -> Unit)? = null)
 
 /** What the add flow found in the chosen folder. */
 data class Found(val dir: File, val inspection: Inspection)
@@ -65,9 +73,13 @@ class AppState(private val activity: Activity) {
     var lastCheck by mutableStateOf(settings.lastCheck)
         private set
     val installedCode = AppUpdater.installedCode(activity)
-    var notice by mutableStateOf<String?>(null)
+    var notice by mutableStateOf<Notice?>(null)
     var shortcutsOn by mutableStateOf(settings.shortcutsFolder != null)
         private set
+
+    fun say(text: String, kind: NoticeKind = NoticeKind.INFO, action: String? = null, onAction: (() -> Unit)? = null) {
+        notice = Notice(text, kind, action, onAction)
+    }
 
     fun choosePalette(id: String) { settings.palette = id; palette = id }
     fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
@@ -80,6 +92,13 @@ class AppState(private val activity: Activity) {
             val played = System.currentTimeMillis() - at
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
+            GameReport.errorSince(activity, at)?.let { err ->
+                val title = library.load().firstOrNull { it.path == path }?.title.orEmpty()
+                say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Copiar informe") {
+                    GameReport.copy(activity, "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: $title\n\n$err")
+                    say("Informe copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK)
+                }
+            }
         }
         games = Library.ordered(library.load())
         if (selected >= games.size) selected = 0
@@ -92,9 +111,9 @@ class AppState(private val activity: Activity) {
 
     fun play(game: Game) {
         val dir = File(game.path)
-        if (!hasAccess) { notice = "Gahvoria necesita acceso a tus archivos para abrir juegos."; return }
-        if (!dir.isDirectory) { notice = "No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?"; return }
-        if (!game.kind.isRpgMaker) { notice = "Este motor todavía no se puede jugar en Gahvoria."; return }
+        if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
+        if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
+        if (!game.kind.isRpgMaker) { say("Este motor todavía no se puede jugar en Gahvoria.", NoticeKind.WARN); return }
         val now = System.currentTimeMillis()
         library.update(game.path) { it.copy(lastPlayed = now) }
         settings.startSession(game.path, now)
@@ -112,11 +131,12 @@ class AppState(private val activity: Activity) {
         games = Library.ordered(library.remove(game.path))
         optionsFor = null
         selected = 0
-        notice = "${game.title} ya no está en tu biblioteca. Sus archivos y partidas siguen en su carpeta."
+        say("${game.title} ya no está en tu biblioteca. Sus archivos y partidas siguen en su carpeta.")
     }
 
     fun classicAvailable() = Launcher.classicAvailable(activity)
     fun profile(game: Game) = Launcher.profile(game)
+    fun lastLoad(game: Game): LoadRecord? = Launcher.lastLoad(activity, game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)
 
@@ -141,7 +161,7 @@ class AppState(private val activity: Activity) {
         found = null
         addMessage = null
         tab = Tab.LIBRARY
-        notice = "${g.title} está en tu biblioteca."
+        say("${g.title} está en tu biblioteca.", NoticeKind.OK)
         refreshShortcuts()
     }
 
@@ -149,15 +169,15 @@ class AppState(private val activity: Activity) {
 
     /** One shortcut file per game in ROMs/Gahvoria, for Díptico, Daijishō, ES-DE and the like. */
     fun createShortcuts() {
-        if (!hasAccess) { notice = "Primero da acceso a tus archivos."; return }
+        if (!hasAccess) { say("Primero da acceso a tus archivos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         val folder = File(Storage.root(), Shortcuts.FOLDER)
         val list = games
         worker.execute {
             val n = Shortcuts.export(list, folder)
             activity.runOnUiThread {
                 if (n > 0) { settings.shortcutsFolder = folder.absolutePath; shortcutsOn = true }
-                notice = if (n > 0) "Creé $n accesos en ${Shortcuts.FOLDER}. Tu launcher ya puede abrir esos juegos con Gahvoria."
-                else "Todavía no hay juegos que se puedan jugar para crear accesos."
+                if (n > 0) say("Creé $n accesos en ${Shortcuts.FOLDER}. Tu launcher ya puede abrir esos juegos con Gahvoria.", NoticeKind.OK)
+                else say("Todavía no hay juegos que se puedan jugar para crear accesos.", NoticeKind.WARN)
             }
         }
     }
@@ -190,7 +210,7 @@ class AppState(private val activity: Activity) {
 
     fun downloadUpdate(r: Release) {
         if (!AppUpdater.canInstall(activity)) {
-            notice = "Android pedirá permiso para que Gahvoria instale sus actualizaciones. Actívalo y vuelve."
+            say("Android pedirá permiso para que Gahvoria instale sus actualizaciones. Actívalo y vuelve.", NoticeKind.INFO)
             AppUpdater.askInstallPermission(activity)
             return
         }

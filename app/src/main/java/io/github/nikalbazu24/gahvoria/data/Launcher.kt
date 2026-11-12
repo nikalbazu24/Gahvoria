@@ -1,9 +1,13 @@
 package io.github.nikalbazu24.gahvoria.data
 
 import android.app.Activity
+import android.content.res.Configuration
 import com.hatkid.mkxpz.GameActivity
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameProfile
+import io.github.nikalbazu24.gahvoria.core.LoadRecord
+import io.github.nikalbazu24.gahvoria.core.LoadTimes
+import io.github.nikalbazu24.gahvoria.core.Palettes
 import io.github.nikalbazu24.gahvoria.core.Saves
 import java.io.File
 
@@ -29,12 +33,32 @@ object Launcher {
         return if (wanted == Game.ENGINE_CLASSIC && classicAvailable(a)) GameActivity.ENGINE_CLASSIC else GameActivity.ENGINE_MODERN
     }
 
+    /** The line under the title on the loading screen: "Essentials 17.2 · motor clásico". */
+    fun info(game: Game, engine: String): String {
+        val p = profile(game)
+        val what = p.label.ifEmpty { game.kind.label }
+        return what + " · motor " + if (engine == GameActivity.ENGINE_CLASSIC) "clásico" else "moderno"
+    }
+
+    /** The palette in use, for the game's own screens (loading screen, dialogs): bg, bg2, ink, muted, accent x3, onAccent, ok, warn. */
+    private fun colors(a: Activity): IntArray {
+        val night = (a.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val settings = Settings(a)
+        val s = Palettes.scheme(settings.palette, settings.mode, night)
+        return longArrayOf(s.bg, s.bg2, s.ink, s.muted, s.accent, s.accent2, s.accent3, s.onAccent, s.ok, s.warn).map { it.toInt() }.toIntArray()
+    }
+
+    /** The last time this game finished loading, from the times the game screen keeps on the device. */
+    fun lastLoad(a: Activity, game: Game): LoadRecord? =
+        runCatching { LoadTimes.lastFor(LoadTimes.parse(File(a.filesDir, "load_times.tsv").readText()), game.title) }.getOrNull()
+
     fun play(a: Activity, game: Game) {
         val dir = File(game.path)
         val saves = saveDir(game)
+        val engine = engineFor(a, game)
         a.startActivity(
-            GameActivity.intent(a, dir, game.title, saves, engineFor(a, game), GameActivity.SCREEN_ORIGINAL,
-                Storage.rtpRoot(), game.touch)
+            GameActivity.intent(a, dir, game.title, saves, engine, GameActivity.SCREEN_ORIGINAL,
+                Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
         )
     }
 }

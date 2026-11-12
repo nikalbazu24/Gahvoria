@@ -210,4 +210,21 @@ class CoreTest {
         assertNull(Shortcuts.resolve(File("/no/existe/nada.gahvoria")))
         assertNull(Shortcuts.pathIn("# solo comentarios\n\n"))
     }
+
+    // ---- load times --------------------------------------------------------------------------
+
+    @Test fun loadTimesAreReadSafelyAndTheLastOneOfTheGameWins() {
+        val text = "1000\t8\tAnil\tclassic\t3100\t11900\t3400\t18400\n" +
+            "basura sin tabuladores\n" +
+            "2000\t9\tAnil\tclassic\t3000\t6200\t3100\t12300\n" +
+            "3000\t9\tOtro\tmodern\t1\t2\t3\t6\n" +
+            "4000\tno-numero\tAnil\tmodern\t1\t2\t3\t6\n"
+        val all = LoadTimes.parse(text)
+        assertEquals(3, all.size)
+        val last = LoadTimes.lastFor(all, "Anil")!!
+        assertEquals(2000L, last.at)
+        assertEquals("12,3 s · archivos 3,0 · scripts 6,2 · apertura 3,1", LoadTimes.summary(last))
+        assertNull(LoadTimes.lastFor(all, "No existe"))
+        assertEquals(emptyList<LoadRecord>(), LoadTimes.parse(""))
+    }
 }

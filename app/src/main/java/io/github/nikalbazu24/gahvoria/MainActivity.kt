@@ -15,14 +15,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         state = AppState(this)
-        intent?.getStringExtra(EXTRA_NOTICE)?.let { state.notice = it }
+        intent?.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
         setContent { GahvoriaApp(state) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(EXTRA_NOTICE)?.let { state.notice = it }
+        intent.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
     }
 
     override fun onResume() {

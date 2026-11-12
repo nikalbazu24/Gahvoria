@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.Game
+import io.github.nikalbazu24.gahvoria.core.LoadTimes
 import io.github.nikalbazu24.gahvoria.core.Palettes
 import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
@@ -111,6 +112,10 @@ fun GameScreen(s: AppState, g: Game) {
                         RowItem(name, detail, role = Role.RadioButton,
                             onClick = if (enabled) ({ s.changeGame(g.path) { it.copy(engine = id) } }) else null) { Radio(g.engine == id) }
                     }
+                }
+                val last = remember(g.path) { s.lastLoad(g) }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Última carga", last?.let { LoadTimes.summary(it) } ?: "Todavía no hay tiempos: aparecen después de abrir el juego.")
                 }
             }
         }
