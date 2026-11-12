@@ -170,4 +170,14 @@ class CoreTest {
         File(root, "Data/Scripts.rxdata").writeBytes(byteArrayOf(4, 8, '['.code.toByte(), 100, 1))
         assertEquals(GameProfile(), GameProfile.read(root))
     }
+
+    /** Games never opened once because the engine thread was never asked to start: keep that call in place. */
+    @Test fun gameActivityStartsTheEngineThread() {
+        val src = listOf("../engine/src/main/java/com/hatkid/mkxpz/GameActivity.java",
+            "engine/src/main/java/com/hatkid/mkxpz/GameActivity.java").map(::File).firstOrNull { it.isFile }
+            ?: return  // sources not reachable from this working directory (local script): CI runs it
+        val text = src.readText()
+        assertTrue(text.contains("protected void onStart()"))
+        assertTrue(text.contains("resumeNativeThread()"))
+    }
 }

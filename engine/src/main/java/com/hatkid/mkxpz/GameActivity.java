@@ -300,6 +300,17 @@ public class GameActivity extends SDLActivity
         return box;
     }
 
+    /**
+     * This engine's SDLActivity does not start the native thread on its own (on Android 7+ it waits for
+     * the activity to ask). Without this call the game never starts and the loading screen stays forever.
+     */
+    @Override
+    protected void onStart()
+    {
+        super.onStart();
+        if (mHasMultiWindow) resumeNativeThread();
+    }
+
     @Override
     protected String[] getLibraries()
     {
