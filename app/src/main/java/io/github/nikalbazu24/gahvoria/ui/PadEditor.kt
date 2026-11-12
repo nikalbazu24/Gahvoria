@@ -3,6 +3,7 @@ package io.github.nikalbazu24.gahvoria.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -85,7 +86,7 @@ fun PadEditor(s: AppState, g: Game) {
                                 layout = layout.with(p, cur.copy(x = cur.x + drag.x / w, y = cur.y + drag.y / h))
                             }
                         }
-                        .pointerInput(p) { androidx.compose.foundation.gestures.detectTapGestures { picked = p } },
+                        .pointerInput(p) { detectTapGestures { picked = p } },
                     contentAlignment = Alignment.Center,
                 ) { T(p.title, 10.sp, FontWeight.Bold, if (on) c.ink else c.muted, maxLines = 2) }
             }
