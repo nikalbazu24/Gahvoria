@@ -207,7 +207,7 @@ private fun TabIcon(t: Tab, color: Color) {
                 drawLine(color, o(8.5f, 6.5f), o(15.5f, 6.5f), st.width, StrokeCap.Round)
             }
             Tab.UPDATES -> {
-                drawLine(color, o(12f, 4f), o(12f, 15f), o(12f, 15f), st.width, StrokeCap.Round)
+                drawLine(color, o(12f, 4f), o(12f, 15f), st.width, StrokeCap.Round)
                 drawLine(color, o(12f, 15f), o(8f, 11f), st.width, StrokeCap.Round)
                 drawLine(color, o(12f, 15f), o(16f, 11f), st.width, StrokeCap.Round)
                 drawLine(color, o(5f, 20f), o(19f, 20f), st.width, StrokeCap.Round)

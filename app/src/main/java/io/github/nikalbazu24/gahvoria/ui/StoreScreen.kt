@@ -51,7 +51,7 @@ fun StoreScreen(s: AppState) {
         else -> Page("Tienda") {
             var query by remember { mutableStateOf("") }
             var filter by remember { mutableIntStateOf(0) }
-            SettingsSearch(query, { query = it }, hint = "Buscar un juego")
+            SettingsSearch(query, "Buscar un juego") { query = it }
             Segmented(listOf("Todos", "Inglés", "Español", "Probados"), filter) { filter = it }
             val list = StoreCatalog.filter(s.storeGames, when (filter) { 1 -> "en"; 2 -> "es"; else -> "all" }, filter == 3, query)
             Glass(Modifier.fillMaxWidth()) {

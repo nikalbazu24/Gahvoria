@@ -404,7 +404,7 @@ fun SettingsScreen(s: AppState) {
 }
 
 @Composable
-internal fun SettingsSearch(query: String, onChange: (String) -> Unit, hint: String = "Buscar un ajuste") {
+internal fun SettingsSearch(query: String, hint: String = "Buscar un ajuste", onChange: (String) -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(14.dp)
     androidx.compose.foundation.text.BasicTextField(
