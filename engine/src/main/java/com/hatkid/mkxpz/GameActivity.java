@@ -70,6 +70,10 @@ public class GameActivity extends SDLActivity
     public static final String EXTRA_INFO = "gahvoria.INFO";
     /** The palette in use: bg, bg2, ink, muted, accent, accent2, accent3, onAccent, ok, warn (ARGB ints). */
     public static final String EXTRA_COLORS = "gahvoria.COLORS";
+    /** The player's arrangement of the touch controls ("dpad,0.05,-0.02,1.2,0;..."), empty for the default. */
+    public static final String EXTRA_PAD = "gahvoria.PAD";
+    /** A small copy of the game's cover, for the blurred background of the loading screen ("" if none). */
+    public static final String EXTRA_COVER = "gahvoria.COVER";
 
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
@@ -148,6 +152,7 @@ public class GameActivity extends SDLActivity
         mGamepad.init(config, !mTouch);
         mGamepad.setOnKeyDownListener(k -> SDLActivity.onNativeKeyDown(k));
         mGamepad.setOnKeyUpListener(k -> SDLActivity.onNativeKeyUp(k));
+        mGamepad.setLayout(i == null ? null : i.getStringExtra(EXTRA_PAD));
         if (mTouch) mGamepad.attachTo(this, mLayout);
         mPadHidden = !mTouch;
 
@@ -158,7 +163,7 @@ public class GameActivity extends SDLActivity
         sFps.setVisibility(View.GONE);
         mLayout.addView(sFps, new RelativeLayout.LayoutParams(-2, -2));
 
-        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), loadingStarted, new LoadingScreen.Host()
+        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted, new LoadingScreen.Host()
         {
             @Override
             public void exit()

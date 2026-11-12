@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -91,10 +93,33 @@ fun GameScreen(s: AppState, g: Game) {
                     }
                 }
                 T("Se guardan en ${dir.absolutePath}. Es la misma carpeta que usan Essentia y JoiPlay.", 12.sp, FontWeight.Medium, c.muted)
+                val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                    if (uri != null) s.exportSaves(g, uri)
+                }
+                val zipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri != null) s.readSaves(g, uri, false)
+                }
+                val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                    if (uri != null) s.readSaves(g, uri, true)
+                }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Guardar respaldo", "Un .zip con tus partidas.", onClick = { saver.launch("Respaldo ${Saves.safeName(g.title)}.zip") }) {
+                        T("Guardar", 12.sp, FontWeight.Bold, c.accent)
+                    }
+                    Divider()
+                    RowItem("Importar de un respaldo", "Un .zip hecho por Gahvoria. Antes de reemplazar te pregunta.",
+                        onClick = { zipPicker.launch(arrayOf("application/zip", "application/octet-stream")) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+                    Divider()
+                    RowItem("Importar de otro emulador", "Elige la carpeta del juego o de las partidas en JoiPlay, Kirin, Navia XP u otro.",
+                        onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+                }
             }
-            1 -> Glass(Modifier.fillMaxWidth()) {
-                RowItem("Controles táctiles", "Botones en pantalla. Se ocultan solos al usar un mando.", role = Role.Switch,
-                    onClick = { s.changeGame(g.path) { it.copy(touch = !it.touch) } }) { Toggle(g.touch) }
+            1 -> {
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Controles táctiles", "Botones en pantalla. Se ocultan solos al usar un mando.", role = Role.Switch,
+                        onClick = { s.changeGame(g.path) { it.copy(touch = !it.touch) } }) { Toggle(g.touch) }
+                }
+                if (g.touch) PadEditor(s, g)
             }
             else -> {
                 val classic = s.classicAvailable()
@@ -143,6 +168,10 @@ fun GameScreen(s: AppState, g: Game) {
                 "No borra la carpeta del juego ni sus partidas.", titleColor = c.accent,
                 onClick = { if (step == 0) step = 1 else s.forget(g) },
             ) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+            Divider()
+            RowItem("Borrar juego por completo", "Borra su carpeta, partidas y accesos. Pide dos confirmaciones.",
+                titleColor = if (c.dark) androidx.compose.ui.graphics.Color(0xFFFF8E8E) else androidx.compose.ui.graphics.Color(0xFFC62F3A),
+                onClick = { s.deleting = g }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
         }
     }
 }
@@ -249,75 +278,192 @@ fun UpdatesScreen(s: AppState) {
 
 // -------------------------------------------------------------------- settings
 
+/** The settings sections, always visible at the side on wide screens (Díptico style). Each option lives in exactly one. */
+private enum class Sec(val title: String, val hint: String, val words: String) {
+    ESSENTIAL("Lo esencial", "Acceso a archivos y tema", "acceso permiso archivos tema oscuro claro sistema"),
+    LOOK("Apariencia", "Colores", "apariencia colores paleta estilo"),
+    FILES("Archivos y accesos", "Launchers como Díptico", "accesos launcher diptico daijisho es-de carpeta atajos"),
+    COVERS("Carátulas", "Imágenes de los juegos", "caratulas portadas imagenes internet catalogo"),
+    REPORTS("Informes", "Cuando un juego falla", "informes errores enviar drive"),
+    TRANSLATE("Traducción", "Pronto", "traduccion traductor idioma ingles"),
+    ABOUT("Acerca de", "Versión e introducción", "acerca version introduccion licencias motor");
+
+    fun matches(q: String): Boolean {
+        val n = q.trim().lowercase()
+        if (n.isEmpty()) return true
+        val flat = java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+        return title.lowercase().contains(n) || hint.lowercase().contains(n) || words.contains(flat)
+    }
+}
+
+@Composable
+private fun secColor(sec: Sec): androidx.compose.ui.graphics.Color {
+    val c = LocalColors.current
+    return when (sec) {
+        Sec.ESSENTIAL -> c.accent
+        Sec.LOOK -> c.accent2
+        Sec.FILES -> c.accent3
+        Sec.COVERS -> c.ok
+        Sec.REPORTS -> c.warn
+        Sec.TRANSLATE -> c.accent2
+        Sec.ABOUT -> c.muted
+    }
+}
+
 @Composable
 fun SettingsScreen(s: AppState) {
     val c = LocalColors.current
-    Page("Ajustes") {
-        Label("Apariencia")
-        Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
-        Glass(Modifier.fillMaxWidth()) {
-            Palettes.all.forEachIndexed { i, p ->
-                if (i > 0) Divider()
-                RowItem(p.name, if (i == 0) "Principal" else null, role = Role.RadioButton, onClick = { s.choosePalette(p.id) }) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        for (v in listOf(p.dark.accent, p.dark.accent2, p.dark.accent3))
-                            Box(Modifier.size(18.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Color(v.toInt())).border(2.dp, c.bg2, CircleShape))
+    var query by remember { mutableStateOf("") }
+    var open by remember { mutableStateOf<Sec?>(null) }
+    var picked by remember { mutableStateOf(Sec.ESSENTIAL) }
+    val shown = Sec.entries.filter { it.matches(query) }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 600.dp
+        if (wide) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.width(220.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    T("Ajustes", 22.sp, FontWeight.ExtraBold, modifier = Modifier.height(44.dp))
+                    SettingsSearch(query) { query = it }
+                    for (sec in Sec.entries) {
+                        val on = sec == picked && query.isBlank()
+                        val dim = !sec.matches(query)
+                        val col = secColor(sec)
+                        val shape = RoundedCornerShape(16.dp)
+                        Row(
+                            Modifier.fillMaxWidth().press(shape, role = Role.Tab) { picked = sec; query = "" }
+                                .background(if (on) col.copy(alpha = .22f) else c.glass, shape)
+                                .border(if (on) 2.dp else 1.dp, if (on) col else c.line, shape)
+                                .padding(horizontal = 14.dp, vertical = 12.dp).alpha(if (dim) .4f else 1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(col))
+                            Spacer(Modifier.size(10.dp))
+                            Column {
+                                T(sec.title, 14.sp, FontWeight.Bold)
+                                T(sec.hint, 11.sp, FontWeight.Medium, c.muted)
+                            }
+                        }
                     }
-                    Spacer(Modifier.size(12.dp))
-                    Radio(s.palette == p.id)
+                }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 56.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    val list = if (query.isBlank()) listOf(picked) else shown
+                    if (list.isEmpty()) T("No encontré ese ajuste.", 13.sp, FontWeight.Medium, c.muted)
+                    for (sec in list) { Label(sec.title, secColor(sec)); SecContent(s, sec) }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        } else {
+            val cur = open
+            if (cur != null && query.isBlank()) {
+                BackHandler { open = null }
+                Page(cur.title, onBack = { open = null }) { SecContent(s, cur) }
+            } else Page("Ajustes") {
+                SettingsSearch(query) { query = it }
+                if (shown.isEmpty()) T("No encontré ese ajuste.", 13.sp, FontWeight.Medium, c.muted)
+                Glass(Modifier.fillMaxWidth()) {
+                    shown.forEachIndexed { i, sec ->
+                        if (i > 0) Divider()
+                        RowItem(sec.title, sec.hint, onClick = { open = sec; query = "" }) {
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(secColor(sec)))
+                            Spacer(Modifier.size(10.dp))
+                            T("›", 18.sp, FontWeight.Bold, c.faint)
+                        }
+                    }
                 }
             }
         }
-        Label("Archivos y accesos")
-        val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) Storage.pathOf(uri)?.let { s.createShortcuts(it) }
-        }
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem("Acceso a tus archivos", if (s.hasAccess) "Concedido. Gahvoria lee tus juegos y guarda las partidas junto a ellos."
-                else "Necesario para abrir juegos y guardar partidas junto a ellos.",
-                onClick = if (s.hasAccess) null else ({ s.askAccess() })) {
-                T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
+    }
+}
+
+@Composable
+private fun SettingsSearch(query: String, onChange: (String) -> Unit) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(14.dp)
+    androidx.compose.foundation.text.BasicTextField(
+        query, onChange, singleLine = true,
+        textStyle = androidx.compose.ui.text.TextStyle(color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Montserrat),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accent),
+        modifier = Modifier.fillMaxWidth().background(c.glass, shape).border(1.dp, c.line, shape).padding(horizontal = 14.dp, vertical = 12.dp),
+        decorationBox = { inner -> Box { if (query.isEmpty()) T("Buscar un ajuste", 14.sp, FontWeight.Medium, c.faint); inner() } },
+    )
+}
+
+@Composable
+private fun SecContent(s: AppState, sec: Sec) {
+    val c = LocalColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        when (sec) {
+            Sec.ESSENTIAL -> {
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Acceso a tus archivos", if (s.hasAccess) "Concedido. Gahvoria lee tus juegos y guarda las partidas junto a ellos."
+                        else "Necesario para abrir juegos y guardar partidas junto a ellos.",
+                        onClick = if (s.hasAccess) null else ({ s.askAccess() })) {
+                        T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
+                    }
+                }
+                Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
             }
-            Divider()
-            RowItem("Carpeta de accesos para launchers", (s.shortcutsPath ?: "Todavía no creada. Se propone ROMs/Gahvoria.") +
-                "\nDíptico, Daijishō, ES-DE y otros abren tus juegos desde ahí. Nunca se borran accesos.")
-            Divider()
-            RowItem("Elegir carpeta", null, onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
-            Divider()
-            RowItem(if (s.shortcutsOn) "Actualizar accesos" else "Crear accesos", null, onClick = { s.createShortcuts() }) {
-                T(if (s.shortcutsOn) "Actualizar" else "Crear", 12.sp, FontWeight.Bold, c.accent)
-            }
-        }
-        Label("Carátulas")
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem("Buscar imágenes en Internet", "La imagen oficial cuando el juego está en el catálogo; si no, una de su carpeta.",
-                role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
-        }
-        Label("Informes")
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem("Envío de informes", if (s.canSendReports) "Activado. Solo se envían cuando tú tocas Enviar informe."
-                else "Esta versión solo puede copiarlos.")
-            Divider()
-            RowItem("Último error de cada juego", "Está en las opciones de ese juego.")
-        }
-        Label("Acerca de")
-        Glass(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Cartridge(52.dp)
-                Spacer(Modifier.size(14.dp))
-                Column {
-                    T("Gahvoria", 16.sp, FontWeight.Bold)
-                    T("Versión ${BuildConfig.VERSION_NAME}", 12.sp, FontWeight.Medium, c.muted)
+            Sec.LOOK -> Glass(Modifier.fillMaxWidth()) {
+                Palettes.all.forEachIndexed { i, p ->
+                    if (i > 0) Divider()
+                    RowItem(p.name, if (i == 0) "Principal" else null, role = Role.RadioButton, onClick = { s.choosePalette(p.id) }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            for (v in listOf(p.dark.accent, p.dark.accent2, p.dark.accent3))
+                                Box(Modifier.size(18.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Color(v.toInt())).border(2.dp, c.bg2, CircleShape))
+                        }
+                        Spacer(Modifier.size(12.dp))
+                        Radio(s.palette == p.id)
+                    }
                 }
             }
-            Divider()
-            RowItem("Motor de juego", "mkxp-z (licencia GPL 2.0), moderno y clásico.")
-            Divider()
-            RowItem("Tipografía", "Montserrat (SIL Open Font License).")
-            Divider()
-            RowItem("Código", "github.com/nikalbazu24/Gahvoria")
-            Divider()
-            RowItem("Ver introducción", null, onClick = { s.showIntro() }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+            Sec.FILES -> {
+                val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                    if (uri != null) Storage.pathOf(uri)?.let { s.createShortcuts(it) }
+                }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Carpeta de accesos para launchers", (s.shortcutsPath ?: "Todavía no creada. Se propone ROMs/Gahvoria.") +
+                        "\nDíptico, Daijishō, ES-DE y otros abren tus juegos desde ahí. Nunca se borran accesos.")
+                    Divider()
+                    RowItem("Elegir carpeta", null, onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+                    Divider()
+                    RowItem(if (s.shortcutsOn) "Actualizar accesos" else "Crear accesos", null, onClick = { s.createShortcuts() }) {
+                        T(if (s.shortcutsOn) "Actualizar" else "Crear", 12.sp, FontWeight.Bold, c.accent)
+                    }
+                }
+            }
+            Sec.COVERS -> Glass(Modifier.fillMaxWidth()) {
+                RowItem("Buscar imágenes en Internet", "La imagen oficial cuando el juego está en el catálogo; si no, una de su carpeta.",
+                    role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
+            }
+            Sec.REPORTS -> Glass(Modifier.fillMaxWidth()) {
+                RowItem("Envío de informes", if (s.canSendReports) "Activado. Solo se envían cuando tú tocas Enviar informe."
+                    else "Esta versión solo puede copiarlos.")
+                Divider()
+                RowItem("Último error de cada juego", "Está en las opciones de ese juego.")
+            }
+            Sec.TRANSLATE -> Glass(Modifier.fillMaxWidth()) {
+                RowItem("Traductor automático", "En camino: traducir mientras juegas los juegos en otro idioma. Todavía no está disponible.") {
+                    T("Pronto", 12.sp, FontWeight.Bold, c.faint)
+                }
+            }
+            Sec.ABOUT -> Glass(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Cartridge(52.dp)
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        T("Gahvoria", 16.sp, FontWeight.Bold)
+                        T("Versión ${BuildConfig.VERSION_NAME}", 12.sp, FontWeight.Medium, c.muted)
+                    }
+                }
+                Divider()
+                RowItem("Motor de juego", "mkxp-z (licencia GPL 2.0), moderno y clásico.")
+                Divider()
+                RowItem("Tipografía", "Montserrat (SIL Open Font License).")
+                Divider()
+                RowItem("Código", "github.com/nikalbazu24/Gahvoria")
+                Divider()
+                RowItem("Ver introducción", null, onClick = { s.showIntro() }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+            }
         }
     }
 }

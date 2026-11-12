@@ -25,6 +25,13 @@ object Intro {
             Slide("Accesos donde tú quieras", "Elige la carpeta de accesos para Díptico, Daijishō o ES-DE desde Ajustes."),
             Slide("Ajustes ordenados", "Cada opción está en un solo lugar: lo general en Ajustes y lo de cada juego en sus opciones."),
         ),
+        2 to listOf(
+            Slide("Ajustes más a mano", "Las secciones quedan siempre visibles al lado, con buscador y «Lo esencial» primero."),
+            Slide("Carga con tu juego", "El cartucho flota sobre la carátula del juego, difuminada con los colores de Gahvoria."),
+            Slide("Tus botones, a tu manera", "En las opciones de cada juego, mueve, agranda u oculta los botones táctiles. Cada uno trae su guía."),
+            Slide("Respaldo de partidas", "Guarda un .zip de tus partidas e impórtalas desde un respaldo o desde otro emulador. Antes de reemplazar, te pregunta."),
+            Slide("Borrar un juego", "Si quieres, lo borras por completo con dos confirmaciones y un respaldo opcional. «Quitar de la biblioteca» sigue sin borrar nada."),
+        ),
     )
 
     val LATEST: Int get() = UPDATES.maxOfOrNull { it.first } ?: 0

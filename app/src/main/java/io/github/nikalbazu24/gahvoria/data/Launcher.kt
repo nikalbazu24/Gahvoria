@@ -3,6 +3,7 @@ package io.github.nikalbazu24.gahvoria.data
 import android.app.Activity
 import android.content.res.Configuration
 import com.hatkid.mkxpz.GameActivity
+import io.github.nikalbazu24.gahvoria.data.Covers
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameProfile
 import io.github.nikalbazu24.gahvoria.core.LoadRecord
@@ -56,9 +57,12 @@ object Launcher {
         val dir = File(game.path)
         val saves = saveDir(game)
         val engine = engineFor(a, game)
+        val cover = Covers(a) { false }.bestFile(game)?.absolutePath.orEmpty()
         a.startActivity(
             GameActivity.intent(a, dir, game.title, saves, engine, GameActivity.SCREEN_ORIGINAL,
                 Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
+                .putExtra(GameActivity.EXTRA_PAD, Settings(a).pad(game.path))
+                .putExtra(GameActivity.EXTRA_COVER, cover)
         )
     }
 }

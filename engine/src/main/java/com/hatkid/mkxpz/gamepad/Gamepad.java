@@ -58,6 +58,49 @@ public class Gamepad
     }
 
     private RelativeLayout mGamepadLayout;
+    private String mLayoutSpec = "";
+
+    /** The player's arrangement ("piece,x,y,scale,hidden;..."): each piece moves by a fraction of the screen. */
+    public void setLayout(String spec)
+    {
+        mLayoutSpec = spec == null ? "" : spec;
+    }
+
+    private void applyLayout()
+    {
+        if (mLayoutSpec.isEmpty() || mGamepadLayout == null) return;
+        mGamepadLayout.post(() -> {
+            float w = mGamepadLayout.getWidth();
+            float h = mGamepadLayout.getHeight();
+            if (w <= 0 || h <= 0) return;
+            for (String part : mLayoutSpec.split(";")) {
+                String[] f = part.split(",");
+                if (f.length < 5) continue;
+                int id;
+                switch (f[0]) {
+                    case "dpad": id = R.id.dpad; break;
+                    case "l": id = R.id.buttons_misc_left_layout; break;
+                    case "r": id = R.id.buttons_misc_right_layout; break;
+                    case "act": id = R.id.buttons_action_layout; break;
+                    case "bar": id = R.id.buttons_mod_layout; break;
+                    default: continue;
+                }
+                android.view.View v = mGamepadLayout.findViewById(id);
+                if (v == null) continue;
+                try {
+                    float x = Float.parseFloat(f[1]), y = Float.parseFloat(f[2]), sc = Float.parseFloat(f[3]);
+                    if (Float.isNaN(x) || Float.isNaN(y) || Float.isNaN(sc)) continue;
+                    v.setTranslationX(x * w);
+                    v.setTranslationY(y * h);
+                    v.setPivotX(v.getWidth() / 2f);
+                    v.setPivotY(v.getHeight() / 2f);
+                    v.setScaleX(sc);
+                    v.setScaleY(sc);
+                    v.setVisibility("1".equals(f[4]) ? android.view.View.GONE : android.view.View.VISIBLE);
+                } catch (NumberFormatException ignored) { }
+            }
+        });
+    }
 
     // Gamepad buttons
     private GamepadButton gpadBtnA;
@@ -118,6 +161,7 @@ public class Gamepad
         // Apply scale and opacity from gamepad config
         ViewUtils.resize(mGamepadLayout, mGamepadConfig.scale);
         ViewUtils.changeOpacity(mGamepadLayout, mGamepadConfig.opacity);
+        applyLayout();
     }
 
     private void setGamepadButtonKey(GamepadButton gpadBtn, Integer keycode, String label)

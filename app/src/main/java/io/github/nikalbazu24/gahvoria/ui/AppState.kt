@@ -21,6 +21,9 @@ import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
+import android.net.Uri
+import io.github.nikalbazu24.gahvoria.core.GameRemoval
+import io.github.nikalbazu24.gahvoria.core.SaveBackup
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -197,6 +200,89 @@ class AppState(private val activity: Activity) {
     fun lastLoad(game: Game): LoadRecord? = Launcher.lastLoad(activity, game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)
+
+    /** The player's arrangement of the touch controls for a game. */
+    fun padFor(game: Game) = io.github.nikalbazu24.gahvoria.core.TouchLayout.decode(settings.pad(game.path))
+
+    fun savePad(game: Game, layout: io.github.nikalbazu24.gahvoria.core.TouchLayout) = settings.setPad(game.path, layout.encode())
+
+    // ---------------------------------------------------------------- delete and backup
+
+    /** The game being deleted for good (the two confirmations are shown while this is set). */
+    var deleting by mutableStateOf<Game?>(null)
+
+    /** Saves found in a backup or another emulator's folder, waiting for the player to decide how to import them. */
+    data class ImportOffer(val game: Game, val items: List<SaveBackup.Item>, val conflicts: List<String>, val source: String)
+    var importOffer by mutableStateOf<ImportOffer?>(null)
+
+    fun deletePlan(g: Game) = GameRemoval.plan(g, saveDir(g), settings.shortcutsFolder?.let { File(it) }, Storage.root(),
+        games.filter { it.path != g.path }.map { it.path })
+
+    /** Deletes the game's folder, saves, shortcuts, cover and what Gahvoria kept about it. Only after both confirmations. */
+    fun deleteGame(g: Game) {
+        val plan = deletePlan(g)
+        deleting = null
+        worker.execute {
+            val r = GameRemoval.execute(plan)
+            runCatching {
+                val f = File(activity.filesDir, "load_times.tsv")
+                if (f.isFile) f.writeText(f.readLines().filterNot { it.split('\t').getOrNull(2) == g.title }.joinToString("") { it + "\n" })
+            }
+            activity.runOnUiThread {
+                games = Library.ordered(library.remove(g.path))
+                settings.setPad(g.path, "")
+                covers.prune(games)
+                optionsFor = null
+                selected = 0
+                coverVersion++
+                if (r.failed.isEmpty() && plan.deletesFolder) say("${g.title} se borró por completo.", NoticeKind.OK)
+                else if (!plan.deletesFolder) say("${g.title} salió de la biblioteca y se borraron sus partidas y accesos, pero conservé su carpeta: ${plan.folderRefusal}", NoticeKind.WARN)
+                else say("${g.title} se borró, pero ${r.failed.size} archivos no se pudieron eliminar.", NoticeKind.WARN)
+            }
+        }
+    }
+
+    /** Writes the game's saves into a zip the player chose. */
+    fun exportSaves(g: Game, uri: Uri, then: (Boolean) -> Unit = {}) {
+        val dir = saveDir(g)
+        worker.execute {
+            val n = runCatching { activity.contentResolver.openOutputStream(uri)!!.use { SaveBackup.export(dir, it, g.title) } }.getOrNull()
+            activity.runOnUiThread {
+                if (n == null) say("No pude guardar el respaldo.", NoticeKind.ERROR)
+                else say(if (n == 0) "Respaldo creado, pero ${g.title} todavía no tiene partidas." else "Respaldo de $n partidas guardado.", NoticeKind.OK)
+                then(n != null)
+            }
+        }
+    }
+
+    /** Reads a Gahvoria zip (a file) or another emulator's folder, and offers to import its saves. */
+    fun readSaves(g: Game, uri: Uri, isFolder: Boolean) {
+        val dir = saveDir(g)
+        worker.execute {
+            val items = runCatching {
+                if (isFolder) Storage.pathOf(uri)?.let { SaveBackup.readFolder(it) }.orEmpty()
+                else activity.contentResolver.openInputStream(uri)!!.use { SaveBackup.readZip(it) }
+            }.getOrDefault(emptyList())
+            activity.runOnUiThread {
+                if (items.isEmpty()) say("No encontré partidas en eso. Elige un respaldo .zip de Gahvoria o la carpeta de otro emulador con archivos Save.", NoticeKind.WARN)
+                else importOffer = ImportOffer(g, items, SaveBackup.conflicts(items, dir), if (isFolder) "la carpeta" else "el respaldo")
+            }
+        }
+    }
+
+    fun importSaves(offer: ImportOffer, replace: Boolean) {
+        importOffer = null
+        val dir = saveDir(offer.game)
+        worker.execute {
+            val (w, k) = runCatching { SaveBackup.restore(offer.items, dir, replace) }.getOrDefault(0 to offer.items.size)
+            activity.runOnUiThread {
+                coverVersion++
+                say(if (w == 0) "No se importó ninguna partida." else "Importé $w partidas." +
+                    (if (replace && offer.conflicts.isNotEmpty()) " Las anteriores quedaron con .antes." else "") +
+                    (if (k > 0) " Conservé $k que ya existían." else ""), if (w == 0) NoticeKind.WARN else NoticeKind.OK)
+            }
+        }
+    }
 
     /** The diagnosis said the classic engine may fix it: switch this game to it and open it again. */
     fun retryClassic(e: ErrorReport) {

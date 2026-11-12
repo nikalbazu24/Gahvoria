@@ -330,4 +330,62 @@ class CoreTest {
         assertNull(Intro.pending(introSeen = true, seenUpdate = Intro.LATEST, hasGames = true))
         assertNull(Intro.pending(introSeen = true, seenUpdate = Intro.LATEST, hasGames = false))
     }
+
+    // ---- touch layout ------------------------------------------------------------------------
+
+    @Test fun theTouchLayoutRoundTripsAndIgnoresWhatIsBroken() {
+        val l = TouchLayout().with(PadPiece.DPAD, PadSpot(0.05f, -0.02f, 1.2f, false)).with(PadPiece.BAR, PadSpot(hidden = true))
+        val back = TouchLayout.decode(l.encode())
+        assertEquals(l, back)
+        assertEquals(PadSpot(), back.spot(PadPiece.L))
+        // Back to the default removes the piece from the saved text.
+        assertTrue(l.with(PadPiece.DPAD, PadSpot()).with(PadPiece.BAR, PadSpot()).isDefault)
+        // Out of range values are kept inside the screen and sensible sizes.
+        val wild = TouchLayout().with(PadPiece.R, PadSpot(5f, -5f, 50f))
+        assertEquals(PadSpot(0.9f, -0.9f, 1.8f), wild.spot(PadPiece.R))
+        assertEquals(TouchLayout(), TouchLayout.decode("basura;dpad,x,y,z,0;otro,0,0,1,0;dpad,0.1"))
+        assertEquals(TouchLayout(), TouchLayout.decode(null))
+        assertEquals(TouchLayout(), TouchLayout.decode("dpad,NaN,0,1,0"))
+    }
+
+    @Test fun removalNeedsTheNameAndRefusesRiskyFolders() {
+        assertTrue(GameRemoval.nameMatches("  ópalo ", "Ópalo"))
+        assertFalse(GameRemoval.nameMatches("", ""))
+        assertFalse(GameRemoval.nameMatches("Opal", "Ópalo"))
+        val root = java.nio.file.Files.createTempDirectory("st").toFile()
+        val game = File(root, "Juegos/Opal").apply { mkdirs() }
+        File(game, "Game.ini").writeText("x"); File(game, "Save1.rxdata").writeText("s")
+        assertNull(GameRemoval.folderRefusal(game, root, emptyList()))
+        assertTrue(GameRemoval.folderRefusal(File(root, "Juegos").also { it.mkdirs() }, root, listOf(game.path)) != null)
+        assertTrue(GameRemoval.folderRefusal(File(root, "Download").also { it.mkdirs() }, root, emptyList()) != null)
+        assertTrue(GameRemoval.folderRefusal(root, root, emptyList()) != null)
+        val shortcuts = File(root, "ROMs/Gahvoria").apply { mkdirs() }
+        val g = Game(game.path, "Opal", EngineKind.RPG_MAKER_XP, true)
+        Shortcuts.export(listOf(g), shortcuts)
+        File(shortcuts, "Otro.gahvoria").writeText("/otro\n")
+        val plan = GameRemoval.plan(g, game, shortcuts, root, emptyList())
+        assertNull(plan.saveDir); assertEquals(1, plan.shortcuts.size)
+        val r = GameRemoval.execute(plan)
+        assertTrue(r.folderDeleted); assertFalse(game.exists()); assertEquals(1, r.shortcuts)
+        assertTrue(File(shortcuts, "Otro.gahvoria").exists())
+        assertTrue(File(root, "Juegos").exists())
+    }
+
+    @Test fun backupRoundTripKeepsTheOldSave() {
+        val a = java.nio.file.Files.createTempDirectory("a").toFile()
+        val b = java.nio.file.Files.createTempDirectory("b").toFile()
+        File(a, "Save1.rxdata").writeText("nuevo"); File(a, "Scripts.rxdata").writeText("no")
+        val out = java.io.ByteArrayOutputStream()
+        assertEquals(1, SaveBackup.export(a, out, "Opal"))
+        val items = SaveBackup.readZip(out.toByteArray().inputStream())
+        assertEquals(listOf("Save1.rxdata"), items.map { it.name })
+        File(b, "Save1.rxdata").writeText("viejo")
+        assertEquals(listOf("Save1.rxdata"), SaveBackup.conflicts(items, b))
+        assertEquals(0 to 1, SaveBackup.restore(items, b, false))
+        assertEquals("viejo", File(b, "Save1.rxdata").readText())
+        assertEquals(1 to 0, SaveBackup.restore(items, b, true))
+        assertEquals("nuevo", File(b, "Save1.rxdata").readText())
+        assertEquals("viejo", File(b, "Save1.rxdata.antes").readText())
+        assertEquals(1, SaveBackup.readFolder(a).size)
+    }
 }

@@ -31,6 +31,12 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("covers_online", true)
         set(v) = prefs.edit().putBoolean("covers_online", v).apply()
 
+    /** The player's arrangement of the touch controls for one game (see TouchLayout), or "". */
+    fun pad(path: String): String = prefs.getString("pad:$path", "") ?: ""
+
+    fun setPad(path: String, spec: String) =
+        prefs.edit().apply { if (spec.isEmpty()) remove("pad:$path") else putString("pad:$path", spec) }.apply()
+
     /** The introduction was finished or skipped once. */
     var introSeen: Boolean
         get() = prefs.getBoolean("intro_seen", false)

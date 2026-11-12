@@ -33,6 +33,12 @@ class Covers(context: Context, private val online: () -> Boolean) {
         return image(File(dir, "$k.web.jpg")) ?: image(File(dir, "$k.local.jpg"))
     }
 
+    /** The file of the best cover copy (for the game screen's loading background), or null. */
+    fun bestFile(g: Game): File? {
+        val k = key(g)
+        return listOf(File(dir, "$k.web.jpg"), File(dir, "$k.local.jpg")).firstOrNull { it.exists() }
+    }
+
     /** Who made the image, when it came from the Internet ("Imagen: EricLostie · Whack a Hack!"). */
     fun credit(g: Game): String? {
         val k = key(g)

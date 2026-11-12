@@ -23,3 +23,11 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 
 - GS Vitro sigue con causa abierta (ver historial de Essentia). No se declara resuelto.
 - Las capturas y la prueba física en la Thor son obligatorias antes de cerrar cada fase.
+
+## 0.2 «Pulido» (en pruebas)
+- Ajustes estilo Díptico: secciones a la izquierda, buscador, «Lo esencial» primero; sin opciones repetidas.
+- Pantalla de carga: cartucho flotante sobre la carátula difuminada (RenderEffect en Android 12+, imagen pequeña estirada en versiones anteriores). Pendiente de ver en la Thor.
+- Botones táctiles: editor por juego (mover, tamaño, ocultar, restaurar) con guía por pieza; el diseño viaja al motor en `EXTRA_PAD`.
+- Borrar juego por completo: explicación + respaldo opcional, y escribir el nombre. Se niega a borrar carpetas sueltas en la raíz o que contengan otro juego. «Quitar de la biblioteca» no cambia.
+- Respaldo de partidas en .zip e importación desde .zip o carpeta de otro emulador; lo reemplazado queda como `.antes`.
+- Pendiente: probar en teléfono y Thor (editor táctil, carga con desenfoque, borrado en una copia de un juego).

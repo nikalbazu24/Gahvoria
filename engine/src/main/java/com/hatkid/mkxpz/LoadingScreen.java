@@ -84,7 +84,7 @@ final class LoadingScreen extends FrameLayout
         }
     };
 
-    LoadingScreen(Context c, Look look, String title, String info, long startedAt, Host host)
+    LoadingScreen(Context c, Look look, String title, String info, String coverPath, long startedAt, Host host)
     {
         super(c);
         this.look = look;
@@ -94,6 +94,7 @@ final class LoadingScreen extends FrameLayout
         this.lastChange = startedAt;
         setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{look.bg, look.bg2}));
         setClickable(false);
+        addCoverBackground(c, coverPath);
 
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.HORIZONTAL);
@@ -106,7 +107,9 @@ final class LoadingScreen extends FrameLayout
         left.setOrientation(LinearLayout.VERTICAL);
         left.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
-        left.addView(new Cartridge(c, look), new LinearLayout.LayoutParams(look.dp(64), look.dp(64)));
+        View cart = new Cartridge(c, look);
+        left.addView(cart, new LinearLayout.LayoutParams(look.dp(64), look.dp(64)));
+        floatCartridge(c, cart);
         TextView name = text(c, title == null ? "" : title, 24, look.ink, true);
         name.setPadding(0, look.dp(14), look.dp(16), 0);
         left.addView(name);
@@ -191,6 +194,54 @@ final class LoadingScreen extends FrameLayout
     }
 
     /** The first frame was drawn: record the times and go away. */
+    /** The game's cover, blurred and tinted with the palette so the text stays readable; nothing if it has none. */
+    private void addCoverBackground(Context c, String path)
+    {
+        if (path == null || path.isEmpty()) return;
+        try {
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inSampleSize = 2;
+            android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeFile(path, o);
+            if (b == null) return;
+            android.widget.ImageView img = new android.widget.ImageView(c);
+            img.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                img.setImageBitmap(b);
+                img.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(40f, 40f, Shader.TileMode.CLAMP));
+                img.setScaleX(1.2f);
+                img.setScaleY(1.2f);
+            } else {
+                // Old Android: shrink a lot and let it stretch back, which looks soft.
+                int w = Math.max(8, b.getWidth() / 24), h = Math.max(8, b.getHeight() / 24);
+                img.setImageBitmap(android.graphics.Bitmap.createScaledBitmap(b, w, h, true));
+            }
+            addView(img, new LayoutParams(-1, -1));
+            View tint = new View(c);
+            tint.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Look.withAlpha(look.bg, 0x99), Look.withAlpha(look.bg2, 0xEB)}));
+            addView(tint, new LayoutParams(-1, -1));
+        } catch (Throwable ignored) { }
+    }
+
+    /** The cartridge floats slowly. Nothing moves if Android's animations are off. */
+    private void floatCartridge(Context c, View cart)
+    {
+        try {
+            float scale = android.provider.Settings.Global.getFloat(c.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
+            if (scale == 0f) return;
+        } catch (Throwable ignored) { }
+        android.animation.ObjectAnimator up = android.animation.ObjectAnimator.ofFloat(cart, View.TRANSLATION_Y, 0f, -look.dp(9));
+        android.animation.ObjectAnimator tilt = android.animation.ObjectAnimator.ofFloat(cart, View.ROTATION, -2f, 2f);
+        for (android.animation.ObjectAnimator a : new android.animation.ObjectAnimator[]{up, tilt}) {
+            a.setDuration(1500);
+            a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            a.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            a.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+            a.start();
+        }
+    }
+
     void finishLoading()
     {
         if (finished) return;
