@@ -1,0 +1,41 @@
+package io.github.nikalbazu24.gahvoria.core
+
+/** One screen of the introduction: a title and a short text. */
+data class Slide(val title: String, val text: String)
+
+/**
+ * The introduction shown the first time Gahvoria opens, and the "what's new" screens of big updates. Big updates
+ * get a new number in [UPDATES] with only their changes; small fixes add nothing, so the screens don't appear.
+ */
+object Intro {
+
+    val WELCOME = listOf(
+        Slide("Bienvenido a Gahvoria", "Juega tus fan games de RPG Maker y Pokémon Essentials en tu teléfono o consola, con tus partidas siempre a salvo."),
+        Slide("Añade tus juegos", "Elige la carpeta de un juego y Gahvoria lo revisa. Quitar un juego de la biblioteca nunca borra sus archivos."),
+        Slide("Ábrelos desde tu launcher", "Puedes crear accesos para Díptico, Daijishō o ES-DE, y elegir en qué carpeta quedan."),
+        Slide("Si algo falla", "Gahvoria te dice qué pasó y, si quieres, envía un informe para que se pueda corregir. Tú decides si se envía."),
+    )
+
+    /** Big updates, oldest first: (number, its changes). Only add one when the update is big. */
+    val UPDATES: List<Pair<Int, List<Slide>>> = listOf(
+        1 to listOf(
+            Slide("Pantalla de carga con contador", "Al abrir un juego ves cuánto lleva y si está cargando, tardando más de lo normal o pegado."),
+            Slide("Carátulas de verdad", "La imagen oficial de Internet cuando el juego está en el catálogo, o una de la carpeta del juego."),
+            Slide("Si un juego falla, te lo explica", "Una ventana dice qué pasó, si se puede arreglar aquí y te deja enviar el informe con un toque."),
+            Slide("Accesos donde tú quieras", "Elige la carpeta de accesos para Díptico, Daijishō o ES-DE desde Ajustes."),
+            Slide("Ajustes ordenados", "Cada opción está en un solo lugar: lo general en Ajustes y lo de cada juego en sus opciones."),
+        ),
+    )
+
+    val LATEST: Int get() = UPDATES.maxOfOrNull { it.first } ?: 0
+
+    /**
+     * What to show when the app opens, or null. New players get the welcome; players who already had games when
+     * this arrived, and players after a big update, get only the changes they haven't seen.
+     */
+    fun pending(introSeen: Boolean, seenUpdate: Int, hasGames: Boolean): List<Slide>? = when {
+        !introSeen && !hasGames -> WELCOME
+        seenUpdate < LATEST -> UPDATES.filter { it.first > seenUpdate }.flatMap { it.second }.ifEmpty { null }
+        else -> null
+    }
+}

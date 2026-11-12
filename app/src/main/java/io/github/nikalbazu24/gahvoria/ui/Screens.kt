@@ -164,13 +164,8 @@ fun AddScreen(s: AppState) {
             }
         }
         if (!s.hasAccess) {
-            Glass(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    T("Acceso a tus archivos", 16.sp, FontWeight.Bold)
-                    T("Gahvoria necesita leer las carpetas de tus juegos y guardar las partidas junto a ellos.", 13.sp, FontWeight.Medium, c.muted)
-                    PrimaryButton("Dar acceso", Modifier.fillMaxWidth()) { s.askAccess() }
-                }
-            }
+            T("Primero da acceso a tus archivos en Ajustes. Después vuelve aquí para elegir tu juego.", 14.sp, FontWeight.Medium, c.muted)
+            PrimaryButton("Ir a Ajustes", Modifier.fillMaxWidth()) { s.tab = Tab.SETTINGS }
             return@Page
         }
         T("Elige la carpeta donde está el juego. Gahvoria la lee para saber qué motor usa; no cambia ningún archivo.", 14.sp, FontWeight.Medium, c.muted)
@@ -273,34 +268,37 @@ fun SettingsScreen(s: AppState) {
                 }
             }
         }
-        Label("Archivos")
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem("Acceso a tus archivos", if (s.hasAccess) "Concedido" else "Necesario para abrir juegos",
-                onClick = if (s.hasAccess) null else ({ s.askAccess() })) {
-                T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
-            }
-        }
-        Label("Carátulas")
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem("Buscar imágenes en Internet", "Usa la imagen oficial que publicaron los creadores, cuando el juego está en el catálogo. Si no, usa una de la carpeta del juego.",
-                role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
-        }
-        Label("Otros launchers")
+        Label("Archivos y accesos")
         val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri != null) Storage.pathOf(uri)?.let { s.createShortcuts(it) }
         }
         Glass(Modifier.fillMaxWidth()) {
-            RowItem("Carpeta de accesos", (s.shortcutsPath ?: "Todavía no creada. Se propone ROMs/Gahvoria.") +
-                "\nDíptico, Daijishō, ES-DE y otros abren tus juegos desde esa carpeta."
-            )
+            RowItem("Acceso a tus archivos", if (s.hasAccess) "Concedido. Gahvoria lee tus juegos y guarda las partidas junto a ellos."
+                else "Necesario para abrir juegos y guardar partidas junto a ellos.",
+                onClick = if (s.hasAccess) null else ({ s.askAccess() })) {
+                T(if (s.hasAccess) "Listo" else "Dar acceso", 12.sp, FontWeight.Bold, if (s.hasAccess) c.ok else c.accent)
+            }
             Divider()
-            RowItem("Elegir carpeta y crear accesos", "Tú decides dónde quedan. Los archivos de los juegos no se tocan.",
-                onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+            RowItem("Carpeta de accesos para launchers", (s.shortcutsPath ?: "Todavía no creada. Se propone ROMs/Gahvoria.") +
+                "\nDíptico, Daijishō, ES-DE y otros abren tus juegos desde ahí. Nunca se borran accesos.")
             Divider()
-            RowItem(if (s.shortcutsOn) "Actualizar accesos" else "Crear accesos en la carpeta propuesta",
-                "Agrega los juegos nuevos. Nunca borra accesos.", onClick = { s.createShortcuts() }) {
+            RowItem("Elegir carpeta", null, onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
+            Divider()
+            RowItem(if (s.shortcutsOn) "Actualizar accesos" else "Crear accesos", null, onClick = { s.createShortcuts() }) {
                 T(if (s.shortcutsOn) "Actualizar" else "Crear", 12.sp, FontWeight.Bold, c.accent)
             }
+        }
+        Label("Carátulas")
+        Glass(Modifier.fillMaxWidth()) {
+            RowItem("Buscar imágenes en Internet", "La imagen oficial cuando el juego está en el catálogo; si no, una de su carpeta.",
+                role = Role.Switch, onClick = { s.chooseCoversOnline(!s.coversOnline) }) { Toggle(s.coversOnline) }
+        }
+        Label("Informes")
+        Glass(Modifier.fillMaxWidth()) {
+            RowItem("Envío de informes", if (s.canSendReports) "Activado. Solo se envían cuando tú tocas Enviar informe."
+                else "Esta versión solo puede copiarlos.")
+            Divider()
+            RowItem("Último error de cada juego", "Está en las opciones de ese juego.")
         }
         Label("Acerca de")
         Glass(Modifier.fillMaxWidth()) {
@@ -318,6 +316,8 @@ fun SettingsScreen(s: AppState) {
             RowItem("Tipografía", "Montserrat (SIL Open Font License).")
             Divider()
             RowItem("Código", "github.com/nikalbazu24/Gahvoria")
+            Divider()
+            RowItem("Ver introducción", null, onClick = { s.showIntro() }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
         }
     }
 }

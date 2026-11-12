@@ -78,6 +78,20 @@ class AppState(private val activity: Activity) {
         private set
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<Notice?>(null)
+    /** Screens of the introduction or of a big update's changes, shown over the app (null: none). */
+    var intro by mutableStateOf<List<io.github.nikalbazu24.gahvoria.core.Slide>?>(
+        io.github.nikalbazu24.gahvoria.core.Intro.pending(settings.introSeen, settings.seenUpdate, games.isNotEmpty()))
+    /** True while showing the changes of an update (the title says "Novedades"), false for the welcome. */
+    val introIsUpdate get() = intro != null && intro !== io.github.nikalbazu24.gahvoria.core.Intro.WELCOME
+
+    fun finishIntro() {
+        settings.introSeen = true
+        settings.seenUpdate = io.github.nikalbazu24.gahvoria.core.Intro.LATEST
+        intro = null
+    }
+
+    fun showIntro() { intro = io.github.nikalbazu24.gahvoria.core.Intro.WELCOME }
+
     /** The game that closed with an error, shown as a window over the blurred library until the player closes it. */
     var errorReport by mutableStateOf<ErrorReport?>(null)
     val canSendReports get() = GameReport.canSend()

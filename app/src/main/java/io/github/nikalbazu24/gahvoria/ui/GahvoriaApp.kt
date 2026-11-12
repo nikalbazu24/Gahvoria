@@ -57,7 +57,7 @@ fun GahvoriaApp(s: AppState) {
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val rail = maxWidth > maxHeight && maxWidth > 600.dp
-                val blurred = if (s.errorReport != null) Modifier.blur(16.dp) else Modifier
+                val blurred = if (s.errorReport != null || s.intro != null) Modifier.blur(16.dp) else Modifier
                 if (rail) Row(Modifier.fillMaxSize().then(blurred)) {
                     Bar(s, vertical = true, Modifier.fillMaxHeight().padding(12.dp))
                     Box(Modifier.weight(1f).fillMaxHeight()) { Content(s) }
@@ -66,6 +66,7 @@ fun GahvoriaApp(s: AppState) {
                     Bar(s, vertical = false, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
                 }
                 s.errorReport?.let { ErrorDialog(s, it) }
+                s.intro?.let { IntroScreen(it, s.introIsUpdate) { s.finishIntro() } }
                 s.notice?.let { n ->
                     NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
                 }

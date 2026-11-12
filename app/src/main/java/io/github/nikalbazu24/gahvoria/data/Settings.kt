@@ -31,6 +31,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("covers_online", true)
         set(v) = prefs.edit().putBoolean("covers_online", v).apply()
 
+    /** The introduction was finished or skipped once. */
+    var introSeen: Boolean
+        get() = prefs.getBoolean("intro_seen", false)
+        set(v) = prefs.edit().putBoolean("intro_seen", v).apply()
+
+    /** The last big update whose changes were shown (see Intro.UPDATES). */
+    var seenUpdate: Int
+        get() = prefs.getInt("seen_update", 0)
+        set(v) = prefs.edit().putInt("seen_update", v).apply()
+
     var lastCheck: Long
         get() = prefs.getLong("last_check", 0)
         set(v) = prefs.edit().putLong("last_check", v).apply()

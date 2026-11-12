@@ -316,4 +316,18 @@ class CoreTest {
         assertNull(GameProfile.excerptOf(code, 99, 2))
         assertNull(GameProfile.excerptOf(code, 0, 2))
     }
+
+    // ---- introduction ------------------------------------------------------------------------
+
+    @Test fun newPlayersSeeTheWelcomeAndUpdatesOnlyShowTheirChanges() {
+        assertEquals(Intro.WELCOME, Intro.pending(introSeen = false, seenUpdate = 0, hasGames = false))
+        // Someone who already played before the introduction existed: only the changes.
+        val changes = Intro.pending(introSeen = false, seenUpdate = 0, hasGames = true)!!
+        assertTrue(changes.isNotEmpty())
+        assertTrue(changes.none { it in Intro.WELCOME })
+        assertEquals(changes, Intro.pending(introSeen = true, seenUpdate = 0, hasGames = true))
+        // Already seen the latest big update: nothing.
+        assertNull(Intro.pending(introSeen = true, seenUpdate = Intro.LATEST, hasGames = true))
+        assertNull(Intro.pending(introSeen = true, seenUpdate = Intro.LATEST, hasGames = false))
+    }
 }
