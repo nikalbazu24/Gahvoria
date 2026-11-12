@@ -100,4 +100,74 @@ class CoreTest {
         assertNull(Release.parse("""{"versionCode": 3, "versionName": "x", "apk": "../../otro.sh"}"""))
         assertNull(Release.parse("no es json"))
     }
+
+    // ---- Essentials version and automatic engine ---------------------------------------------
+
+    private fun marshalNum(n: Int): ByteArray = when {
+        n == 0 -> byteArrayOf(0)
+        n in 1..122 -> byteArrayOf((n + 5).toByte())
+        n in 123..255 -> byteArrayOf(1, n.toByte())
+        else -> byteArrayOf(2, (n and 0xFF).toByte(), (n shr 8).toByte())
+    }
+
+    private fun zlib(text: String): ByteArray {
+        val d = java.util.zip.Deflater()
+        d.setInput(text.toByteArray())
+        d.finish()
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(4096)
+        while (!d.finished()) out.write(buf, 0, d.deflate(buf))
+        return out.toByteArray()
+    }
+
+    /** A Scripts.rxdata like RPG Maker writes: [[id, name, zlib(code)], ...] in Ruby Marshal. */
+    private fun scriptsFile(vararg sections: Pair<String, String>): File {
+        val out = java.io.ByteArrayOutputStream()
+        out.write(byteArrayOf(4, 8, '['.code.toByte()))
+        out.write(marshalNum(sections.size))
+        sections.forEachIndexed { i, (name, code) ->
+            out.write('['.code); out.write(marshalNum(3))
+            out.write('i'.code); out.write(marshalNum(i + 1))
+            out.write('"'.code); out.write(marshalNum(name.length)); out.write(name.toByteArray())
+            val z = zlib(code)
+            out.write('"'.code); out.write(marshalNum(z.size)); out.write(z)
+        }
+        val root = Files.createTempDirectory("game").toFile()
+        File(root, "Data").mkdirs()
+        File(root, "Data/Scripts.rxdata").writeBytes(out.toByteArray())
+        return root
+    }
+
+    @Test fun essentials17And18GetTheClassicEngineAutomatically() {
+        val v17 = GameProfile.read(scriptsFile("Main" to "ESSENTIALS_VERSION = \"17.2\"\nGAME_VERSION = \"1.0.3\"\n"))
+        assertTrue(v17.essentials)
+        assertEquals("17.2", v17.essentialsVersion)
+        assertEquals("1.0.3", v17.gameVersion)
+        assertEquals(Game.ENGINE_CLASSIC, v17.recommendedEngine)
+        assertEquals("Essentials 17.2", v17.label)
+
+        val v18 = GameProfile.read(scriptsFile("Settings" to "module Essentials\n  VERSION = \"18.1\"\nend\n"))
+        assertEquals(Game.ENGINE_CLASSIC, v18.recommendedEngine)
+    }
+
+    @Test fun otherGamesKeepTheModernEngine() {
+        assertEquals(Game.ENGINE_MODERN, GameProfile.read(scriptsFile("Settings" to "module Essentials\n  VERSION = \"21.1\"\nend\n")).recommendedEngine)
+        assertEquals(Game.ENGINE_MODERN, GameProfile.read(scriptsFile("Settings" to "ESSENTIALS_VERSION = \"16.2\"")).recommendedEngine)
+        // the old window resizer marks Essentials up to v16-17, which stays on the modern engine
+        val resizer = GameProfile.read(scriptsFile("Sprite_Resizer" to "x", "Main" to "ESSENTIALS_VERSION = \"17.2\""))
+        assertTrue(resizer.oldResizer)
+        assertEquals(Game.ENGINE_MODERN, resizer.recommendedEngine)
+        val plain = GameProfile.read(scriptsFile("Main" to "puts 1"))
+        assertFalse(plain.essentials)
+        assertEquals("", plain.label)
+        assertEquals(Game.ENGINE_MODERN, plain.recommendedEngine)
+    }
+
+    @Test fun brokenOrMissingScriptsNeverCrash() {
+        assertEquals(GameProfile(), GameProfile.read(folder("Game.ini")))
+        val root = folder("Data/Scripts.rxdata")  // a file that is not Marshal data
+        assertEquals(GameProfile(), GameProfile.read(root))
+        File(root, "Data/Scripts.rxdata").writeBytes(byteArrayOf(4, 8, '['.code.toByte(), 100, 1))
+        assertEquals(GameProfile(), GameProfile.read(root))
+    }
 }

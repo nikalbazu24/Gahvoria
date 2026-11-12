@@ -113,6 +113,7 @@ class AppState(private val activity: Activity) {
     }
 
     fun classicAvailable() = Launcher.classicAvailable(activity)
+    fun profile(game: Game) = Launcher.profile(game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)
 

@@ -6,7 +6,7 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 |---|---|---|---|
 | 0. Base | Repositorio limpio, motor mkxp-z como módulo, app nueva en Kotlin + Compose, actualizador, pruebas y compilación | Aprobar la estructura | En curso |
 | 1. Diseño | Pantallas según el boceto v7 aprobado: Biblioteca, Añadir, Actualizar, Ajustes, opciones por juego | Revisar en teléfono y Thor | Primera versión dentro de la fase 0 |
-| 2. RPG Maker y Essentials | Lectura de versión de Essentials, elección automática de motor, RTP, formato de pantalla | Probar 3 juegos en la Thor | Pendiente |
+| 2. RPG Maker y Essentials | Lectura de versión de Essentials, elección automática de motor, RTP, formato de pantalla | Probar 3 juegos en la Thor | En curso: lectura de versión y motor automático hechos; falta probar en la Thor |
 | 2b. Godot | Detección por `project.godot`, arranque y partidas | Probar 1 juego Godot | Pendiente |
 | 3. Jugar | Mando configurable, respaldos y restauración con doble confirmación, menú dentro del juego | Probar controles y restaurar | Pendiente |
 | 4. Reportes, creadores y Unity | Reporte con un toque, panel de creadores, investigación de Unity | Decidir si Unity sigue | Pendiente |
