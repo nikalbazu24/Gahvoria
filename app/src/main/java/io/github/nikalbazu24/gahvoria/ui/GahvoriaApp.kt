@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -56,13 +57,15 @@ fun GahvoriaApp(s: AppState) {
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val rail = maxWidth > maxHeight && maxWidth > 600.dp
-                if (rail) Row(Modifier.fillMaxSize()) {
+                val blurred = if (s.errorReport != null) Modifier.blur(16.dp) else Modifier
+                if (rail) Row(Modifier.fillMaxSize().then(blurred)) {
                     Bar(s, vertical = true, Modifier.fillMaxHeight().padding(12.dp))
                     Box(Modifier.weight(1f).fillMaxHeight()) { Content(s) }
-                } else Column(Modifier.fillMaxSize()) {
+                } else Column(Modifier.fillMaxSize().then(blurred)) {
                     Box(Modifier.weight(1f).fillMaxWidth()) { Content(s) }
                     Bar(s, vertical = false, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
                 }
+                s.errorReport?.let { ErrorDialog(s, it) }
                 s.notice?.let { n ->
                     NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
                 }

@@ -79,7 +79,7 @@ fun LibraryScreen(s: AppState) {
                     HorizontalPager(
                         state = pager,
                         contentPadding = PaddingValues(horizontal = ((railWidth - coverW) / 2).coerceAtLeast(0.dp)),
-                        pageSpacing = 14.dp,
+                        pageSpacing = 26.dp,
                         modifier = Modifier.fillMaxWidth().height(coverH + 24.dp),
                     ) { page ->
                         val offset = ((pager.currentPage - page) + pager.currentPageOffsetFraction).absoluteValue.coerceAtMost(1f)
@@ -88,17 +88,17 @@ fun LibraryScreen(s: AppState) {
                             scaleX = k; scaleY = k; alpha = 1f - offset * .45f
                         }) { scope.launch { if (page == pager.currentPage) s.play(s.games[page]) else pager.animateScrollToPage(page) } }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(16.dp))
                     Dots(s.games.size, pager.currentPage)
                 }
             }
             if (wide) Row(Modifier.fillMaxSize().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 carousel(Modifier.weight(1f))
-                Info(s, game, Modifier.weight(1f).padding(end = 24.dp).verticalScroll(rememberScrollState()))
+                Info(s, game, Modifier.weight(1f).padding(start = 28.dp, end = 32.dp).verticalScroll(rememberScrollState()))
             } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 carousel(Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
-                Info(s, game, Modifier.padding(horizontal = 18.dp))
+                Info(s, game, Modifier.padding(horizontal = 24.dp))
                 Spacer(Modifier.height(16.dp))
             }
         }
@@ -152,7 +152,7 @@ private fun Cover(s: AppState, g: Game, index: Int, modifier: Modifier, onClick:
         }
         T(g.kind.label.uppercase(), 10.sp, FontWeight.Bold, Color(0xFFF2F2F6),
             Modifier.padding(14.dp).clip(CircleShape).background(Color(0x80080810)).padding(horizontal = 10.dp, vertical = 5.dp), spacing = 1.sp)
-        T(g.title, 20.sp, FontWeight.ExtraBold, Color(0xFFF2F2F6), Modifier.align(Alignment.BottomStart).padding(16.dp), maxLines = 3)
+        if (shown == null) T(g.title, 20.sp, FontWeight.ExtraBold, Color(0xFFF2F2F6), Modifier.align(Alignment.BottomStart).padding(16.dp), maxLines = 3)
     }
 }
 
@@ -171,7 +171,7 @@ private fun Info(s: AppState, g: Game, modifier: Modifier) {
     val c = LocalColors.current
     val support = g.inspection.support
     val saves = remember(g.path, g.lastPlayed) { if (g.kind.isRpgMaker) Saves.list(s.saveDir(g)) else emptyList<File>() }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         T(g.title, 28.sp, FontWeight.ExtraBold, maxLines = 2)
         Row(verticalAlignment = Alignment.CenterVertically) {
             T(g.inspection.engineLabel, 12.sp, FontWeight.SemiBold, c.muted)

@@ -46,6 +46,9 @@ sealed interface UpdateState {
 }
 
 /** Everything the screens show, in one place. Slow work runs on a background thread. */
+/** An error a game left, ready to show: the game, the report text and the plain-words diagnosis. */
+data class ErrorReport(val game: Game, val text: String, val diagnosis: io.github.nikalbazu24.gahvoria.core.Diagnosis)
+
 class AppState(private val activity: Activity) {
     val settings = Settings(activity)
     private val library = Library(File(activity.filesDir, "library.tsv"))
@@ -75,6 +78,9 @@ class AppState(private val activity: Activity) {
         private set
     val installedCode = AppUpdater.installedCode(activity)
     var notice by mutableStateOf<Notice?>(null)
+    /** The game that closed with an error, shown as a window over the blurred library until the player closes it. */
+    var errorReport by mutableStateOf<ErrorReport?>(null)
+    val canSendReports get() = GameReport.canSend()
     var coversOnline by mutableStateOf(settings.coversOnline)
         private set
     val covers = Covers(activity) { settings.coversOnline }
@@ -120,22 +126,10 @@ class AppState(private val activity: Activity) {
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
             val played0 = library.load().firstOrNull { it.path == path }
             GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })?.let { err ->
-                val title = library.load().firstOrNull { it.path == path }?.title.orEmpty()
-                val report = "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: $title\n\n$err"
-                if (GameReport.canSend()) {
-                    say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Enviar informe") {
-                        say("Enviando informe…", NoticeKind.INFO)
-                        worker.execute {
-                            val msg = runCatching { GameReport.send("informe-" + title, report) }
-                                .fold({ "Informe enviado. Gracias." }, { "No se pudo enviar: " + (it.message ?: "sin conexión") + ". Puedes copiarlo y mandarlo tú." })
-                            activity.runOnUiThread { say(msg, if (msg.startsWith("Informe")) NoticeKind.OK else NoticeKind.WARN) }
-                        }
-                    }
-                } else {
-                    say("El juego se cerró con un error: " + GameReport.firstLine(err), NoticeKind.ERROR, "Copiar informe") {
-                        GameReport.copy(activity, report)
-                        say("Informe copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK)
-                    }
+                if (played0 != null) {
+                    val modern = Launcher.engineFor(activity, played0) != "classic"
+                    val d = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.diagnose(err, modern, classicAvailable())
+                    errorReport = ErrorReport(played0, err, d)
                 }
             }
         }
@@ -179,6 +173,13 @@ class AppState(private val activity: Activity) {
     fun lastLoad(game: Game): LoadRecord? = Launcher.lastLoad(activity, game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)
+
+    /** The diagnosis said the classic engine may fix it: switch this game to it and open it again. */
+    fun retryClassic(e: ErrorReport) {
+        errorReport = null
+        changeGame(e.game.path) { it.copy(engine = Game.ENGINE_CLASSIC) }
+        games.firstOrNull { it.path == e.game.path }?.let { play(it) }
+    }
 
     /** Sends (or copies, if this build cannot send) the last error this game left, whenever it happened. */
     fun lastReport(game: Game) = GameReport.latest(activity, File(game.path), saveDir(game))

@@ -278,4 +278,31 @@ class CoreTest {
         image(File(dir, "Graphics/Titles/tiny.png"), 10)
         assertTrue(CoverFinder.find(dir)!!.length() >= 2000)
     }
+
+    // ---- error diagnosis ---------------------------------------------------------------------
+
+    @Test fun errorsAreExplainedAndOnlyOfferAFixWhenThereIsOne() {
+        val stack = ErrorDiagnosis.diagnose("Script 'Widescreen' line 409: SystemStackError occured.\n\nstack level too deep", true, true)
+        assertEquals(Fix.NONE, stack.fix)
+        assertTrue(stack.detail.contains("Widescreen"))
+        assertTrue(stack.detail.contains("409"))
+
+        val file = ErrorDiagnosis.diagnose("Script 'Main' line 3: Errno::ENOENT occured.\n\nNo such file or directory - Graphics/Characters/trainer_000.png", true, true)
+        assertEquals("Falta un archivo del juego", file.title)
+        assertTrue(file.detail.contains("trainer_000.png"))
+        assertEquals(Fix.NONE, file.fix)
+
+        val old = ErrorDiagnosis.diagnose("Script 'Main' line 1: SyntaxError occured.", true, true)
+        assertEquals(Fix.CLASSIC_ENGINE, old.fix)
+        // Already on the classic engine, or without it: no promise of a fix.
+        assertEquals(Fix.NONE, ErrorDiagnosis.diagnose("Script 'Main' line 1: SyntaxError occured.", false, true).fix)
+        assertEquals(Fix.NONE, ErrorDiagnosis.diagnose("Script 'Main' line 1: SyntaxError occured.", true, false).fix)
+
+        assertEquals(Fix.TRY_AGAIN, ErrorDiagnosis.diagnose("NoMemoryError: failed to allocate memory", true, true).fix)
+
+        val unknown = ErrorDiagnosis.diagnose("Script 'X' line 7: RuntimeError occured.\n\nalgo raro", true, true)
+        assertEquals(Fix.NONE, unknown.fix)
+        assertTrue(unknown.detail.contains("RuntimeError"))
+        assertEquals(Fix.NONE, ErrorDiagnosis.diagnose("", true, true).fix)
+    }
 }
