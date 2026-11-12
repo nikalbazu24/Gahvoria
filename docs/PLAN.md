@@ -48,3 +48,12 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 
 - Instalación desde .7z y .rar (Commons Compress y junrar), detectados por sus primeros bytes. RAR versión 5 y archivos con contraseña: aviso claro, sin instalar. Sin probar en el teléfono.
 - Nombre «Gahvoria»: confirmado por Nicolás (11 nov: sin choques de marca). Los títulos de juegos de la tienda siguen sin la palabra «Pokémon».
+
+## Panel de creador y canal estable (0.4, en pruebas)
+- Ajustes → Creadores: «Modo creador» (apagado por defecto). Cada juego se marca «es mío»; solo esos guardan historial de errores en `filesDir/creator/<juego>/<hora>.txt` (últimos 20, sin repetir el mismo error seguido). Nada sale del teléfono sin que el creador lo envíe.
+- Panel: Resumen (versión de Essentials y del juego, motor, pantalla, carga, tiempo, carpeta, partidas; copiar datos; proponer en la tienda con esos datos), Chequeo, Informes (detalle con diagnóstico, script y registro; enviar) y Pedir ajuste (tipo, descripción de al menos 10 caracteres, adjuntos opcionales).
+- `GameCheck` (core, con pruebas) solo lee archivos: Game.ini, Data, scripts, RTP, .dll, rutas `C:\`, programas del sistema, Win32API (el motor lleva una parte), GAME_VERSION. No ejecuta el juego: no sustituye probar en la Thor.
+- Tienda: campo opcional `version` en `store.json`; si es mayor que el GAME_VERSION del juego, sus opciones muestran «Versión nueva en la tienda».
+- No existe todavía un canal jugador → creador: los informes y pedidos llegan al buzón privado de Nicolás, no al creador del juego.
+- Canal de actualizaciones: `dev` (por defecto, cada compilación) o `stable` (flujo manual `promote.yml`, copia los archivos de `dev` a Releases → stable). Si aún no hay estable, la app lo dice y no falla. Cambiar el valor por defecto a `stable` queda para cuando haya una versión estable probada.
+- Pendiente: probar el panel en el teléfono y la Thor; ejecutar «Promover a estable» la primera vez.

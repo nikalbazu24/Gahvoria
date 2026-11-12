@@ -1,0 +1,43 @@
+# Promueve a estable la versión que hay hoy en Releases → dev (copia gahvoria.apk y version.json).
+# Es manual: hay que escribir PROMOVER para que se ejecute. No compila nada nuevo.
+
+name: Promover a estable
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: "Escribe PROMOVER para publicar la versión de dev como estable"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    if: ${{ inputs.confirmar == 'PROMOVER' }}
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bajar lo que hay en dev
+        run: |
+          mkdir dev
+          gh release download dev --dir dev --pattern gahvoria.apk --pattern version.json
+          cat dev/version.json
+
+      - name: Comprobar que es el APK completo
+        run: python3 tools/verify_apk.py dev/gahvoria.apk dev/version.json
+
+      - name: Publicar como estable
+        run: |
+          NAME=$(python3 -c "import json;print(json.load(open('dev/version.json'))['versionName'])")
+          gh release delete stable --cleanup-tag --yes || true
+          gh release create stable dev/gahvoria.apk dev/version.json \
+            --target "$GITHUB_SHA" --latest \
+            --title "Gahvoria $NAME (estable)" \
+            --notes "Versión estable $NAME, promovida a mano desde dev. Descarga gahvoria.apk e instálala en tu Android de 64 bits. Gahvoria avisa sola cuando hay una versión estable nueva (Actualizar → Solo versiones estables)."

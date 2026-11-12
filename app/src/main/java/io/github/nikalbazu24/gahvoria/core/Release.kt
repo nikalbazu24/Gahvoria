@@ -16,3 +16,17 @@ data class Release(val versionCode: Int, val versionName: String, val apk: Strin
         }
     }
 }
+
+/** Where the updater looks: "dev" (every build) or "stable" (a version the maintainer chose to promote). */
+object UpdateChannel {
+    const val DEV = "dev"
+    const val STABLE = "stable"
+
+    fun valid(id: String?) = id == DEV || id == STABLE
+
+    /** The download folder of a channel, from the dev one ("…/releases/download/dev/"). */
+    fun base(devBase: String, channel: String): String {
+        val root = devBase.removeSuffix("/").removeSuffix("/$DEV")
+        return root + "/" + (if (valid(channel)) channel else DEV) + "/"
+    }
+}

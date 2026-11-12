@@ -43,11 +43,12 @@ fun StoreScreen(s: AppState) {
     var view by remember { mutableIntStateOf(0) }
     var sel by remember { mutableStateOf<StoreGame?>(null) }
     LaunchedEffect(Unit) { if (s.storeGames.isEmpty()) s.loadStore() }
+    LaunchedEffect(s.proposalFor) { if (s.proposalFor != null) view = 3 }
     BackHandler(enabled = view != 0) { view = if (view == 2 && sel != null) 1 else 0 }
     when (view) {
         1 -> sel?.let { GameSheet(s, it, onBack = { view = 0 }, onInstall = { view = 2 }) } ?: run { view = 0 }
         2 -> ZipView(s, onBack = { view = if (sel != null) 1 else 0 })
-        3 -> CreatorView(s, onBack = { view = 0 })
+        3 -> CreatorView(s, s.proposalFor, onBack = { s.proposalFor = null; view = 0 })
         else -> Page("Tienda") {
             var query by remember { mutableStateOf("") }
             var filter by remember { mutableIntStateOf(0) }
@@ -91,7 +92,7 @@ fun StoreScreen(s: AppState) {
 private fun langName(g: StoreGame) = when (g.lang) { "en" -> "Inglés"; "es" -> "Español"; else -> "Idioma por confirmar" }
 
 @Composable
-private fun Tag(text: String, color: androidx.compose.ui.graphics.Color) {
+internal fun Tag(text: String, color: androidx.compose.ui.graphics.Color) {
     val c = LocalColors.current
     Box(Modifier.background(c.glass, RoundedCornerShape(99.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) { T(text, 10.sp, FontWeight.ExtraBold, color) }
 }
@@ -110,6 +111,7 @@ private fun GameSheet(s: AppState, g: StoreGame, onBack: () -> Unit, onInstall: 
                 }
             }
             Divider()
+            if (g.version.isNotEmpty()) { RowItem("Versión publicada", g.version); Divider() }
             RowItem("Compatibilidad", if (g.tested) "Probado en la Thor." else "Sin probar: nadie lo ha abierto todavía en Gahvoria. Pruébalo y cuéntame cómo va.")
             Divider()
             RowItem("Idioma del juego", langName(g) + if (g.lang == "en" || g.lang == "?") ". Si está en otro idioma, puedes activar el traductor en sus opciones." else "")
@@ -160,9 +162,9 @@ private fun ZipView(s: AppState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun CreatorView(s: AppState, onBack: () -> Unit) {
+private fun CreatorView(s: AppState, draft: io.github.nikalbazu24.gahvoria.core.Game?, onBack: () -> Unit) {
     val c = LocalColors.current
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(draft?.title ?: "") }
     var page by remember { mutableStateOf("") }
     var lang by remember { mutableIntStateOf(0) }
     var contact by remember { mutableStateOf("") }
@@ -177,22 +179,23 @@ private fun CreatorView(s: AppState, onBack: () -> Unit) {
                 Field(contact, "Cómo contactarte (correo o usuario)") { contact = it }
             }
         }
+        if (draft != null) T("Gahvoria agrega lo que detectó de tu juego (versión, base, motor) para que la revisión sea más rápida. No se envían archivos.", 12.sp, FontWeight.Medium, c.muted)
         T("Solo se publica el enlace a tu página, tu nombre y una descripción corta. Puedes pedir que lo quitemos cuando quieras. Esto no sube ningún archivo.", 12.sp, FontWeight.Medium, c.muted)
         val ok = name.isNotBlank() && page.trim().startsWith("https://") && contact.isNotBlank() && !sending && !sent
         PrimaryButton(if (sent) "Enviado" else "Enviar para revisión", Modifier.fillMaxWidth(), enabled = ok) {
             sending = true
-            s.sendProposal(name.trim(), page.trim(), listOf("Inglés", "Español", "Otro")[lang], contact.trim()) { done -> sending = false; sent = done }
+            s.sendProposal(name.trim(), page.trim(), listOf("Inglés", "Español", "Otro")[lang], contact.trim(), draft?.let { s.summaryText(it).replace("\n", " · ") } ?: "") { done -> sending = false; sent = done }
         }
         if (!page.trim().startsWith("https://") && page.isNotEmpty()) T("El enlace debe empezar con https://", 12.sp, FontWeight.Medium, c.warn)
     }
 }
 
 @Composable
-private fun Field(value: String, hint: String, onChange: (String) -> Unit) {
+internal fun Field(value: String, hint: String, singleLine: Boolean = true, onChange: (String) -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(14.dp)
     BasicTextField(
-        value, onChange, singleLine = true,
+        value, onChange, singleLine = singleLine,
         textStyle = TextStyle(color = c.ink, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = Montserrat),
         cursorBrush = SolidColor(c.accent),
         modifier = Modifier.fillMaxWidth().background(c.glass, shape).border(1.dp, c.line, shape).padding(14.dp),

@@ -37,6 +37,21 @@ class Settings(context: Context) {
     fun setPad(path: String, spec: String) =
         prefs.edit().apply { if (spec.isEmpty()) remove("pad:$path") else putString("pad:$path", spec) }.apply()
 
+    /** "dev" (every build, the default for now) or "stable" (only versions the maintainer promoted). */
+    var updateChannel: String
+        get() = prefs.getString("update_channel", io.github.nikalbazu24.gahvoria.core.UpdateChannel.DEV)
+            ?.takeIf { io.github.nikalbazu24.gahvoria.core.UpdateChannel.valid(it) } ?: io.github.nikalbazu24.gahvoria.core.UpdateChannel.DEV
+        set(v) = prefs.edit().putString("update_channel", v).apply()
+
+    /** Shows the creator panel. Off until the player turns it on. */
+    var creatorMode: Boolean
+        get() = prefs.getBoolean("creator_mode", false)
+        set(v) = prefs.edit().putBoolean("creator_mode", v).apply()
+
+    /** The games the player marked as their own (made by them). */
+    fun mine(path: String): Boolean = prefs.getBoolean("mine:$path", false)
+    fun setMine(path: String, on: Boolean) = prefs.edit().apply { if (on) putBoolean("mine:$path", true) else remove("mine:$path") }.apply()
+
     /** The engine ("modern"/"classic") a game was last opened with, to know which one failed or worked. */
     fun lastEngine(path: String): String? = prefs.getString("engine_last:$path", null)
     fun setLastEngine(path: String, engine: String) = prefs.edit().putString("engine_last:$path", engine).apply()
@@ -82,7 +97,7 @@ class Settings(context: Context) {
 
     /** Everything kept about one game (touch layout, translation, screen, engine memory) when it is deleted. */
     fun forgetGame(path: String) = prefs.edit().apply {
-        for (k in listOf("pad", "tr_game", "wide", "screen", "retro", "engine_last", "engine_ok", "engine_retry")) remove("$k:$path")
+        for (k in listOf("pad", "tr_game", "wide", "screen", "retro", "engine_last", "engine_ok", "engine_retry", "mine")) remove("$k:$path")
     }.apply()
 
     /** The introduction was finished or skipped once. */

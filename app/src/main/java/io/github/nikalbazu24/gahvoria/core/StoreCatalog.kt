@@ -18,6 +18,8 @@ data class StoreGame(
     val description: String,
     val note: String,
     val aliases: List<String>,
+    /** The version the creator published, or "" when the list does not say. */
+    val version: String = "",
 ) {
     val tested get() = status == "tested"
     val installableHere get() = format == "zip"
@@ -48,6 +50,7 @@ object StoreCatalog {
                 description = m["description"] as? String ?: "",
                 note = m["note"] as? String ?: "",
                 aliases = (m["aliases"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                version = (m["version"] as? String)?.trim().orEmpty(),
             )
         }
     }
@@ -59,5 +62,24 @@ object StoreCatalog {
             (lang == "all" || g.lang == lang) && (!testedOnly || g.tested) &&
                 (q.isEmpty() || (listOf(g.title, g.creator) + g.aliases).any { CoverCatalog.norm(it).contains(q) })
         }
+    }
+
+    /** The store entry for a game in the library, by title or alias, or null. */
+    fun match(all: List<StoreGame>, title: String): StoreGame? {
+        val t = CoverCatalog.norm(title)
+        if (t.isEmpty()) return null
+        return all.firstOrNull { g -> (listOf(g.title) + g.aliases).any { CoverCatalog.norm(it) == t } }
+    }
+
+    /** True when [store] is a higher version than [installed] ("1.10" > "1.9", "v2.0" > "1.5.3"). Unknown versions are never newer. */
+    fun isNewer(store: String, installed: String): Boolean {
+        fun parts(v: String) = Regex("\\d+").findAll(v).map { it.value.toIntOrNull() ?: 0 }.toList()
+        val a = parts(store); val b = parts(installed)
+        if (a.isEmpty() || b.isEmpty()) return false
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
+            if (x != y) return x > y
+        }
+        return false
     }
 }

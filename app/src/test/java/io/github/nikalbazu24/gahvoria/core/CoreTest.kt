@@ -430,4 +430,89 @@ class CoreTest {
         assertEquals(ArchiveKind.UNKNOWN, ArchiveKind.detect(b(0x4D, 0x5A, 0x90, 0)))
         assertEquals(ArchiveKind.UNKNOWN, ArchiveKind.detect(ByteArray(0)))
     }
+
+    @Test fun theCheckFindsWhatBreaksOnAndroidAndNothingElse() {
+        val ini = GameCheck.checkIni("[Game]\r\nRTP1=Standard\r\nRTP2=\r\nRTP3=\r\n")
+        assertEquals(1, ini.size)
+        assertEquals(Level.WARN, ini[0].level)
+        assertTrue(GameCheck.checkIni("[Game]\r\nRTP1=\r\nTitle=Mi juego\r\n").isEmpty())
+
+        val bad = GameCheck.checkScripts(listOf(
+            "Main" to "Win32API.new('user32', 'GetKeyState', 'i', 'i')",
+            "Extra" to "lib = Win32API.new('mylib.dll', 'f', 'i', 'i')\nFile.open(\"C:\\\\Users\\\\yo\\\\x.txt\")",
+            "Run" to "system('notepad.exe')",
+            "Settings" to "GAME_VERSION = \"1.4\"",
+        ))
+        assertTrue(bad.any { it.level == Level.WARN && it.title.contains("Rutas de Windows") })
+        assertTrue(bad.any { it.level == Level.WARN && it.title.contains("programas") })
+        assertTrue(bad.any { it.level == Level.INFO && it.title.contains("Win32API") })
+        assertTrue(bad.any { it.title.contains("1.4") })
+        assertFalse(bad.any { it.level == Level.OK && it.title.startsWith("No encontré") })
+
+        val clean = GameCheck.checkScripts(listOf("Settings" to "GAME_VERSION = '2.0'\nmodule Essentials\n  VERSION = \"21.1\"\nend"))
+        assertEquals(Level.OK, clean[0].level)
+        assertTrue(clean.any { it.title.contains("Essentials 21.1") })
+        assertEquals("Sin problemas a la vista", GameCheck.summary(clean))
+        assertEquals("1 problema y 2 avisos", GameCheck.summary(listOf(
+            Finding(Level.PROBLEM, "a", ""), Finding(Level.WARN, "b", ""), Finding(Level.WARN, "c", ""))))
+        val none = GameCheck.checkScripts(listOf("Main" to "puts 1"))
+        assertTrue(none.any { it.title == "No hay GAME_VERSION" })
+
+        val noIni = GameCheck.check(folder("Data/Scripts.rxdata"))
+        assertTrue(noIni.any { it.level == Level.PROBLEM && it.title.contains("Game.ini") })
+        val packed = GameCheck.check(folder("Game.ini", "Data/x", "Game.rgss3a"))
+        assertTrue(packed.any { it.title.contains("comprimido") })
+    }
+
+    @Test fun storeVersionsCompareByNumberNotByText() {
+        assertTrue(StoreCatalog.isNewer("1.10", "1.9"))
+        assertTrue(StoreCatalog.isNewer("v2.0", "1.5.3"))
+        assertFalse(StoreCatalog.isNewer("1.2", "1.2.0"))
+        assertFalse(StoreCatalog.isNewer("1.2", "1.3"))
+        assertFalse(StoreCatalog.isNewer("", "1.0"))
+        assertFalse(StoreCatalog.isNewer("2.0", ""))
+        val list = StoreCatalog.parse("""{"games":[{"title":"Mi Juego","page":"https://x.dev","aliases":["Mi Juego Remake"],"version":" 1.3 "}]}""")
+        assertEquals("1.3", list[0].version)
+        assertTrue(StoreCatalog.match(list, "mi juego remake") != null)
+        assertNull(StoreCatalog.match(list, "Otro"))
+    }
+
+    @Test fun theErrorHistoryKeepsTheLatestAndSkipsRepeats() {
+        val log = CreatorLog(Files.createTempDirectory("clog").toFile(), keep = 3)
+        val key = log.key("/juegos/Mi Juego", "Mi Juego")
+        assertTrue(key.startsWith("mi-juego-"))
+        assertTrue(log.add(key, 1000, "uno") != null)
+        assertNull(log.add(key, 2000, "uno"))
+        assertTrue(log.add(key, 3000, "dos") != null)
+        assertTrue(log.add(key, 3000, "tres") != null)  // same millisecond: still saved
+        assertTrue(log.add(key, 5000, "cuatro") != null)
+        val all = log.list(key)
+        assertEquals(3, all.size)
+        assertEquals("cuatro", all[0].text())
+        assertEquals("cuatro", all[0].headline())
+        assertEquals(3, log.count(key))
+        log.clear(key)
+        assertEquals(0, log.count(key))
+        assertEquals(0, log.count("nada"))
+    }
+
+    @Test fun creatorTextsCarryOnlyWhatWasChosen() {
+        val sum = CreatorText.summary("Mi Juego", "0.4", "Essentials 21.1", "", "moderno", "original (4:3)", null, 12, "/j/Mi Juego", 3)
+        assertTrue(sum.contains("Versión del juego: no indicada") && sum.contains("Última carga: sin datos") && sum.contains("Partidas: 3"))
+        val bare = CreatorText.request(1, "  Va lento en la ciudad  ", null, null)
+        assertTrue(bare.contains("Tipo: Va lento") && bare.contains("Va lento en la ciudad"))
+        assertFalse(bare.contains("Datos del juego") || bare.contains("Último informe"))
+        val full = CreatorText.request(0, "Se cierra", sum, "boom")
+        assertTrue(full.contains("Datos del juego") && full.contains("Último informe") && full.contains("boom"))
+        assertTrue(CreatorText.proposal("A", "https://a", "Español", "yo", "x").contains("Detectado por Gahvoria: x"))
+    }
+
+    @Test fun updateChannelsPointToTheirOwnFolder() {
+        val dev = "https://github.com/nikalbazu24/Gahvoria/releases/download/dev/"
+        assertEquals(dev, UpdateChannel.base(dev, UpdateChannel.DEV))
+        assertEquals("https://github.com/nikalbazu24/Gahvoria/releases/download/stable/", UpdateChannel.base(dev, UpdateChannel.STABLE))
+        assertEquals(dev, UpdateChannel.base(dev, "cualquier cosa"))
+        assertTrue(UpdateChannel.valid("stable") && !UpdateChannel.valid(null) && !UpdateChannel.valid("x"))
+    }
 }
+

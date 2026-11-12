@@ -85,6 +85,7 @@ fun GahvoriaApp(s: AppState) {
 private fun Content(s: AppState) {
     val g = s.optionsFor
     if (g != null) { GameScreen(s, g); return }
+    if (s.creatorOpen) { CreatorScreen(s); return }
     if (s.tab != Tab.LIBRARY) BackHandler { s.tab = Tab.LIBRARY }
     when (s.tab) {
         Tab.LIBRARY -> LibraryScreen(s)

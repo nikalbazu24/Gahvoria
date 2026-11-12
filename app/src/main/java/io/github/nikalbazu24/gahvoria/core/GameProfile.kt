@@ -93,6 +93,25 @@ data class GameProfile(
             return GameProfile(essentials, version, gameVersion, oldResizer)
         }
 
+        /** Every script section as (name, code), for the creator's pre-flight check. Empty if the scripts can't be read. */
+        fun allScripts(dir: File): List<Pair<String, String>> {
+            val scripts = scriptsFile(dir) ?: return emptyList()
+            return runCatching { allSections(scripts.readBytes()) }.getOrDefault(emptyList())
+        }
+
+        internal fun allSections(data: ByteArray): List<Pair<String, String>> {
+            val root = Marshal(data).value() as? List<*> ?: return emptyList()
+            val out = ArrayList<Pair<String, String>>()
+            for (o in root) {
+                val e = o as? List<*> ?: continue
+                if (e.size < 3) continue
+                val name = (e[1] as? ByteArray)?.toString(Charsets.UTF_8).orEmpty()
+                val code = (e[2] as? ByteArray)?.let { inflate(it) } ?: continue
+                out.add(name to code)
+            }
+            return out
+        }
+
         private fun child(dir: File, name: String): File? {
             val f = File(dir, name)
             if (f.exists()) return f

@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -188,6 +189,25 @@ fun GameScreen(s: AppState, g: Game) {
                 System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) + ": " + GameReport.firstLine(lastErr.second),
                 onClick = { s.sendReport(g, lastErr.second) }) { T("Enviar", 12.sp, FontWeight.Bold, c.accent) }
         }
+        LaunchedEffect(Unit) { if (s.storeGames.isEmpty()) s.loadStore() }
+        s.storeUpdate(g)?.let { n ->
+            Glass(Modifier.fillMaxWidth()) {
+                RowItem("Versión nueva en la tienda", "El creador publicó la ${n.version} y tienes la ${s.profile(g).gameVersion}. Tus partidas no se tocan al actualizar.",
+                    titleColor = c.accent, onClick = { s.openPage(n.page) }) { T("Abrir", 12.sp, FontWeight.Bold, c.accent) }
+            }
+        }
+        if (s.creatorMode) {
+            s.mineVersion
+            val mine = s.isMine(g)
+            Glass(Modifier.fillMaxWidth()) {
+                RowItem("Este juego es mío", "Guarda el historial de sus errores y activa su panel de creador.",
+                    role = Role.Switch, onClick = { s.setMine(g, !mine) }) { Toggle(mine) }
+                if (mine) {
+                    Divider()
+                    RowItem("Panel de creador", "Resumen, chequeo, informes y pedidos de ajuste.", onClick = { s.openCreator(g) }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
         var step by remember(g.path) { mutableIntStateOf(0) }
         Glass(Modifier.fillMaxWidth()) {
@@ -267,6 +287,7 @@ fun UpdatesScreen(s: AppState) {
                     is UpdateState.Available, is UpdateState.Downloading, is UpdateState.Ready -> "Nueva versión"
                     is UpdateState.UpToDate -> "Estás al día"
                     is UpdateState.Offline -> "Sin conexión"
+                    is UpdateState.NoStable -> "Sin versión estable"
                     is UpdateState.Failed -> "No se pudo"
                     else -> "Versión instalada"
                 }
@@ -281,6 +302,7 @@ fun UpdatesScreen(s: AppState) {
                     is UpdateState.Ready -> "Lista para instalar. Android te pedirá confirmar."
                     is UpdateState.UpToDate -> "No hay una versión más nueva."
                     is UpdateState.Offline -> "No pude revisar. Comprueba tu conexión."
+                    is UpdateState.NoStable -> "Todavía no hay una versión estable publicada. Elige «Todas las versiones» abajo para recibir las de prueba."
                     is UpdateState.Failed -> u.message
                     is UpdateState.Checking -> "Buscando…"
                     else -> "Gahvoria nunca instala nada sin que lo confirmes."
@@ -292,6 +314,17 @@ fun UpdatesScreen(s: AppState) {
                     is UpdateState.Downloading, is UpdateState.Checking -> {}
                     else -> PrimaryButton("Buscar actualización", Modifier.fillMaxWidth()) { s.checkUpdate() }
                 }
+            }
+        }
+        Glass(Modifier.fillMaxWidth()) {
+            RowItem("Todas las versiones", "Recibes cada mejora en cuanto está lista. Puede traer cambios a medio probar.", role = Role.RadioButton,
+                onClick = { s.chooseChannel(io.github.nikalbazu24.gahvoria.core.UpdateChannel.DEV) }) {
+                Radio(s.updateChannel == io.github.nikalbazu24.gahvoria.core.UpdateChannel.DEV)
+            }
+            Divider()
+            RowItem("Solo versiones estables", "Recibes únicamente las que el equipo marcó como listas.", role = Role.RadioButton,
+                onClick = { s.chooseChannel(io.github.nikalbazu24.gahvoria.core.UpdateChannel.STABLE) }) {
+                Radio(s.updateChannel == io.github.nikalbazu24.gahvoria.core.UpdateChannel.STABLE)
             }
         }
         Glass(Modifier.fillMaxWidth()) {
@@ -314,6 +347,7 @@ private enum class Sec(val title: String, val hint: String, val words: String) {
     COVERS("Carátulas", "Imágenes de los juegos", "caratulas portadas imagenes internet catalogo"),
     REPORTS("Informes", "Cuando un juego falla", "informes errores enviar drive"),
     TRANSLATE("Traducción", "Juegos en otro idioma", "traduccion traductor idioma ingles"),
+    CREATOR("Creadores", "Probar y enlazar tu juego", "creadores creador panel fangame juego propio errores informes chequeo tienda"),
     ABOUT("Acerca de", "Versión e introducción", "acerca version introduccion licencias motor");
 
     fun matches(q: String): Boolean {
@@ -334,6 +368,7 @@ private fun secColor(sec: Sec): androidx.compose.ui.graphics.Color {
         Sec.COVERS -> c.ok
         Sec.REPORTS -> c.warn
         Sec.TRANSLATE -> c.accent2
+        Sec.CREATOR -> c.accent3
         Sec.ABOUT -> c.muted
     }
 }
@@ -521,6 +556,17 @@ private fun SecContent(s: AppState, sec: Sec) {
                     }
                     T("Traduce el texto que el juego escribe; no el que viene dibujado dentro de imágenes. Con alfabetos como el japonés la calidad baja. Los códigos del juego (colores, nombres) se conservan; si uno no se puede conservar, esa frase queda sin traducir.", 12.sp, FontWeight.Medium, c.muted)
                 }
+            }
+            Sec.CREATOR -> {
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Modo creador", "Para quien hace un fan game: chequeo del juego, historial de errores y pedidos de ajuste.",
+                        role = Role.Switch, onClick = { s.chooseCreatorMode(!s.creatorMode) }) { Toggle(s.creatorMode) }
+                    if (s.creatorMode) {
+                        Divider()
+                        RowItem("Abrir el panel de creador", "Marca tus juegos y míralos uno por uno.", onClick = { s.openCreator() }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+                    }
+                }
+                T("Es opcional. Con el modo apagado, Gahvoria se ve igual que para cualquier jugador.", 12.sp, FontWeight.Medium, c.muted)
             }
             Sec.ABOUT -> Glass(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

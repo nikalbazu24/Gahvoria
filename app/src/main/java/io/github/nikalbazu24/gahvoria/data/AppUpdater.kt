@@ -25,16 +25,27 @@ object AppUpdater {
     }.getOrDefault(0)
 
     /** Blocking: call it off the main thread. Null when there is no connection or no valid file. */
-    fun latest(): Release? = runCatching {
-        Release.parse(get(BuildConfig.UPDATE_BASE + "version.json").readBytes().toString(Charsets.UTF_8))
-    }.getOrNull()
+    fun latest(channel: String): Check = try {
+        Check(Release.parse(get(base(channel) + "version.json").readBytes().toString(Charsets.UTF_8)), false)
+    } catch (e: HttpStatus) {
+        Check(null, e.code == 404)  // 404: that channel has no published version yet
+    } catch (e: Exception) {
+        Check(null, false)
+    }
+
+    /** [release] is null when nothing valid was found; [missing] says the channel simply has no version published. */
+    class Check(val release: Release?, val missing: Boolean)
+
+    class HttpStatus(val code: Int) : IllegalStateException("El servidor respondió $code")
+
+    fun base(channel: String) = io.github.nikalbazu24.gahvoria.core.UpdateChannel.base(BuildConfig.UPDATE_BASE, channel)
 
     /** Blocking download with progress (0..1). Returns the checked APK. */
-    fun download(c: Context, r: Release, progress: (Float) -> Unit): File {
+    fun download(c: Context, r: Release, channel: String, progress: (Float) -> Unit): File {
         val dir = File(c.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val part = File(dir, "gahvoria-${r.versionCode}.part")
-        val conn = open(BuildConfig.UPDATE_BASE + r.apk)
+        val conn = open(base(channel) + r.apk)
         try {
             val total = conn.contentLengthLong
             conn.inputStream.use { input ->
@@ -96,7 +107,7 @@ object AppUpdater {
                 check(next.startsWith("https://")) { "Solo se descargan versiones por HTTPS" }
                 target = next
             } else {
-                check(code == 200) { c.disconnect(); "El servidor respondió $code" }
+                if (code != 200) { c.disconnect(); throw HttpStatus(code) }
                 return c
             }
         }

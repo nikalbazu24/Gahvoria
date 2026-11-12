@@ -15,6 +15,7 @@ import io.github.nikalbazu24.gahvoria.core.Shortcuts
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.LoadRecord
+import io.github.nikalbazu24.gahvoria.core.LoadTimes
 import io.github.nikalbazu24.gahvoria.data.AppUpdater
 import io.github.nikalbazu24.gahvoria.data.Covers
 import io.github.nikalbazu24.gahvoria.data.GameReport
@@ -46,6 +47,8 @@ sealed interface UpdateState {
     data object Checking : UpdateState
     data object UpToDate : UpdateState
     data object Offline : UpdateState
+    /** The chosen channel has no published version yet (only the stable one can be in this state). */
+    data object NoStable : UpdateState
     data class Available(val release: Release) : UpdateState
     data class Downloading(val release: Release, val progress: Float) : UpdateState
     data class Ready(val release: Release, val apk: File) : UpdateState
@@ -160,6 +163,9 @@ class AppState(private val activity: Activity) {
             val errRaw = GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })
             val usedEngine = settings.lastEngine(path)
             val auto = played0 != null && played0.engine == Game.ENGINE_AUTO
+            // A creator's own game keeps the history of its errors, including the ones that were retried.
+            if (errRaw != null && played0 != null && settings.mine(path))
+                runCatching { creatorLog.add(creatorLog.key(path, played0.title), System.currentTimeMillis(), GameReport.withScript(File(path), errRaw)) }
             if (errRaw == null) {
                 // It ran: for "automatic" games remember the engine that worked, so the next start uses it directly.
                 if (auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
@@ -498,9 +504,9 @@ class AppState(private val activity: Activity) {
     }
 
     /** A creator proposes a game: the link and a short description go to the review box (the same private place as reports). */
-    fun sendProposal(name: String, page: String, lang: String, contact: String, done: (Boolean) -> Unit) {
+    fun sendProposal(name: String, page: String, lang: String, contact: String, detected: String = "", done: (Boolean) -> Unit) {
         if (!GameReport.canSend()) { say("Esta versión no puede enviar propuestas.", NoticeKind.WARN); done(false); return }
-        val text = "Propuesta para la tienda\nJuego: $name\nPágina oficial: $page\nIdioma: $lang\nContacto: $contact\n"
+        val text = io.github.nikalbazu24.gahvoria.core.CreatorText.proposal(name, page, lang, contact, detected.ifEmpty { "sin datos" })
         worker.execute {
             val ok = runCatching { GameReport.send("tienda-" + name, text) }
             activity.runOnUiThread {
@@ -541,11 +547,13 @@ class AppState(private val activity: Activity) {
     fun checkUpdate() {
         update = UpdateState.Checking
         worker.execute {
-            val r = AppUpdater.latest()
+            val check = AppUpdater.latest(updateChannel)
+            val r = check.release
             val now = System.currentTimeMillis()
             activity.runOnUiThread {
                 settings.lastCheck = now; lastCheck = now
                 update = when {
+                    r == null && check.missing -> UpdateState.NoStable
                     r == null -> UpdateState.Offline
                     r.isNewerThan(installedCode) -> UpdateState.Available(r)
                     else -> UpdateState.UpToDate
@@ -563,11 +571,90 @@ class AppState(private val activity: Activity) {
         update = UpdateState.Downloading(r, 0f)
         worker.execute {
             val result = runCatching {
-                AppUpdater.download(activity, r) { p -> activity.runOnUiThread { update = UpdateState.Downloading(r, p) } }
+                AppUpdater.download(activity, r, updateChannel) { p -> activity.runOnUiThread { update = UpdateState.Downloading(r, p) } }
             }
             activity.runOnUiThread {
                 update = result.fold({ UpdateState.Ready(r, it) }, { UpdateState.Failed(it.message ?: "No se pudo descargar") })
                 (update as? UpdateState.Ready)?.let { AppUpdater.install(activity, it.apk) }
+            }
+        }
+    }
+
+    /** "dev" or "stable". Changing it forgets the last result so the next check uses the new channel. */
+    var updateChannel by mutableStateOf(settings.updateChannel)
+        private set
+
+    fun chooseChannel(id: String) {
+        if (id == updateChannel) return
+        settings.updateChannel = id; updateChannel = id
+        if (update !is UpdateState.Downloading) update = UpdateState.Idle
+        checkUpdate()
+    }
+
+    // ---------------------------------------------------------------- creator panel
+
+    val creatorLog = io.github.nikalbazu24.gahvoria.core.CreatorLog(File(activity.filesDir, "creator"))
+
+    var creatorMode by mutableStateOf(settings.creatorMode)
+        private set
+
+    fun chooseCreatorMode(on: Boolean) { settings.creatorMode = on; creatorMode = on; if (!on) { creatorOpen = false; creatorFor = null } }
+
+    /** The creator panel is showing (its list, or the game in [creatorFor]). */
+    var creatorOpen by mutableStateOf(false)
+
+    fun openCreator(game: Game? = null) { optionsFor = null; creatorFor = game; creatorOpen = true }
+
+    /** The creator panel is open for this game (null: closed). */
+    var creatorFor by mutableStateOf<Game?>(null)
+
+    /** The store proposal form is being opened from the panel for this game. */
+    var proposalFor by mutableStateOf<Game?>(null)
+
+    /** Bumped when "mine" changes, so lists redraw. */
+    var mineVersion by mutableIntStateOf(0)
+        private set
+
+    fun isMine(game: Game) = settings.mine(game.path)
+
+    fun setMine(game: Game, on: Boolean) { settings.setMine(game.path, on); mineVersion++ }
+
+    fun myGames(): List<Game> = games.filter { settings.mine(it.path) }
+
+    fun logKey(game: Game) = creatorLog.key(game.path, game.title)
+
+    fun check(game: Game) = io.github.nikalbazu24.gahvoria.core.GameCheck.check(File(game.path))
+
+    /** The store's entry for this game, when it lists a newer version than the one installed. */
+    fun storeUpdate(game: Game): StoreGame? {
+        val entry = StoreCatalog.match(storeGames, game.title) ?: return null
+        val mine = profile(game).gameVersion
+        return entry.takeIf { StoreCatalog.isNewer(it.version, mine) }
+    }
+
+    fun summaryText(game: Game): String {
+        val p = profile(game)
+        val mode = screenMode(game)
+        return io.github.nikalbazu24.gahvoria.core.CreatorText.summary(
+            game.title, BuildConfig.VERSION_NAME, p.label, p.gameVersion,
+            when (game.engine) { Game.ENGINE_CLASSIC -> "clásico"; Game.ENGINE_MODERN -> "moderno"; else -> "automático" },
+            when (mode) { "wide" -> "panorámica completa"; "wide_safe" -> "panorámica solo en el mapa"; else -> "original (4:3)" },
+            lastLoad(game)?.let { LoadTimes.summary(it) }, game.playMs / 60_000, game.path,
+            io.github.nikalbazu24.gahvoria.core.Saves.list(saveDir(game)).size,
+        )
+    }
+
+    fun copyText(text: String, what: String) { GameReport.copy(activity, text); say("$what copiado.", NoticeKind.OK) }
+
+    /** Sends [text] to the maintainer's private inbox under [name], or copies it when this build cannot send. */
+    fun sendCreator(name: String, text: String, done: (Boolean) -> Unit = {}) {
+        if (!GameReport.canSend()) { GameReport.copy(activity, text); say("Copiado. Pégalo donde quieras enviarlo.", NoticeKind.OK); done(false); return }
+        worker.execute {
+            val ok = runCatching { GameReport.send(name, text) }
+            activity.runOnUiThread {
+                ok.onSuccess { say("Enviado. Gracias.", NoticeKind.OK) }
+                    .onFailure { say("No se pudo enviar: " + (it.message ?: "sin conexión") + ".", NoticeKind.WARN) }
+                done(ok.isSuccess)
             }
         }
     }

@@ -40,6 +40,13 @@ object Intro {
             Slide("Tienda de fan games", "Una lista con la página oficial de cada juego. Lo bajas allí y Gahvoria lo instala desde el .zip y lo agrega a tu biblioteca."),
             Slide("Motor automático", "Si un juego falla al abrir, Gahvoria lo reabre con el otro motor y recuerda el que funciona."),
         ),
+        4 to listOf(
+            Slide("Panel de creador", "Si haces un fan game, activa el modo creador en Ajustes: marca tu juego y mira su resumen, su historial de errores y su chequeo."),
+            Slide("Chequeo antes de publicar", "Gahvoria revisa los archivos de tu juego y avisa de lo que suele fallar en Android: RTP, rutas de Windows, .dll y más."),
+            Slide("Pide un ajuste", "Cuenta qué pasa y, si quieres, adjunta el último informe y los datos del juego. Lo envías tú, cuando tú decides."),
+            Slide("Versión nueva de un juego", "Si la tienda lista una versión más nueva del juego que tienes, las opciones del juego te lo avisan."),
+            Slide("Canal de actualizaciones", "En Actualizar puedes elegir recibir todas las versiones o solo las estables."),
+        ),
     )
 
     val LATEST: Int get() = UPDATES.maxOfOrNull { it.first } ?: 0

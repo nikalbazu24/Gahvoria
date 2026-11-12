@@ -18,6 +18,12 @@ Hecha desde cero; el motor de juego es [mkxp-z](https://github.com/mkxp-z/mkxp-z
 Cada cambio en `main` compila el APK en GitHub Actions, corre las pruebas, comprueba que estén los dos motores
 y lo publica en **Releases → dev**. La app revisa esa versión para actualizarse (siempre con confirmación).
 
+Una versión se vuelve **estable** cuando se decide: en Actions → «Promover a estable» se copia lo que hay en
+`dev` a **Releases → stable** (la que enlaza «Latest»). Quien elige «Solo versiones estables» en la app recibe
+solo esas. Por ahora el canal por defecto sigue siendo `dev`.
+
+Descarga para jugadores: https://github.com/Nikalbazu24/Gahvoria/releases/latest (existe cuando hay una versión estable).
+
 ## Licencias
 
 Gahvoria se distribuye bajo GPL 2.0, como mkxp-z. Montserrat: SIL Open Font License 1.1.
