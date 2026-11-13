@@ -446,7 +446,7 @@ public class GameActivity extends SDLActivity
             if (SDLActivity.isScreenKeyboardShown()) {
                 android.view.inputmethod.InputMethodManager imm =
                     (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                if (mTextEdit != null) imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
+                imm.hideSoftInputFromWindow(getWindow().getDecorView().getWindowToken(), 0);
                 SDLActivity.onNativeKeyboardFocusLost();
             } else {
                 SDLActivity.showTextInput(0, 0, mLook.dp(1), mLook.dp(1));
