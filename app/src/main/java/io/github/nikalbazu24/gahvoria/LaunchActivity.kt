@@ -50,7 +50,7 @@ class LaunchActivity : Activity() {
             library.update(game.path) { it.copy(lastPlayed = now) }
             Settings(this).startSession(game.path, now)
         }
-        Launcher.play(this, game)
+        Launcher.play(this, game, launchAt = now)
         return null
     }
 

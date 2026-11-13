@@ -166,6 +166,7 @@ class AppState(private val activity: Activity) {
         hasAccess = Storage.hasAccess(activity)
         translationsVersion++
         settings.takeSession()?.let { (path, at) ->
+            val interruptedPreparation = com.hatkid.mkxpz.GameActivity.translationPreparationMarker(activity, at).delete()
             val played = System.currentTimeMillis() - at
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
@@ -181,9 +182,12 @@ class AppState(private val activity: Activity) {
             // A creator's own game keeps the history of its errors, including the ones that were retried.
             if (errRaw != null && played0 != null && settings.mine(path))
                 runCatching { creatorLog.add(creatorLog.key(path, played0.title), System.currentTimeMillis(), GameReport.withScript(File(path), errRaw)) }
-            if (errRaw == null) {
+            if (interruptedPreparation && errRaw != null && played0 != null && usedEngine != null) {
+                say("La preparación de traducción se interrumpió. Reabro el juego con lo que ya está traducido.", NoticeKind.WARN)
+                play(played0, usedEngine, force = true, skipTranslationPreparation = true)
+            } else if (errRaw == null) {
                 // It ran: for "automatic" games remember the engine that worked, so the next start uses it directly.
-                if (auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
+                if (!interruptedPreparation && auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
                 settings.setRetried(path, false)
             } else if (played0 != null) {
                 val other = usedEngine?.let { Launcher.otherEngine(activity, it) }
@@ -191,7 +195,7 @@ class AppState(private val activity: Activity) {
                 val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true)
                 // Failed while starting (first 90 s), or with the classic Ruby 1.8 / modern Ruby 3 clash at any moment (Pokémon Ópalo: after the new game).
                 val clash = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.engineClash(errRaw, (usedEngine ?: "modern") != "classic")
-                if (auto && other != null && engineFixable && !settings.retried(path) && (played < 90_000 || clash)) {
+                if (!interruptedPreparation && auto && other != null && engineFixable && !settings.retried(path) && (played < 90_000 || clash)) {
                     // Failed while starting: reopen once with the other engine, without asking.
                     settings.setRetried(path, true)
                     settings.setLearnedEngine(path, null)
@@ -218,7 +222,7 @@ class AppState(private val activity: Activity) {
 
     // ---------------------------------------------------------------- library
 
-    fun play(game: Game, engine: String? = null, force: Boolean = false) {
+    fun play(game: Game, engine: String? = null, force: Boolean = false, skipTranslationPreparation: Boolean = false) {
         val dir = File(game.path)
         if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
@@ -228,7 +232,7 @@ class AppState(private val activity: Activity) {
             val missing = io.github.nikalbazu24.gahvoria.core.GameCheck.missingData(dir)
             if (missing.isNotEmpty()) {
                 say("${game.title} no se abrirá: le faltan ${missing.joinToString(", ") { "$it.rxdata" }} en Data. Suele pasar si se descomprimió a medias; vuelve a instalarlo desde su archivo original.",
-                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true) }
+                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true, skipTranslationPreparation = skipTranslationPreparation) }
                 return
             }
         }
@@ -240,7 +244,7 @@ class AppState(private val activity: Activity) {
         Thread({
             if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)   // or the new one starts inside a dying process and hangs
             runCatching { Launcher.profile(game) }                            // warms the cache that engineFor uses
-            activity.runOnUiThread { Launcher.play(activity, game, engine) }
+            activity.runOnUiThread { Launcher.play(activity, game, engine, now, skipTranslationPreparation) }
         }, "GahvoriaPlay").start()
         selected = 0
     }

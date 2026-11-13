@@ -59,16 +59,27 @@ Dir.mktmpdir('gahvoria-pretranslation') do |dir|
   check(expected, collected)
 
   base = File.join(dir, 'prepare')
+  marker = File.join(dir, 'active')
   worker = Thread.new do
     until File.file?(base + '.ready')
       sleep(0.01)
     end
+    check(true, File.file?(marker))
     lines = File.readlines(base + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
     check(expected, lines)
     File.write(base + '.done', '')
   end
-  GahvoriaPretranslate.run(dir, base)
+  GahvoriaPretranslate.run(dir, base, marker)
   worker.value
+  check(false, File.exist?(marker))
+
+  stalled = File.join(dir, 'stalled')
+  started = GahvoriaPretranslate.now
+  GahvoriaPretranslate.run(dir, stalled, marker, 0.25)
+  check(true, File.file?(stalled + '.ready'))
+  check(true, File.file?(stalled + '.skip'))
+  check(false, File.exist?(marker))
+  raise 'The launch deadline did not release the stalled translator' if GahvoriaPretranslate.now - started > 2
   check(false, File.exist?(base + '.tmp'))
 
   stopped = []

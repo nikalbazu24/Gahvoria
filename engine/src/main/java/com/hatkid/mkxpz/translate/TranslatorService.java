@@ -124,7 +124,7 @@ public final class TranslatorService
                 throw new IOException("No se pudo limpiar el buzón");
             }
         }
-        for (String suffix : new String[]{".tmp", ".ready", ".done", ".skip", ".progress"}) {
+        for (String suffix : new String[]{".tmp", ".ready", ".done", ".skip"}) {
             File file = preparationFile(suffix);
             if (file.exists() && !file.delete()) throw new IOException("No se pudo preparar el buzón de traducción");
         }
@@ -281,12 +281,9 @@ public final class TranslatorService
         TranslationMemory.append(responses, answers, false);
     }
 
-    private void reportPreparation(int processed, int total) throws IOException {
+    private void reportPreparation(int processed, int total) {
         String message = "Preparando traducción: " + processed + " / " + total + " frases";
         mProgress.show(message);
-        try (OutputStream out = new FileOutputStream(preparationFile(".progress"))) {
-            out.write(Integer.toString(processed).getBytes(StandardCharsets.UTF_8));
-        }
     }
 
     private void answer(File request, TranslationMemory memory, RandomAccessFile responses) throws Exception

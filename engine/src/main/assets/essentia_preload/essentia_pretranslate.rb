@@ -6,6 +6,7 @@ module GahvoriaPretranslate
   MAX_SCRIPT_BYTES = 2 * 1024 * 1024
   MAX_TEXTS = 50_000
   MAX_SPOOL_BYTES = 24 * 1024 * 1024
+  STARTUP_BUDGET_SECONDS = 12
 
   class << self
     def scripts(source)
@@ -26,10 +27,11 @@ module GahvoriaPretranslate
       end
     end
 
-    def commands(list)
+    def commands(list, cancelled)
       lines = []
       script = []
       (list || []).each do |command|
+        return if cancelled.call
         code = command.code
         params = command.parameters
         unless code == 401 || code == 405
@@ -91,12 +93,13 @@ module GahvoriaPretranslate
       nil
     end
 
-    def map_commands(path)
+    def map_commands(path, cancelled)
       map = read_data(path)
       return unless map && map.respond_to?(:events) && map.events.is_a?(Hash)
       map.events.keys.select { |id| id.is_a?(Integer) }.sort.each do |id|
         event = map.events[id]
-        (event.pages || []).each { |page| commands(page.list) { |text| yield text } } if event
+        return if cancelled.call
+        (event.pages || []).each { |page| commands(page.list, cancelled) { |text| yield text } } if event
       end
     end
 
@@ -149,17 +152,17 @@ module GahvoriaPretranslate
         if system && system.respond_to?(:start_map_id) && system.start_map_id.is_a?(Integer)
           first = "Map%03d.#{ext}" % system.start_map_id
           if files.delete(first)
-            map_commands("#{folder}/#{first}") { |text| yield text }
+            map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
           end
         end
         events = read_data("#{folder}/CommonEvents.#{ext}")
         (events.is_a?(Array) ? events : []).each do |event|
           return if cancelled.call
-          commands(event.list) { |text| yield text } if event && event.respond_to?(:list)
+          commands(event.list, cancelled) { |text| yield text } if event && event.respond_to?(:list)
         end
         files.each do |name|
           return if cancelled.call
-          map_commands("#{folder}/#{name}") { |text| yield text }
+          map_commands("#{folder}/#{name}", cancelled) { |text| yield text }
         end
       end
       names = ['messages.dat', 'messages_core.dat', 'messages_game.dat']
@@ -172,17 +175,25 @@ module GahvoriaPretranslate
       end
     end
 
-    def run(root, base)
+    def now
+      return System.uptime if defined?(System) && System.respond_to?(:uptime)
+      Time.now.to_f
+    end
+
+    def run(root, base, marker = '', budget = STARTUP_BUDGET_SECONDS)
       return if root.empty? || base.empty?
       ready = base + '.ready'
       done = base + '.done'
       skip = base + '.skip'
-      pulse = base + '.progress'
-      cancelled = lambda { File.exist?(skip) || File.exist?(done) }
       spool = base + '.tmp'
+      started = now
+      cancelled = lambda { now - started >= budget || File.exist?(skip) || File.exist?(done) }
+      scan_finished = lambda { cancelled.call || now - started >= [4, budget / 3.0].min }
+      File.open(marker, 'wb') {} unless marker.empty?
       seen = {}
       File.open(spool, 'wb') do |file|
-        collect(root, cancelled) do |text|
+        collect(root, scan_finished) do |text|
+          break if scan_finished.call
           next unless text.is_a?(String) && text.size <= 9000
           text = EssentiaTranslate.utf8(text.dup)
           next if text.respond_to?(:valid_encoding?) && !text.valid_encoding?
@@ -194,28 +205,16 @@ module GahvoriaPretranslate
           file.write(row)
         end
       end
-      if cancelled.call
-        EssentiaTranslate.load_prepared
+      if cancelled.call || seen.empty?
+        File.open(skip, 'wb') {} unless File.exist?(done)
         return
       end
       seen.clear
       File.rename(spool, ready)
-      last_progress = Time.now.to_f
-      last_stamp = nil
       until cancelled.call
-        sleep(0.1)
-        if File.exist?(pulse)
-          stamp = File.read(pulse)
-          if stamp != last_stamp
-            last_stamp = stamp
-            last_progress = Time.now.to_f
-          end
-        end
-        if Time.now.to_f - last_progress > 90
-          File.open(skip, 'wb') {}
-          break
-        end
+        sleep(0.05)
       end
+      File.open(skip, 'wb') {} unless File.exist?(done)
       EssentiaTranslate.load_prepared
     rescue StandardError => error
       warn("Gahvoria: no se pudo preparar la traducción: #{error.class}")
@@ -225,6 +224,7 @@ module GahvoriaPretranslate
       end
     ensure
       begin
+        File.delete(marker) unless marker.empty? || !File.exist?(marker)
         File.delete(spool) if spool && File.exist?(spool)
       rescue StandardError
       end
@@ -232,4 +232,5 @@ module GahvoriaPretranslate
   end
 end
 
-GahvoriaPretranslate.run(ENV['ESSENTIA_TR_ROOT'].to_s, ENV['ESSENTIA_TR_PREPARE'].to_s)
+GahvoriaPretranslate.run(ENV['ESSENTIA_TR_ROOT'].to_s, ENV['ESSENTIA_TR_PREPARE'].to_s,
+                         ENV['ESSENTIA_TR_PREPARE_MARKER'].to_s)

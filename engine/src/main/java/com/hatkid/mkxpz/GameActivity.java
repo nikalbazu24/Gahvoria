@@ -75,6 +75,8 @@ public class GameActivity extends SDLActivity
     /** A small copy of the game's cover, for the blurred background of the loading screen ("" if none). */
     public static final String EXTRA_COVER = "gahvoria.COVER";
     /** Translation: the folder that keeps this game's translations, the provider, the target language and the DeepL key. */
+    public static final String EXTRA_LAUNCH_AT = "gahvoria.LAUNCH_AT";
+    public static final String EXTRA_SKIP_TR_PREPARATION = "gahvoria.SKIP_TR_PREPARATION";
     public static final String EXTRA_TR_DIR = "gahvoria.TR_DIR";
     public static final String EXTRA_TR_PROVIDER = "gahvoria.TR_PROVIDER";
     public static final String EXTRA_TR_TARGET = "gahvoria.TR_TARGET";
@@ -180,11 +182,15 @@ public class GameActivity extends SDLActivity
         if (mTouch) addKeyboardButton();
 
         sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted,
-            mTranslator != null && !mTranslator.preparationPath().isEmpty(), new LoadingScreen.Host()
+            mPreparesTranslation, new LoadingScreen.Host()
         {
             @Override
             public void exit()
             {
+                if (mPreparesTranslation) {
+                    mTranslator.skipPreparation();
+                    translationPreparationMarker(GameActivity.this, i.getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();
+                }
                 finish();
             }
 
@@ -205,6 +211,7 @@ public class GameActivity extends SDLActivity
     }
 
     private com.hatkid.mkxpz.translate.TranslatorService mTranslator;
+    private boolean mPreparesTranslation;
 
     /** When this game is set to be translated, tells the Ruby side where the translations live and starts the translator. */
     private void startTranslator(Intent i) throws Exception
@@ -215,6 +222,7 @@ public class GameActivity extends SDLActivity
         setenv("ESSENTIA_TR_GAME", "");
         setenv("ESSENTIA_TR_PREPARE", "");
         setenv("ESSENTIA_TR_ROOT", "");
+        setenv("ESSENTIA_TR_PREPARE_MARKER", "");
         String dir = i.getStringExtra(EXTRA_TR_DIR);
         if (dir == null || dir.isEmpty()) return;
         File folder = new File(dir);
@@ -234,7 +242,15 @@ public class GameActivity extends SDLActivity
             String target = i.getStringExtra(EXTRA_TR_TARGET);
             setenv("ESSENTIA_TR_TARGET", target == null ? "es" : target);
             setenv("ESSENTIA_TR_GAME", mTitle);
-            setenv("ESSENTIA_TR_PREPARE", mTranslator.preparationPath());
+            String preparation = i.getBooleanExtra(EXTRA_SKIP_TR_PREPARATION, false) ? "" : mTranslator.preparationPath();
+            if (!preparation.isEmpty()) {
+                long launchAt = i.getLongExtra(EXTRA_LAUNCH_AT, 0L);
+                if (launchAt > 0L) {
+                    setenv("ESSENTIA_TR_PREPARE_MARKER", translationPreparationMarker(this, launchAt).getAbsolutePath());
+                }
+                setenv("ESSENTIA_TR_PREPARE", preparation);
+                mPreparesTranslation = true;
+            }
             String root = i.getStringExtra(EXTRA_GAME_PATH);
             setenv("ESSENTIA_TR_ROOT", root == null ? "" : root);
         } catch (Exception failure) {
@@ -244,6 +260,10 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_TR_PREPARE", "");
             Log.w(TAG, "Could not start the optional translator", failure);
         }
+    }
+
+    public static File translationPreparationMarker(android.content.Context context, long launchAt) {
+        return new File(context.getCacheDir(), "translation-preparing-" + launchAt);
     }
 
     /** Settings the engine and its compatibility scripts read from the environment. */
@@ -647,6 +667,9 @@ public class GameActivity extends SDLActivity
     {
         if (mTrust != null) mTrust.cancel(true);
         if (mTranslator != null) mTranslator.stop();
+        if (mPreparesTranslation && isFinishing()) {
+            translationPreparationMarker(this, getIntent().getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();
+        }
         super.onDestroy();
         // Ruby cannot start again in the same process: end it together with the game.
         System.exit(0);
