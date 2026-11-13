@@ -68,8 +68,10 @@ pbConfirmMessage("Open the door?")
 _MAPINTL($game_map.map_id, "Welcome to {1}.")
 pbEnterPlayerName("Your name?", 0, 8)
 _ISPRINTF("Total {1:02d}", 2)
+getLineBrokenChunks(bitmap, "An opening prompt.", 80)
+Window_UnformattedTextPokemon.newWithSize("Pick an option.", 0, 0, 100, 30)
 EXTRA
-  check(['Open the door?', 'Welcome to {1}.', 'Your name?', 'Total {1:02d}'], extra_literals)
+  check(['Open the door?', 'Welcome to {1}.', 'Your name?', 'Total {1:02d}', 'An opening prompt.', 'Pick an option.'], extra_literals)
 
   vx = []
   GahvoriaPretranslate.commands([

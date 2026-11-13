@@ -31,7 +31,7 @@ jobs:
           src=engine/src/main/java/com/hatkid/mkxpz/translate
           mkdir -p "$RUNNER_TEMP/translation-test"
           javac --release 8 -encoding UTF-8 -d "$RUNNER_TEMP/translation-test" \
-            "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java
+            "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/TranslationOpening.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationPhaseOneTest
       - uses: ruby/setup-ruby@v1
         with:

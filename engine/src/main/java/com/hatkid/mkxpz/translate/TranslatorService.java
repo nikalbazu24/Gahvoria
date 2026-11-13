@@ -55,6 +55,7 @@ public final class TranslatorService
     private final File mStatus;
     private final File mPreparation;
     private final File mPreparedCatalog;
+    private final File mOpening;
     public interface PreparationProgress { void show(String message); }
 
     private final PreparationProgress mProgress;
@@ -87,6 +88,7 @@ public final class TranslatorService
         mTarget = tag.matches("[a-z]{2,3}(-[a-z0-9]{2,8}){0,3}") ? tag : "es";
         mFile = new File(dir, mTarget + ".tsv");
         mPreparedCatalog = new File(dir, "catalog.ready");
+        mOpening = new File(dir, "opening-es.txt");
         File session = new File(context.getCacheDir(), "translation-session");
         mReqDir = new File(session, "queue");
         mResponses = new File(session, "answers.tsv");
@@ -99,6 +101,9 @@ public final class TranslatorService
 
     public File translationsFile() { return mResponses; }
     public File requestDir() { return mReqDir; }
+    public String openingPath() {
+        return "es".equals(mTarget) && mOpening.isFile() ? mOpening.getAbsolutePath() : "";
+    }
 
     public String preparationPath() {
         return PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget) ? mPreparation.getAbsolutePath() : "";
@@ -148,7 +153,7 @@ public final class TranslatorService
     {
         try (TranslationMemory memory = new TranslationMemory(mFile, PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget));
              RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) {
-            seedPreparedTranslations(memory, responses);
+            if (openingPath().isEmpty()) seedPreparedTranslations(memory, responses);
             Map<File, Long> retryAfter = new LinkedHashMap<>();
             Map<File, Long> firstFailures = new LinkedHashMap<>();
             boolean scanning = false;

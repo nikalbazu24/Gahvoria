@@ -28,7 +28,7 @@ class TranslationPreparationService : Service() {
         val total: Int = 0, val translated: Int = 0, val active: Boolean = false,
     ) {
         val description: String get() = if (total == 0) phase
-            else "$phase · $reviewed de $total revisadas · $translated guardadas"
+            else "$phase · $reviewed de $total revisadas · $translated guardadas (${100L * translated / total}% del catálogo)"
     }
 
     private val handler = Handler(Looper.getMainLooper())

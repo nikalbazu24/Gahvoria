@@ -61,6 +61,7 @@ public final class TranslationPreparation {
                     lastUpdate = now;
                 }
             }
+            TranslationOpening.publish(catalog, memory);
         } finally {
             if (model != null) model.close();
         }

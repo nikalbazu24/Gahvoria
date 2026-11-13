@@ -112,3 +112,14 @@ Los rótulos conocidos se resuelven también antes de medir y dividir el texto e
 - El puente usa el enunciado de la pregunta para distinguir opciones de dirección y combate. También puede usar la última intervención del mismo mapa y evento durante 12 segundos para resolver expresiones breves. Cuando ambas líneas indican hablante, deben coincidir. Estas decisiones se toman en Ruby y se muestran directamente, de modo que una acepción no contamina la memoria de otras escenas.
 - El escaneo da prioridad al mapa inicial. Al abrir el juego, el servicio pone en el buzón hasta 384 frases de ese catálogo que ya estén en memoria, sin ejecutar el modelo para esa carga. La preparación en segundo plano extrae también literales de confirmaciones, entrada de nombres y funciones de localización de Pokémon Essentials. El escáner distingue el encabezado de una ventana VX o VX Ace del texto que sigue. Los resultados anteriores permanecen disponibles.
 - Se comprueba el flujo con eventos simulados. En dispositivo, verificar Solar Eclipse y Pokémon Insurgence desde una importación limpia, con especial atención a escenas con opciones, al texto previo al menú principal y al tiempo de arranque. Esta etapa procesa el texto que el juego entrega al motor. El arte rasterizado queda fuera de esta etapa.
+
+## Prueba de primera apertura
+
+La preparación escribe una copia acotada de las primeras traducciones disponibles del catálogo en el directorio privado del juego. Ruby carga esta copia antes de instalar los hooks, incluso si el servicio de traducción todavía está leyendo la memoria. El catálogo incluye también literales de ciertos formateadores y ventanas de texto. La notificación muestra el porcentaje de frases detectadas que tienen una traducción guardada.
+
+1. Actualizar Gahvoria y añadir Pokémon Insurgence desde una carpeta que la app no haya preparado antes. Elegir Español y Gahvoria Neural AI.
+2. Usar **Preparar traducción** desde las opciones del juego. Al terminar, anotar el porcentaje del catálogo y el tiempo aproximado de preparación.
+3. Activar modo avión. Abrir el juego y revisar el título, el menú principal, el primer diálogo y sus opciones, y el primer menú dentro de la partida. Anotar cada pantalla como española, mixta o inglesa. Si tarda en traducirse, anotarlo también.
+4. Cerrar y volver a abrir. Verificar que los primeros textos se reutilicen y que la partida existente siga disponible. Repetir con Solar Eclipse si se quiere comparar. No hace falta borrar los datos de Gahvoria.
+
+El porcentaje del catálogo se calcula sobre las frases que detectó el escáner. La revisión visual mide las pantallas recorridas. La cobertura de una partida completa requiere un recorrido más amplio y la traducción de textos incrustados en imágenes.

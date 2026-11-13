@@ -74,7 +74,12 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   ENV['ESSENTIA_TR_REQ'] = requests
   ENV['ESSENTIA_TR_TARGET'] = 'es'
   ENV['ESSENTIA_TR_GAME'] = 'Pokemon Solar Eclipse'
+  opening = File.join(directory, 'opening-es.txt')
+  File.open(opening, 'wb') { |file| file.write("Opening greeting\tSaludo inicial\nUnfinished\tIncompleto") }
+  ENV['ESSENTIA_TR_OPENING'] = opening
   load script
+  assert_equal('Saludo inicial', EssentiaTranslate.lookup('Opening greeting'))
+  assert_equal([], Dir[File.join(requests, '*.req')])
 
   def pbMessage(text)
     pbMessageDisplay(nil, text)
@@ -268,6 +273,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
                getFormattedText(menu, 0, 0, 150, -1, '<c2=000000>' + help))
   assert_equal(['Elige', 'tu', 'aspecto.'], getLineBrokenChunks(menu, appearance, 160))
   assert_equal('Elige tu aspecto.', getFormattedText(menu, 0, 0, 150, -1, appearance))
+  assert_equal('Saludo inicial', getFormattedText(menu, 0, 0, 150, -1, 'Opening greeting'))
   assert_equal('Nombre propio', getFormattedText(menu, 0, 0, 150, -1, 'Nombre propio'))
   assert_equal('Ya veo… ¿Solo quieres los combates más difíciles?', EssentiaTranslate.message_text(difficulty, 0))
   assert_equal('TONO', EssentiaTranslate.rendering_text('TONE'))

@@ -374,6 +374,8 @@ class AppState(private val activity: Activity) {
                 val oldRevision = runCatching { revisionFile.readText() }.getOrNull()
                 if (oldRevision != revision) {
                     if (ready.exists() && !ready.delete()) error("No pude renovar el catálogo")
+                    val opening = File(dir, "opening-es.txt")
+                    if (opening.exists() && !opening.delete()) error("No pude renovar los textos de inicio")
                     File(base.path + ".limited").delete()
                     File(base.path + ".status").delete()
                     revisionFile.writeText(revision)

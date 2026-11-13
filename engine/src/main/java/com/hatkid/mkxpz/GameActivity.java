@@ -240,6 +240,7 @@ public class GameActivity extends SDLActivity
     {
         setenv("ESSENTIA_TR_FILE", "");
         setenv("ESSENTIA_TR_REQ", "");
+        setenv("ESSENTIA_TR_OPENING", "");
         setenv("ESSENTIA_TR_TARGET", "");
         setenv("ESSENTIA_TR_GAME", "");
         setenv("ESSENTIA_TR_PREPARE", "");
@@ -261,6 +262,7 @@ public class GameActivity extends SDLActivity
             mTranslator.start();
             setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
             setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
+            setenv("ESSENTIA_TR_OPENING", mTranslator.openingPath());
             String target = i.getStringExtra(EXTRA_TR_TARGET);
             setenv("ESSENTIA_TR_TARGET", target == null ? "es" : target);
             setenv("ESSENTIA_TR_GAME", mTitle);

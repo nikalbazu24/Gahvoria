@@ -5,6 +5,7 @@ module GahvoriaPretranslate
   SECOND_LITERAL = /(?:\b_MAPINTL|\b_MAPISPRINTF|\bpbMessageDisplay)\s*\(\s*(?:nil|[0-9]+|[A-Za-z_]\w*|\$game_map\.map_id)\s*,\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   CHOICE_LIST = /(?:\bpbShowCommands\s*\(\s*(?:nil|[A-Za-z_]\w*)\s*,\s*|\bpbMessage\s*\(\s*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')\s*,\s*)\[([^\]\r\n]{1,2048})\]/
   CHOICE_ITEM = /\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')\s*(,|\z)/
+  DISPLAY_LITERAL = /(?:\bgetLineBrokenChunks\s*\(\s*[A-Za-z_]\w*(?:\.contents)?\s*,|\bWindow_(?:Advanced|Unformatted)TextPokemon\.newWithSize\s*\()\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   EXTENSIONS = ['rxdata', 'rvdata', 'rvdata2']
   MAX_SCRIPT_BYTES = 2 * 1024 * 1024
   MAX_TEXTS = 50_000
@@ -17,7 +18,7 @@ module GahvoriaPretranslate
       source = EssentiaTranslate.utf8(source.dup)
       return if source.respond_to?(:valid_encoding?) && !source.valid_encoding?
       literals = []
-      [LITERAL, SECOND_LITERAL].each do |pattern|
+      [LITERAL, SECOND_LITERAL, DISPLAY_LITERAL].each do |pattern|
         source.scan(pattern) do |double, single|
           offset = $~.begin(0)
           text = literal_text(double, single)

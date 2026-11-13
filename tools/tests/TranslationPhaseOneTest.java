@@ -18,7 +18,8 @@ public final class TranslationPhaseOneTest {
         neuralPreservesMarkupWithoutSendingItToInference();
         neuralKeepsOneUtteranceAcrossControls();
         refreshesOnlyOldContextSensitiveEntries();
-        System.out.println("6 JVM translation checks passed");
+        openingUsesPreparedEntriesAndReplacesStaleRows();
+        System.out.println("7 JVM translation checks passed");
     }
 
     private static void preservesControlTokens() throws Exception {
@@ -161,6 +162,30 @@ public final class TranslationPhaseOneTest {
         } finally {
             for (File file : new File[]{cache, otherGame, otherLanguage, save}) Files.deleteIfExists(file.toPath());
             Files.deleteIfExists(folder);
+        }
+    }
+
+    private static void openingUsesPreparedEntriesAndReplacesStaleRows() throws Exception {
+        Path folder = Files.createTempDirectory("gahvoria-opening");
+        Path catalog = folder.resolve("catalog.ready");
+        Path cache = folder.resolve("es.tsv");
+        Path opening = folder.resolve("opening-es.txt");
+        try {
+            Files.write(catalog, "First\nUnknown\nFirst\nChoose\\twell\n".getBytes(StandardCharsets.UTF_8));
+            Files.write(opening, "Old\tViejo\n".getBytes(StandardCharsets.UTF_8));
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile())) {
+                memory.remember(Collections.singletonMap("First", "Primero"));
+                memory.remember(Collections.singletonMap("Choose\twell", "Elige\tbien"));
+                memory.remember(Collections.singletonMap("Unlisted", "Fuera del catálogo"));
+                TranslationOpening.publish(catalog.toFile(), memory);
+                equal(Arrays.asList("First\tPrimero", "Choose\\twell\tElige\\tbien"),
+                    Files.readAllLines(opening, StandardCharsets.UTF_8));
+                Files.write(catalog, "Unknown\n".getBytes(StandardCharsets.UTF_8));
+                TranslationOpening.publish(catalog.toFile(), memory);
+                equal(0L, Files.size(opening));
+            }
+        } finally {
+            for (Path path : Arrays.asList(catalog, cache, opening, folder)) Files.deleteIfExists(path);
         }
     }
 

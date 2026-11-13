@@ -9,6 +9,7 @@
 module EssentiaTranslate
   FILE = ENV['ESSENTIA_TR_FILE'].to_s
   REQ = ENV['ESSENTIA_TR_REQ'].to_s
+  OPENING = ENV['ESSENTIA_TR_OPENING'].to_s
   @map = {}
   @displaying = []
   @pending = {}
@@ -152,7 +153,20 @@ module EssentiaTranslate
       last = data.rindex("\n")
       return unless last
       @pos += last + 1
-      data[0, last].split("\n").each do |line|
+      load_rows(data[0, last])
+    rescue StandardError
+    end
+
+    def load_opening
+      return if OPENING.empty?
+      data = File.open(OPENING, 'rb') { |f| f.read(512 * 1024) }
+      last = data && data.rindex("\n")
+      load_rows(data[0, last]) if last
+    rescue StandardError
+    end
+
+    def load_rows(data)
+      data.split("\n").each do |line|
         a, b = line.split("\t", 2)
         next if b.nil? || a.nil? || a.empty? || b.empty?
         o = unesc(a)
@@ -598,7 +612,11 @@ module EssentiaTranslate
         if @verbatim == 0 && @displaying.empty?
           text = args[argument]
           label = visible_label(text)
-          label ||= lookup(text) unless @paint_stack.empty?
+          if label.nil? && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated) && !player_name?(text)
+            load_if_due
+            label = translated_copy(text) if @map.has_key?(text)
+            label ||= lookup(text) unless @paint_stack.empty?
+          end
         end
         args[argument] = label if label
         return verbatim { original.bind(receiver).call(*args, &block) }
@@ -811,6 +829,7 @@ module EssentiaTranslate
 end
 
 unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
+  EssentiaTranslate.load_opening
   EssentiaTranslate.load_new
   EssentiaTranslate.install
 
