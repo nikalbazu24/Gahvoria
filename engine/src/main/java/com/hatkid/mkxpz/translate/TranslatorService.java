@@ -54,6 +54,7 @@ public final class TranslatorService
     private final File mResponses;
     private final File mStatus;
     private final File mPreparation;
+    private final File mPreparedCatalog;
     public interface PreparationProgress { void show(String message); }
 
     private final PreparationProgress mProgress;
@@ -85,6 +86,7 @@ public final class TranslatorService
         String tag = target == null ? "" : target.toLowerCase(Locale.ROOT);
         mTarget = tag.matches("[a-z]{2,3}(-[a-z0-9]{2,8}){0,3}") ? tag : "es";
         mFile = new File(dir, mTarget + ".tsv");
+        mPreparedCatalog = new File(dir, "catalog.ready");
         File session = new File(context.getCacheDir(), "translation-session");
         mReqDir = new File(session, "queue");
         mResponses = new File(session, "answers.tsv");
@@ -146,6 +148,7 @@ public final class TranslatorService
     {
         try (TranslationMemory memory = new TranslationMemory(mFile, PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget));
              RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) {
+            seedPreparedTranslations(memory, responses);
             Map<File, Long> retryAfter = new LinkedHashMap<>();
             Map<File, Long> firstFailures = new LinkedHashMap<>();
             boolean scanning = false;
@@ -211,6 +214,30 @@ public final class TranslatorService
                     if (mBergamot != null) mBergamot.close();
                 }
             }
+        }
+    }
+
+    /** Make cached opening text available before the first round trip through the mailbox. */
+    private void seedPreparedTranslations(TranslationMemory memory, RandomAccessFile responses) {
+        if (!"es".equals(mTarget) || !mPreparedCatalog.isFile()) return;
+        try (BufferedReader input = new BufferedReader(new InputStreamReader(
+                new FileInputStream(mPreparedCatalog), StandardCharsets.UTF_8))) {
+            Map<String, String> cached = new LinkedHashMap<>();
+            int chars = 0;
+            for (int i = 0; i < 384 && chars < 96_000 && mRunning; i++) {
+                String line = input.readLine();
+                if (line == null) break;
+                String source = TranslationMemory.unescape(line);
+                if (source == null) continue;
+                String answer = memory.get(source);
+                if (answer != null) {
+                    cached.put(source, answer);
+                    chars += source.length() + answer.length();
+                }
+            }
+            TranslationMemory.append(responses, cached, false);
+        } catch (IOException failure) {
+            Log.w(TAG, "Could not preload cached translations", failure);
         }
     }
 

@@ -106,3 +106,9 @@ Cada lanzamiento registra cuándo el motor entra en la preparación. Si Android 
 ### Apariencia, teclado y dificultad de Solar Eclipse
 
 Los rótulos conocidos se resuelven también antes de medir y dividir el texto en los formateadores de Essentials. Así se pueden traducir encabezados y ayudas que el juego dibuja una sola vez. El texto que el usuario escribe se conserva durante el redibujado de las ventanas de entrada. El glosario incluye la confirmación de los combates más difíciles. El aviso de inicio tiene traducción para sus cadenas si el juego las dibuja como texto. Esta corrección no incorpora reconocimiento de imágenes.
+
+## Contexto de escena y cobertura inicial
+
+- El puente usa el enunciado de la pregunta para distinguir opciones de dirección y combate. También puede usar la última intervención del mismo mapa y evento durante 12 segundos para resolver expresiones breves. Cuando ambas líneas indican hablante, deben coincidir. Estas decisiones se toman en Ruby y se muestran directamente, de modo que una acepción no contamina la memoria de otras escenas.
+- El escaneo da prioridad al mapa inicial. Al abrir el juego, el servicio pone en el buzón hasta 384 frases de ese catálogo que ya estén en memoria, sin ejecutar el modelo para esa carga. La preparación en segundo plano extrae también literales de confirmaciones, entrada de nombres y funciones de localización de Pokémon Essentials. El escáner distingue el encabezado de una ventana VX o VX Ace del texto que sigue. Los resultados anteriores permanecen disponibles.
+- Se comprueba el flujo con eventos simulados. En dispositivo, verificar Solar Eclipse y Pokémon Insurgence desde una importación limpia, con especial atención a escenas con opciones, al texto previo al menú principal y al tiempo de arranque. Esta etapa procesa el texto que el juego entrega al motor. El arte rasterizado queda fuera de esta etapa.

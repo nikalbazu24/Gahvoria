@@ -289,6 +289,26 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     choices ? pbShowCommands(nil, choices) : text
   end
   assert_equal(['Guardar', 'Cerrar bolsa'], pbMessage('Pick one', ['Save', 'Close Bag']))
+  assert_equal(['Derecha', 'Izquierda', 'De frente'],
+               pbMessage('Which direction should we go?', ['Right', 'Left', 'Straight']))
+  assert_equal(['Luchar', 'Huir', 'Bolsa'], pbMessage('Do you want to fight?', ['Fight', 'Run', 'Bag']))
+
+  assert_equal(['Derecha', 'De frente'], pbMessage('Which way?', ['Right', 'Straight']))
+  assert_equal('Correcto.', EssentiaTranslate.scene_label('Right.', 'Is that correct?'))
+  assert_equal(nil, EssentiaTranslate.scene_label('Right.', 'Nice weather.'))
+  interpreter = Struct.new(:event_id).new(2)
+  $game_map = Struct.new(:map_id, :interpreter).new(8, interpreter)
+  EssentiaTranslate.remember_scene_message('Is that correct?')
+  assert_equal('Correcto.', pbMessage('Right.'))
+  EssentiaTranslate.remember_scene_message('Is that correct?')
+  interpreter.event_id = 3
+  assert_equal(nil, EssentiaTranslate.scene_hint('Right.'))
+  interpreter.event_id = 2
+  $game_map.map_id = 9
+  assert_equal(nil, EssentiaTranslate.scene_hint('Right.'))
+  EssentiaTranslate.remember_scene_message('\\xn[Ada]Is that correct?')
+  assert_equal(nil, EssentiaTranslate.scene_hint('\\xn[Ben]Right.'))
+  $game_map = nil
 end
 
 puts 'Ruby translation bridge checks passed'

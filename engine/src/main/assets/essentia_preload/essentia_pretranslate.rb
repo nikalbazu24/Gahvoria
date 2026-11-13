@@ -1,7 +1,8 @@
 # encoding: UTF-8
 # GPL-2.0. Extract display text before the game scripts run. Never evaluate source literals.
 module GahvoriaPretranslate
-  LITERAL = /(?:\b_INTL|\bpbMessage|\bpbMessageDisplay)\s*\(\s*(?:[A-Za-z_]\w*\s*,\s*)?(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
+  LITERAL = /(?:\b_INTL|\b_I|\b_ISPRINTF|\bpbMessage|\bpbConfirmMessage(?:Serious)?|\bpbMessageChooseNumber|\bpbEnterPlayerName)\s*\(\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
+  SECOND_LITERAL = /(?:\b_MAPINTL|\b_MAPISPRINTF|\bpbMessageDisplay)\s*\(\s*(?:nil|[0-9]+|[A-Za-z_]\w*|\$game_map\.map_id)\s*,\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   CHOICE_LIST = /(?:\bpbShowCommands\s*\(\s*(?:nil|[A-Za-z_]\w*)\s*,\s*|\bpbMessage\s*\(\s*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')\s*,\s*)\[([^\]\r\n]{1,2048})\]/
   CHOICE_ITEM = /\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')\s*(,|\z)/
   EXTENSIONS = ['rxdata', 'rvdata', 'rvdata2']
@@ -15,10 +16,15 @@ module GahvoriaPretranslate
       return unless source.is_a?(String) && source.size <= MAX_SCRIPT_BYTES
       source = EssentiaTranslate.utf8(source.dup)
       return if source.respond_to?(:valid_encoding?) && !source.valid_encoding?
-      source.scan(LITERAL) do |double, single|
-        text = literal_text(double, single)
-        yield text if text
+      literals = []
+      [LITERAL, SECOND_LITERAL].each do |pattern|
+        source.scan(pattern) do |double, single|
+          offset = $~.begin(0)
+          text = literal_text(double, single)
+          literals << [offset, text] if text
+        end
       end
+      literals.sort_by { |offset, _text| offset }.each { |_offset, text| yield text }
       source.scan(CHOICE_LIST) do |capture|
         choices = capture[0]
         labels = []
@@ -59,7 +65,10 @@ module GahvoriaPretranslate
           script.clear
         end
         case code
-        when 101, 401, 405
+        when 101
+          # VX and VX Ace put the face graphic in the header; the text starts at 401.
+          lines << params[0] if params.size == 1 && params[0].is_a?(String)
+        when 401, 405
           lines << params[0] if params[0].is_a?(String)
         when 102
           params[0].each { |text| yield text } if params[0].is_a?(Array)
@@ -119,9 +128,7 @@ module GahvoriaPretranslate
       end
     end
 
-    def collect(root, cancelled)
-      data = Dir.glob(File.join(root, '[Dd][Aa][Tt][Aa]')).find { |path| File.directory?(path) }
-      folder = data ? File.basename(data) : 'Data'
+    def collect_scripts(data, cancelled)
       ($RGSS_SCRIPTS || []).each do |entry|
         return if cancelled.call
         scripts(entry[3]) { |text| yield text } if entry.is_a?(Array)
@@ -133,10 +140,28 @@ module GahvoriaPretranslate
           File.open(path, 'rb') { |file| scripts(file.read(MAX_SCRIPT_BYTES)) { |text| yield text } }
         end
       end
+    end
+
+    def collect(root, cancelled)
+      data = Dir.glob(File.join(root, '[Dd][Aa][Tt][Aa]')).find { |path| File.directory?(path) }
+      folder = data ? File.basename(data) : 'Data'
+      return if cancelled.call
       ext = EXTENSIONS.find do |suffix|
         (data && File.file?(File.join(data, "System.#{suffix}"))) || read_data("#{folder}/MapInfos.#{suffix}").is_a?(Hash)
       end
       if ext
+        system = read_data("#{folder}/System.#{ext}")
+        maps = read_data("#{folder}/MapInfos.#{ext}")
+        files = data ? Dir.glob(File.join(data, "Map[0-9]*.#{ext}")).sort.map { |path| File.basename(path) } : []
+        files |= maps.keys.select { |id| id.is_a?(Integer) }.sort.map { |id| "Map%03d.#{ext}" % id } if maps.is_a?(Hash)
+        if system && system.respond_to?(:start_map_id) && system.start_map_id.is_a?(Integer)
+          first = "Map%03d.#{ext}" % system.start_map_id
+          if files.delete(first)
+            map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
+          end
+        end
+        collect_scripts(data, cancelled) { |text| yield text }
+        return if cancelled.call
         plugins = read_data("#{folder}/PluginScripts.#{ext}")
         if plugins.is_a?(Array) && defined?(Zlib::Inflate)
           plugins.each do |plugin|
@@ -161,16 +186,6 @@ module GahvoriaPretranslate
             end
           end
         end
-        system = read_data("#{folder}/System.#{ext}")
-        maps = read_data("#{folder}/MapInfos.#{ext}")
-        files = data ? Dir.glob(File.join(data, "Map[0-9]*.#{ext}")).sort.map { |path| File.basename(path) } : []
-        files |= maps.keys.select { |id| id.is_a?(Integer) }.sort.map { |id| "Map%03d.#{ext}" % id } if maps.is_a?(Hash)
-        if system && system.respond_to?(:start_map_id) && system.start_map_id.is_a?(Integer)
-          first = "Map%03d.#{ext}" % system.start_map_id
-          if files.delete(first)
-            map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
-          end
-        end
         events = read_data("#{folder}/CommonEvents.#{ext}")
         (events.is_a?(Array) ? events : []).each do |event|
           return if cancelled.call
@@ -181,6 +196,7 @@ module GahvoriaPretranslate
           map_commands("#{folder}/#{name}", cancelled) { |text| yield text }
         end
       end
+      collect_scripts(data, cancelled) { |text| yield text } unless ext
       names = ['messages.dat', 'messages_core.dat', 'messages_game.dat']
       if data
         names |= Dir.glob(File.join(data, 'messages*.dat')).map { |path| File.basename(path) }

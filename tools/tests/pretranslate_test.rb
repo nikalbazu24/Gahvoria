@@ -62,9 +62,26 @@ pbShowCommands(nil, ["Unsafe", dynamic()])
 CHOICES
   check(['Pick one', 'Go', 'Stay', 'Red', 'Blue'], script_choices)
 
+  extra_literals = []
+  GahvoriaPretranslate.scripts(<<'EXTRA') { |text| extra_literals << text }
+pbConfirmMessage("Open the door?")
+_MAPINTL($game_map.map_id, "Welcome to {1}.")
+pbEnterPlayerName("Your name?", 0, 8)
+_ISPRINTF("Total {1:02d}", 2)
+EXTRA
+  check(['Open the door?', 'Welcome to {1}.', 'Your name?', 'Total {1:02d}'], extra_literals)
+
+  vx = []
+  GahvoriaPretranslate.commands([
+    Command.new(101, ['HeroFace', 0, 0, 2]), Command.new(401, ['A line from VX.']),
+    Command.new(102, [['Open', 'Wait']])
+  ], lambda { false }) { |text| vx << text }
+  check(['A line from VX.', 'Open', 'Wait'], vx)
+
   collected = []
   GahvoriaPretranslate.collect(dir, lambda { false }) { |text| collected << text }
-  check(expected, collected)
+  opening_first = expected[4, 5] + expected[0, 4] + expected[9..-1]
+  check(opening_first, collected)
 
   base = File.join(dir, 'prepare')
   marker = File.join(dir, 'active')
@@ -74,7 +91,7 @@ CHOICES
     end
     check(true, File.file?(marker))
     lines = File.readlines(base + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
-    check(expected, lines)
+    check(opening_first, lines)
     File.write(base + '.done', '')
   end
   GahvoriaPretranslate.run(dir, base, marker)
@@ -94,7 +111,7 @@ CHOICES
   $RGSS_SCRIPTS << [1, 'Duplicate', nil, 'pbMessage("Yes, please")']
   GahvoriaPretranslate.export_catalog(dir, catalog)
   lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
-  check(expected.take(3) + ['Yes, please'] + (expected.drop(3) - ['Yes, please']), lines)
+  check(opening_first, lines)
   check(false, File.exist?(catalog + '.tmp'))
 
   aborted = File.join(dir, 'aborted')

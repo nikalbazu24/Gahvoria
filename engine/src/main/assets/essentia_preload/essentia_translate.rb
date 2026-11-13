@@ -104,6 +104,14 @@ module EssentiaTranslate
   }
   SPEAKER_SPANISH = { 'aunt' => 'Tía', 'uncle' => 'Tío', 'mom' => 'Mamá', 'dad' => 'Papá' }
   NAME_BOX = /\\xn\[([^\[\]\\\r\n]+)\]/i
+  SCENE_HINTS = [
+    [/\b(?:go|turn|head|move|look|walk)\b.{0,45}\b(?:left|right|direction|which way)\b|\bwhich (?:way|direction)\b/i,
+     { 'right' => 'Derecha', 'left' => 'Izquierda', 'straight' => 'De frente', 'back' => 'Atrás' }],
+    [/\b(?:fight|battle|opponent|wild pok[eé]mon|flee)\b/i,
+     { 'run' => 'Huir', 'fight' => 'Luchar', 'bag' => 'Bolsa' }],
+    [/\b(?:is that correct|did i get that right|did i understand correctly)\b/i,
+     { 'right' => 'Correcto', 'right.' => 'Correcto.' }]
+  ]
   @paint_stack = []
   @paint_waiting = []
   @verbatim = 0
@@ -341,6 +349,45 @@ module EssentiaTranslate
       player_name == text
     end
 
+    def scene_label(text, hint)
+      return nil unless SPANISH && text.is_a?(String) && hint.is_a?(String) && hint.size <= 512
+      return nil if text.instance_variable_get(:@gahvoria_translated) || player_name?(text)
+      key = text.strip.downcase
+      SCENE_HINTS.each do |pattern, terms|
+        return marked(terms[key]) if terms.has_key?(key) && hint =~ pattern
+      end
+      nil
+    end
+
+    def scene_id
+      map = defined?($game_map) && $game_map
+      return nil unless map && map.respond_to?(:map_id)
+      interpreter = map.interpreter if map.respond_to?(:interpreter)
+      system = defined?($game_system) && $game_system
+      interpreter ||= system.map_interpreter if system && system.respond_to?(:map_interpreter)
+      event = interpreter.event_id if interpreter && interpreter.respond_to?(:event_id)
+      [map.map_id, event] if event.is_a?(Integer) && event > 0
+    end
+
+    def scene_hint(source)
+      return nil unless @scene_message && source.is_a?(String)
+      id, stamp, previous = @scene_message
+      elapsed = Time.now.to_f - stamp
+      return nil unless id && id == scene_id && elapsed >= 0 && elapsed <= 12
+      current_speaker = NAME_BOX.match(source)
+      previous_speaker = NAME_BOX.match(previous)
+      return nil if current_speaker && previous_speaker && current_speaker[1] != previous_speaker[1]
+      previous
+    end
+
+    def remember_scene_message(source)
+      return unless SPANISH
+      @scene_message = nil
+      return unless source.is_a?(String) && source.size <= 512
+      id = scene_id
+      @scene_message = [id, Time.now.to_f, source] if id
+    end
+
     def render_choices(choices, question = nil)
       return choices unless choices.is_a?(Array)
       normalized = choices.map { |value| value.is_a?(String) ? value.gsub("’", "'").strip.downcase : nil }
@@ -354,9 +401,12 @@ module EssentiaTranslate
           glossary = TRAINER_STYLE_SPANISH
         end
       end
+      if SPANISH && normalized.include?('left') && normalized.include?('right')
+        question = 'Which way?'
+      end
       choices.each_with_index.map do |text, index|
         label = glossary && glossary[normalized[index]]
-        label ? marked(label) : rendering_text(text, true)
+        label ? marked(label) : scene_label(text, question) || rendering_text(text, true)
       end
     end
 
@@ -372,10 +422,10 @@ module EssentiaTranslate
       source
     end
 
-    def message_text(source, wait)
+    def message_text(source, wait, hint = nil)
       return lookup(source, wait) unless SPANISH && source.is_a?(String)
       return source if source.instance_variable_get(:@gahvoria_translated)
-      label = visible_label(source)
+      label = scene_label(source, hint) || visible_label(source)
       return label if label
       key = message_key(source)
       token = PLAYER_NAME_TOKEN
@@ -540,12 +590,16 @@ module EssentiaTranslate
         return paint(receiver) { original.bind(receiver).call(*args, &block) }
       elsif kind == :command_size
         if args[0].is_a?(Array)
-          args[0] = render_choices(args[0])
+          args[0] = render_choices(args[0], @choice_question)
         end
       elsif kind == :verbatim
         return verbatim { original.bind(receiver).call(*args, &block) }
       elsif kind == :layout
-        label = visible_label(args[argument]) if @verbatim == 0 && @displaying.empty?
+        if @verbatim == 0 && @displaying.empty?
+          text = args[argument]
+          label = visible_label(text)
+          label ||= lookup(text) unless @paint_stack.empty?
+        end
         args[argument] = label if label
         return verbatim { original.bind(receiver).call(*args, &block) }
       elsif kind == :bitmap_init
@@ -613,18 +667,24 @@ module EssentiaTranslate
         end
       elsif kind == :commands
         if args[argument].is_a?(Array)
-          args[argument] = render_choices(args[argument])
+          args[argument] = render_choices(args[argument], @choice_question)
         end
       elsif args.length > argument && !@displaying.include?(args[argument])
         if kind == :message_with_choices && args[1].is_a?(Array)
           args[1] = render_choices(args[1], args[argument])
         end
-        args[argument] = message_text(args[argument], wait)
+        source = args[argument]
+        outer = @displaying.empty?
+        args[argument] = message_text(source, wait, outer ? scene_hint(source) : nil)
+        remember_scene_message(source) if outer
+        previous_question = @choice_question
+        @choice_question = source if outer
         @displaying << args[argument]
         begin
           return original.bind(receiver).call(*args, &block)
         ensure
           @displaying.pop
+          @choice_question = previous_question
         end
       end
       original.bind(receiver).call(*args, &block)
@@ -696,7 +756,8 @@ module EssentiaTranslate
     def message_catalog_text(text)
       # Keep UI originals available for the selector or drawing hook to resolve in context.
       return text if SPANISH && text.is_a?(String) && (ui_label(text) ||
-        TRAINER_STYLE_SPANISH.has_key?(text.downcase) || SETUP_SPANISH.has_key?(text.downcase))
+        TRAINER_STYLE_SPANISH.has_key?(text.downcase) || SETUP_SPANISH.has_key?(text.downcase) ||
+        SCENE_HINTS.any? { |_pattern, terms| terms.has_key?(text.downcase) })
       lookup(text, 0)
     end
 
