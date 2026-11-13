@@ -47,6 +47,7 @@ public final class TranslatorService
     private static final String TAG = "GahvoriaTranslate";
     public static final String PROVIDER_MLKIT = "mlkit";
     public static final String PROVIDER_DEEPL = "deepl";
+    private static final String PROVIDER_NEURAL = "neural";
 
     private final File mReqDir;
     private final File mFile;
@@ -192,6 +193,10 @@ public final class TranslatorService
         TranslationMemory.append(responses, cached, false);
         if (missing.isEmpty()) {
             if (!cached.isEmpty()) status("Usando la memoria de traducción del juego");
+            return;
+        }
+        if (PROVIDER_NEURAL.equals(mProvider)) {
+            status("Gahvoria Neural AI usa la memoria. Modelo pendiente de integración.");
             return;
         }
         if (PROVIDER_DEEPL.equals(mProvider) && mKey.isEmpty()) {

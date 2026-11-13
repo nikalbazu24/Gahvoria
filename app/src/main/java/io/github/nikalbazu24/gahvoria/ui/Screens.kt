@@ -564,6 +564,9 @@ private fun SecContent(s: AppState, sec: Sec) {
                                 s.deeplState?.let { T(it, 12.sp, FontWeight.SemiBold, c.muted) }
                             }
                         }
+                        Divider()
+                        RowItem("Gahvoria Neural AI", "Experimental. Por ahora usa la memoria del juego. Modelo pendiente de integración.",
+                            role = Role.RadioButton, onClick = { s.chooseTranslateProvider("neural") }) { Radio(s.translateProvider == "neural") }
                     }
                     Label("Traducir a")
                     Glass(Modifier.fillMaxWidth()) {

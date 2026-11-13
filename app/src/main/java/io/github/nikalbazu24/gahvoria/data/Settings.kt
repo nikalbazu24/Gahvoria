@@ -77,7 +77,7 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("tr_on", false)
         set(v) = prefs.edit().putBoolean("tr_on", v).apply()
 
-    /** "mlkit" (on the phone, free) or "deepl" (the player's own key). */
+    /** "mlkit" (on the phone), "deepl" (player key), or "neural" (experimental memory only). */
     var translateProvider: String
         get() = prefs.getString("tr_provider", "mlkit") ?: "mlkit"
         set(v) = prefs.edit().putString("tr_provider", v).apply()

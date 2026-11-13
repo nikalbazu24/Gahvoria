@@ -45,3 +45,5 @@ Para cualquier runtime integrado, revisar [MPL y licencias secundarias](https://
 ## Corrección tras la prueba con Solar Eclipse
 
 Solar Eclipse (RPG Maker XP y Essentials 19.1) siguió mostrando el original en la Thor con el proveedor local. El proceso `:game` no ejecutaba el inicializador automático de ML Kit del proceso principal. El servicio lo inicializa una vez en ese proceso, antes de crear clientes de idioma o traducción. Se refresca el aviso al volver del juego y se distingue falta de texto, preparación de idioma, fallo y aciertos de memoria. La prueba en la Thor está pendiente de repetir con el APK nuevo.
+
+En **Ajustes → Traducción → Con qué traducir**, la opción **Gahvoria Neural AI** activa la ruta experimental. Mientras se integra el modelo, esta ruta reutiliza únicamente la memoria por juego e idioma y muestra el texto original cuando no encuentra una coincidencia. Las frases del modo experimental no se envían a DeepL ni a ML Kit. Para verificar la reparación del proveedor local en Solar Eclipse, elegir **En el teléfono (gratis)**.
