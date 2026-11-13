@@ -210,6 +210,7 @@ public class GameActivity extends SDLActivity
     {
         setenv("ESSENTIA_TR_FILE", "");
         setenv("ESSENTIA_TR_REQ", "");
+        setenv("ESSENTIA_TR_TARGET", "");
         String dir = i.getStringExtra(EXTRA_TR_DIR);
         if (dir == null || dir.isEmpty()) return;
         File folder = new File(dir);
@@ -223,6 +224,8 @@ public class GameActivity extends SDLActivity
             mTranslator.start();
             setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
             setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
+            String target = i.getStringExtra(EXTRA_TR_TARGET);
+            setenv("ESSENTIA_TR_TARGET", target == null ? "es" : target);
         } catch (Exception failure) {
             mTranslator.stop();
             setenv("ESSENTIA_TR_FILE", "");

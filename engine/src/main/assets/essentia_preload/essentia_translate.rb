@@ -23,6 +23,36 @@ module EssentiaTranslate
   MAX_REQUEST_FILES = 128
   RETRY_SECONDS = 18
   DIALOGUE_WAIT = 0.65
+  SPANISH = ENV['ESSENTIA_TR_TARGET'] == 'es'
+  UI_SPANISH = {
+    'Press Start' => 'Pulsa START',
+    'Press Enter' => 'Pulsa Enter',
+    'Press any key' => 'Pulsa cualquier tecla',
+    'Continue' => 'Continuar',
+    'New Game' => 'Nueva partida',
+    'Options' => 'Opciones',
+    'Settings' => 'Ajustes',
+    'Quit Game' => 'Salir del juego',
+    'Exit Game' => 'Salir del juego',
+    'Save Game' => 'Guardar partida',
+    'Load Game' => 'Cargar partida',
+    'Close' => 'Cerrar',
+    'Cancel' => 'Cancelar',
+    'Back' => 'Atrás',
+    'Yes' => 'Sí',
+    'No' => 'No',
+    'Badges:' => 'Medallas:',
+    'Time:' => 'Tiempo:',
+    'Text Speed' => 'Velocidad de texto',
+    'Battle Effects' => 'Efectos de combate',
+    'Battle Style' => 'Estilo de combate',
+    'Screen Size' => 'Tamaño de pantalla',
+    'On' => 'Sí',
+    'Off' => 'No'
+  }
+  @paint_stack = []
+  @paint_waiting = []
+  @verbatim = 0
   @hooked = {}
   @originals = []
 
@@ -114,6 +144,7 @@ module EssentiaTranslate
       return if now - @last_load < 0.12
       @last_load = now
       load_new
+      refresh_ready_windows
     end
 
     def lookup(text, wait = 0)
@@ -124,6 +155,7 @@ module EssentiaTranslate
       return translated_copy(text) if @map.has_key?(text)
       return text if REQ.empty? || FILE.empty?
       request(text)
+      @paint_stack.last[1][text.dup] = true unless @paint_stack.empty?
       if @pending[text] && wait > 0 && flush
         deadline = Time.now + wait
         while (remaining = deadline - Time.now) > 0
@@ -159,20 +191,165 @@ module EssentiaTranslate
       false
     end
 
+    # Repaint only known windows that drew an original while inference was pending.
+    # Limit retained windows and the number repainted per frame.
+    def paint(window)
+      state = [window, {}]
+      @paint_stack << state
+      begin
+        yield
+      ensure
+        @paint_stack.pop
+        @paint_waiting.delete_if { |item| item[0].equal?(window) }
+        if !state[1].empty?
+          @paint_waiting.shift if @paint_waiting.size >= 32
+          @paint_waiting << state
+        end
+      end
+    end
+
+    def refresh_ready_windows
+      return unless @paint_stack.empty?
+      ready = []
+      @paint_waiting.delete_if do |item|
+        window, texts = item
+        if (window.respond_to?(:disposed?) && window.disposed?) || (item[2] && window.text != item[2])
+          true
+        elsif ready.size < 2 && (!window.respond_to?(:visible) || window.visible) &&
+              texts.keys.any? { |text| @map.has_key?(text) }
+          ready << item
+          true
+        else
+          false
+        end
+      end
+      ready.each do |item|
+        window = item[0]
+        begin
+          if item[2]
+            window.text = translated_copy(item[2])
+          elsif window.respond_to?(:pbRefresh)
+            window.pbRefresh
+          else
+            window.refresh
+          end
+        rescue StandardError
+          # A game can dispose or replace its window during a scene transition.
+        end
+      end
+    end
+
+    def rendering_text(text)
+      return text if @verbatim > 0 || !@displaying.empty?
+      if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
+        label = UI_SPANISH[text]
+        if label
+          result = label.dup
+          result.instance_variable_set(:@gahvoria_translated, true)
+          return result
+        end
+      end
+      lookup(text)
+    end
+
+    def verbatim
+      @verbatim += 1
+      begin
+        yield
+      ensure
+        @verbatim -= 1
+      end
+    end
+
+    # Essentials often ships the flashing title instruction as a standalone sprite.
+    # Match only prompt assets in title folders and preserve the bitmap dimensions.
+    def localize_title_prompt(bitmap, path)
+      return unless SPANISH && path.is_a?(String)
+      normalized = path.tr('\\', '/').sub(/\A\.\/+/, '')
+      return unless normalized =~ /\AGraphics\/(?:Titles|Title|UI\/(?:Titles|Title|Title Screen))\/([^\/]+)\z/i
+      filename = $1.sub(/\.(?:png|bmp|gif|webp)\z/i, '').downcase.gsub(/[ _-]/, '')
+      case filename
+      when 'start', 'pressstart', 'pressenter', 'presstostart', 'startprompt', 'titlepressstart'
+        label = 'Pulsa para empezar'
+      else
+        return
+      end
+      width, height = bitmap.width, bitmap.height
+      return if width < 48 || height < 10 || height > 160 || width < height * 2
+      replacement = Bitmap.new(width, height)
+      begin
+        font = replacement.font
+        font.size = [[height - 2, 32].min, 10].max
+        font.bold = true
+        font.color = Color.new(255, 255, 255)
+        font.outline = true if font.respond_to?(:outline=)
+        verbatim { replacement.draw_text(0, 0, width, height, label, 1) }
+        bitmap.clear
+        bitmap.blt(0, 0, replacement, Rect.new(0, 0, width, height))
+      ensure
+        replacement.dispose
+      end
+    rescue StandardError
+      # Keep the game's graphic if this engine cannot generate the replacement.
+    end
+
     # ------------------------------------------------------------ hooks
 
     def invoke(index, receiver, args, block)
       original, argument, wait, kind = @originals[index]
-      if kind == :window
+      if kind == :paint
+        return paint(receiver) { original.bind(receiver).call(*args, &block) }
+      elsif kind == :command_size
+        if args[0].is_a?(Array)
+          args[0] = args[0].map { |text| rendering_text(text) }
+        end
+      elsif kind == :verbatim
+        return verbatim { original.bind(receiver).call(*args, &block) }
+      elsif kind == :bitmap_init
+        result = original.bind(receiver).call(*args, &block)
+        localize_title_prompt(receiver, args[0]) if args.size == 1
+        return result
+      elsif kind == :bitmap_text
+        # Bitmap#draw_text accepts (rect, text, align) and (x, y, w, h, text, align).
+        slot = args.size <= 3 ? 1 : 4
+        text = args[slot]
+        if text.is_a?(String) && text =~ /[A-Za-z]{2}/
+          args[slot] = rendering_text(text)
+        end
+      elsif kind == :measure
+        args[0] = rendering_text(args[0]) unless @paint_stack.empty?
+      elsif kind == :text_positions
+        if args[argument].is_a?(Array) && @verbatim == 0
+          args[argument] = args[argument].map do |row|
+            if row.is_a?(Array) && row[0].is_a?(String)
+              copy = row.dup
+              copy[0] = rendering_text(copy[0])
+              copy
+            else
+              row
+            end
+          end
+        end
+        return verbatim { original.bind(receiver).call(*args, &block) }
+      elsif kind == :draw
+        args[argument] = rendering_text(args[argument])
+        return verbatim { original.bind(receiver).call(*args, &block) }
+      elsif kind == :window
         # pbMessageDisplay already intercepts complete text before it expands controls.
-        # Direct scene writers bypass it and give the letter-by-letter window the original.
-        if @displaying.empty? && receiver.respond_to?(:letterbyletter) && receiver.letterbyletter &&
-           (!receiver.respond_to?(:text) || receiver.text != args[argument])
-          args[argument] = lookup(args[argument], wait)
+        # Static help boxes can be passed directly to the same setter.
+        if @verbatim == 0 && @displaying.empty? && (!receiver.respond_to?(:text) || receiver.text != args[argument])
+          slow = receiver.respond_to?(:letterbyletter) && receiver.letterbyletter
+          source = args[argument]
+          args[argument] = lookup(source, slow ? wait : 0)
+          if !slow && source.is_a?(String) && args[argument].equal?(source) && @pending[source]
+            @paint_waiting.delete_if { |item| item[0].equal?(receiver) }
+            @paint_waiting.shift if @paint_waiting.size >= 32
+            @paint_waiting << [receiver, {source.dup => true}, source.dup]
+          end
         end
       elsif kind == :commands
         if args[argument].is_a?(Array)
-          args[argument] = args[argument].map { |text| lookup(text) }
+          args[argument] = args[argument].map { |text| rendering_text(text) }
         end
       elsif args.length > argument && !@displaying.include?(args[argument])
         args[argument] = lookup(args[argument], wait)
@@ -214,8 +391,29 @@ module EssentiaTranslate
     end
 
     def wrap_dialogue_window
-      return unless defined?(Window_AdvancedTextPokemon)
-      wrap_method(Window_AdvancedTextPokemon, :text=, 0, DIALOGUE_WAIT, :window)
+      if defined?(Window_AdvancedTextPokemon)
+        wrap_method(Window_AdvancedTextPokemon, :text=, 0, DIALOGUE_WAIT, :window)
+      end
+      wrap_method(Window_UnformattedTextPokemon, :text=, 0, 0, :window) if defined?(Window_UnformattedTextPokemon)
+    end
+
+    def wrap_ui
+      if defined?(Bitmap)
+        wrap_method(Bitmap, :initialize, 0, 0, :bitmap_init)
+        wrap_method(Bitmap, :draw_text, 0, 0, :bitmap_text)
+        wrap_method(Bitmap, :text_size, 0, 0, :measure)
+      end
+      wrap_top(:pbDrawTextPositions, 1, 0, :text_positions)
+      [:pbDrawPlainText, :pbDrawShadowText, :pbDrawOutlineText].each { |name| wrap_top(name, 5, 0, :draw) }
+      wrap_top(:drawFormattedTextEx, 4, 0, :draw)
+      wrap_top(:drawTextEx, 5, 0, :draw)
+      [:drawFormattedChars, :drawSingleFormattedChar, :renderLineBrokenChunks,
+       :renderLineBrokenChunksWithShadow].each { |name| wrap_top(name, 0, 0, :verbatim) }
+      if defined?(Window_DrawableCommand)
+        wrap_method(Window_DrawableCommand, :refresh, 0, 0, :paint)
+        wrap_method(Window_DrawableCommand, :getAutoDims, 0, 0, :command_size)
+      end
+      wrap_method(PokemonLoadPanel, :refresh, 0, 0, :paint) if defined?(PokemonLoadPanel)
     end
 
     def wrap_messages
@@ -250,6 +448,7 @@ module EssentiaTranslate
         wrap_top(:pbShowCommands, 1, 0, :commands)
         wrap_messages
         wrap_dialogue_window
+        wrap_ui
       ensure
         @installing = false
       end
@@ -274,8 +473,7 @@ unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
     alias_method :essentia_translation_method_added, :method_added
     def method_added(name)
       essentia_translation_method_added(name)
-      case name.to_s
-      when 'pbMessage', 'pbMessageDisplay', 'pbShowCommands'
+      if name.to_s =~ /\A(?:pbMessage|pbMessageDisplay|pbShowCommands|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
         EssentiaTranslate.install
       end
     end

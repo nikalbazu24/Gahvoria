@@ -1,6 +1,31 @@
 # Exercises the same preloader used by both RPG Maker engines.
 require 'tmpdir'
 
+class Color
+  def initialize(*args); end
+end
+
+class Rect
+  def initialize(*args); end
+end
+
+class Bitmap
+  Font = Struct.new(:size, :bold, :color)
+  attr_reader :width, :height, :font, :drawn
+  def initialize(*args)
+    @width, @height = args.size == 1 ? [512, 44] : args
+    @font = Font.new
+    @drawn = []
+  end
+  def draw_text(*args)
+    @drawn << (args.size <= 3 ? args[1] : args[4])
+  end
+  def text_size(value); value.size; end
+  def clear; @drawn.clear; end
+  def blt(_x, _y, source, _rect); @drawn.concat(source.drawn); end
+  def dispose; end
+end
+
 module Graphics
   def self.update
   end
@@ -26,6 +51,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   Dir.mkdir(requests)
   ENV['ESSENTIA_TR_FILE'] = answers
   ENV['ESSENTIA_TR_REQ'] = requests
+  ENV['ESSENTIA_TR_TARGET'] = 'es'
   load script
 
   def pbMessage(text)
@@ -85,8 +111,8 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   window = Window_AdvancedTextPokemon.new
   intro = 'Take on the Gym Challenge!'
   spanish = '¡Enfréntate al desafío de los gimnasios!'
-  window.text = 'An ordinary window label'
-  assert_equal('An ordinary window label', window.text)
+  window.text = ''
+  assert_equal('', window.text)
   window.letterbyletter = true
 
   before = Dir[File.join(requests, '*.req')].size
@@ -112,6 +138,50 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   assert_equal("<b>" + spanish + "</b>", window.text)
   EssentiaTranslate.flush
   assert_equal(before + 1, Dir[File.join(requests, '*.req')].size)
+  def pbDrawTextPositions(bitmap, rows)
+    rows.each do |row|
+      bitmap.draw_text(0, 0, bitmap.text_size(row[0]), 20, row[0])
+    end
+  end
+
+  menu = Bitmap.new(200, 100)
+  rows = [['New Game', 20], ['Options', 40]]
+  pbDrawTextPositions(menu, rows)
+  menu.draw_text(Rect.new(0, 0, 180, 20), 'Press Start', 1)
+  assert_equal(['Nueva partida', 'Opciones', 'Pulsa START'], menu.drawn)
+  assert_equal('New Game', rows[0][0])
+  assert_equal(['Pulsa para empezar'], Bitmap.new('Graphics/Titles/start.png').drawn)
+  assert_equal([], Bitmap.new('Graphics/Titles/title.png').drawn)
+  assert_equal([], Bitmap.new('Graphics/Pictures/start.png').drawn)
+
+  class Window_DrawableCommand
+    attr_reader :bitmap, :selected
+    def initialize
+      @bitmap = Bitmap.new(100, 40)
+      @selected = 2
+    end
+    def disposed?; false; end
+    def visible; true; end
+    def refresh
+      @bitmap.clear
+      @bitmap.draw_text(0, 0, 100, 20, 'Select a challenge')
+    end
+  end
+  EssentiaTranslate.install
+  options = Window_DrawableCommand.new
+  options.refresh
+  assert_equal(['Select a challenge'], options.bitmap.drawn)
+  window.letterbyletter = false
+  window.text = 'Choose your preferred difficulty'
+  File.open(answers, 'ab') do |f|
+    f.write("Select a challenge\tElige un desafío\n")
+    f.write("Choose your preferred difficulty\tElige la dificultad que prefieras\n")
+  end
+  EssentiaTranslate.load_new
+  EssentiaTranslate.refresh_ready_windows
+  assert_equal(['Elige un desafío'], options.bitmap.drawn)
+  assert_equal(2, options.selected)
+  assert_equal('Elige la dificultad que prefieras', window.text)
 end
 
 puts 'Ruby translation bridge checks passed'
