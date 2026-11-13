@@ -65,6 +65,8 @@ public final class TranslatorService
 
     // ML Kit client state (only used by the thread)
     private final Context mContext;
+    private BergamotModel mBergamot;
+    private boolean mNeuralUnavailable;
     private Translator mTranslator;
     private String mTranslatorSource = "";
     private Task<Void> mModelDownload;
@@ -164,7 +166,11 @@ public final class TranslatorService
             try {
                 if (mTranslator != null) mTranslator.close();
             } finally {
-                if (mIdentifier != null) mIdentifier.close();
+                try {
+                    if (mIdentifier != null) mIdentifier.close();
+                } finally {
+                    if (mBergamot != null) mBergamot.close();
+                }
             }
         }
     }
@@ -195,17 +201,24 @@ public final class TranslatorService
             if (!cached.isEmpty()) status("Usando la memoria de traducción del juego");
             return;
         }
-        if (PROVIDER_NEURAL.equals(mProvider)) {
-            status("Gahvoria Neural AI usa la memoria. Modelo pendiente de integración.");
+        if (PROVIDER_NEURAL.equals(mProvider) && !"es".equals(mTarget)) {
+            status("Gahvoria Neural AI traduce del inglés al español. Elige Español como destino.");
             return;
         }
+        if (PROVIDER_NEURAL.equals(mProvider) && mNeuralUnavailable) return;
         if (PROVIDER_DEEPL.equals(mProvider) && mKey.isEmpty()) {
             status("Falta la clave de DeepL. La memoria del juego sigue disponible.");
             return;
         }
 
-        TranslationBatch.Provider provider = PROVIDER_DEEPL.equals(mProvider)
-            ? (originals, protectedTexts) -> deepl(protectedTexts) : this::mlkit;
+        TranslationBatch.Provider provider;
+        if (PROVIDER_NEURAL.equals(mProvider)) {
+            provider = this::neural;
+        } else if (PROVIDER_DEEPL.equals(mProvider)) {
+            provider = (originals, protectedTexts) -> deepl(protectedTexts);
+        } else {
+            provider = this::mlkit;
+        }
         Map<String, String> answers = TranslationBatch.translate(missing, provider);
         memory.remember(answers);
         TranslationMemory.append(responses, answers, false);
@@ -221,6 +234,21 @@ public final class TranslatorService
         } else {
             status("Recibí texto del juego, pero quedó en el idioma original");
         }
+    }
+
+    private List<String> neural(List<String> originals, List<String> protectedTexts) throws Exception
+    {
+        if (mBergamot == null) {
+            status("Cargando el modelo Neural inglés → español");
+            try {
+                mBergamot = new BergamotModel(mContext);
+            } catch (Exception | LinkageError failure) {
+                mNeuralUnavailable = true;
+                if (failure instanceof Exception) throw (Exception) failure;
+                throw new IOException("No pude cargar el motor Neural", failure);
+            }
+        }
+        return NeuralText.translate(protectedTexts, mBergamot::translate);
     }
 
     // ---------------------------------------------------------------- ML Kit

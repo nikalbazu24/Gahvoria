@@ -20,6 +20,7 @@ env:
   GAHVORIA_DEV_TAG: ${{ (github.ref == 'refs/heads/experimental/neural-ai-phase-1' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'experimental/neural-ai-phase-1')) && 'neural-beta' || 'dev' }}
   GAHVORIA_REPORT_TOKEN: ${{ secrets.GAHVORIA_REPORT_TOKEN }}
   NDK_VERSION: 25.2.9519653
+  BERGAMOT_NDK_VERSION: 29.0.14206865
   ABI: arm64-v8a
   HOST: aarch64-linux-android
   TARGET: aarch64-linux-android
@@ -51,7 +52,7 @@ jobs:
       - name: Instalar herramientas de compilación
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake libtool bison gperf pkg-config wget xxd
+          sudo apt-get install -y autoconf automake libtool bison gperf pkg-config wget xxd ninja-build
 
       - name: Instalar Android NDK
         timeout-minutes: 12
@@ -116,6 +117,28 @@ jobs:
         working-directory: engine/jni
         run: ./build_ruby18.sh
 
+      - name: Recuperar el motor Neural compilado
+        id: bergamot-cache
+        uses: actions/cache@v4
+        with:
+          path: engine/src/main/jniLibs/arm64-v8a/libgahvoria_bergamot.so
+          key: bergamot-arm64-r29-${{ hashFiles('engine/neural/build.sh', 'engine/neural/CMakeLists.txt', 'engine/neural/bergamot_jni.cpp', 'engine/neural/jni.map') }}
+
+      - name: Compilar Bergamot para Android ARM64
+        if: steps.bergamot-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 55
+        run: |
+          ndk="$ANDROID_HOME/ndk/$BERGAMOT_NDK_VERSION"
+          if [ ! -f "$ndk/source.properties" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$BERGAMOT_NDK_VERSION"
+          fi
+          test "$(sed -n 's/^Pkg.Revision = //p' "$ndk/source.properties")" = "$BERGAMOT_NDK_VERSION"
+          ANDROID_NDK="$ndk" bash engine/neural/build.sh
+
+      - name: Preparar el modelo Neural verificado
+        timeout-minutes: 12
+        run: python3 engine/neural/fetch_model.py
+
       - name: Preparar la firma de Gahvoria
         env:
           KS_B64: ${{ secrets.GAHVORIA_KEYSTORE_B64 }}
@@ -147,6 +170,7 @@ jobs:
           python3 tools/release_manifest.py app/build/outputs/apk/release/output-metadata.json version.json
           cat version.json
           python3 tools/verify_apk.py gahvoria.apk version.json
+          python3 engine/neural/verify_package.py gahvoria.apk
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && { [ "$GITHUB_REF" = "refs/heads/main" ] || [ "$GAHVORIA_DEV_TAG" = "neural-beta" ]; } && [ "$GAHVORIA_SIGNED" != "true" ]; then
             echo "::error::La distribución requiere la firma fija de Gahvoria."
             exit 1

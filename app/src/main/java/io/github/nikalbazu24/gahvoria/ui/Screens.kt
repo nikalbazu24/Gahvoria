@@ -565,7 +565,7 @@ private fun SecContent(s: AppState, sec: Sec) {
                             }
                         }
                         Divider()
-                        RowItem("Gahvoria Neural AI", "Experimental. Por ahora usa la memoria del juego. Modelo pendiente de integración.",
+                        RowItem("Gahvoria Neural AI", "Inglés → español sin conexión. Android 9 o posterior.",
                             role = Role.RadioButton, onClick = { s.chooseTranslateProvider("neural") }) { Radio(s.translateProvider == "neural") }
                     }
                     Label("Traducir a")

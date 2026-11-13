@@ -15,7 +15,8 @@ public final class TranslationPhaseOneTest {
         preservesControlTokens();
         rejectsBadProviderOutput();
         persistsOnlyValidatedTranslations();
-        System.out.println("3 JVM translation checks passed");
+        neuralPreservesMarkupWithoutSendingItToInference();
+        System.out.println("4 JVM translation checks passed");
     }
 
     private static void preservesControlTokens() throws Exception {
@@ -27,6 +28,20 @@ public final class TranslationPhaseOneTest {
             return Collections.singletonList("⟦0⟧¡Hola, ⟦1⟧!⟦2⟧Ve ⟦3⟧ahora⟦4⟧, ⟦5⟧ ⟦6⟧.");
         });
         equal(expected, translated.get(original));
+    }
+
+    private static void neuralPreservesMarkupWithoutSendingItToInference() throws Exception {
+        String original = "\\c[1]Welcome \\PN!\nGet <b>ready</b>.";
+        Map<String, String> result = TranslationBatch.translate(Collections.singletonList(original),
+            (raw, inputs) -> NeuralText.translate(inputs, spans -> {
+                equal(Arrays.asList("Welcome", "Get", "ready"), spans);
+                return Arrays.asList("Bienvenido", "Prepárate", "ya");
+            }));
+        equal("\\c[1]Bienvenido \\PN!\nPrepárate <b>ya</b>.", result.get(original));
+        equal(Collections.singletonList(null),
+            NeuralText.translate(Collections.singletonList("Hello ⟦0⟧!"), spans -> Collections.singletonList(null)));
+        equal(Collections.singletonList("⟦0⟧!"),
+            NeuralText.translate(Collections.singletonList("⟦0⟧!"), spans -> { throw new AssertionError("No text"); }));
     }
 
     private static void rejectsBadProviderOutput() throws Exception {
