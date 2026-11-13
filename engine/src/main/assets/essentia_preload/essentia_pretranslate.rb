@@ -175,6 +175,37 @@ module GahvoriaPretranslate
       end
     end
 
+    def export_catalog(root, base)
+      tmp = base + '.tmp'
+      cancel = lambda { File.exist?(base + '.skip') }
+      seen = {}
+      truncated = false
+      File.open(tmp, 'wb') do |file|
+        collect(root, cancel) do |text|
+          break if cancel.call
+          next unless text.is_a?(String) && text.size <= 9000
+          text = EssentiaTranslate.utf8(text.dup)
+          next if text.respond_to?(:valid_encoding?) && !text.valid_encoding?
+          next if text.strip.empty? || text !~ /[[:alpha:]]/ || seen[text]
+          next if EssentiaTranslate::SPANISH && EssentiaTranslate::UI_SPANISH.has_key?(text)
+          row = EssentiaTranslate.esc(text) + "\n"
+          if file.pos + (row.respond_to?(:bytesize) ? row.bytesize : row.size) > 32 * 1024 * 1024 || seen.size >= 120_000
+            truncated = true
+            break
+          end
+          seen[text] = true
+          file.write(row)
+        end
+      end
+      return if cancel.call
+      File.open(base + '.limited', 'wb') {} if truncated
+      File.rename(tmp, base + '.ready')
+    rescue StandardError
+      File.open(base + '.error', 'wb') {}
+    ensure
+      File.delete(tmp) if File.exist?(tmp)
+    end
+
     def now
       return System.uptime if defined?(System) && System.respond_to?(:uptime)
       Time.now.to_f
@@ -232,5 +263,10 @@ module GahvoriaPretranslate
   end
 end
 
-GahvoriaPretranslate.run(ENV['ESSENTIA_TR_ROOT'].to_s, ENV['ESSENTIA_TR_PREPARE'].to_s,
-                         ENV['ESSENTIA_TR_PREPARE_MARKER'].to_s)
+catalog = ENV['ESSENTIA_TR_CATALOG'].to_s
+if catalog.empty?
+  GahvoriaPretranslate.run(ENV['ESSENTIA_TR_ROOT'].to_s, ENV['ESSENTIA_TR_PREPARE'].to_s,
+                           ENV['ESSENTIA_TR_PREPARE_MARKER'].to_s)
+else
+  GahvoriaPretranslate.export_catalog(ENV['ESSENTIA_TR_ROOT'].to_s, catalog)
+end

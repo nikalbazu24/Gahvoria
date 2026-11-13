@@ -82,6 +82,19 @@ Dir.mktmpdir('gahvoria-pretranslation') do |dir|
   raise 'The launch deadline did not release the stalled translator' if GahvoriaPretranslate.now - started > 2
   check(false, File.exist?(base + '.tmp'))
 
+  catalog = File.join(dir, 'catalog')
+  $RGSS_SCRIPTS << [1, 'Duplicate', nil, 'pbMessage("Yes, please")']
+  GahvoriaPretranslate.export_catalog(dir, catalog)
+  lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
+  check(expected.take(3) + ['Yes, please'] + (expected.drop(3) - ['Yes, please']), lines)
+  check(false, File.exist?(catalog + '.tmp'))
+
+  aborted = File.join(dir, 'aborted')
+  File.write(aborted + '.skip', '')
+  GahvoriaPretranslate.export_catalog(dir, aborted)
+  check(false, File.exist?(aborted + '.ready'))
+  check(false, File.exist?(aborted + '.tmp'))
+
   stopped = []
   GahvoriaPretranslate.collect(dir, lambda { true }) { |text| stopped << text }
   check([], stopped)

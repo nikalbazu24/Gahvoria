@@ -1181,6 +1181,15 @@ static void runRMXPScripts(BacktraceData &btData) {
         rb_ary_store(script, 3, rb_utf8_str_new_cstr(decodeBuffer.c_str()));
     }
     
+#ifdef MKXPZ_BUILD_ANDROID
+    const char *translationCatalog = getenv("ESSENTIA_TR_CATALOG");
+    if (translationCatalog && *translationCatalog) {
+        runCustomScript("essentia_preload/essentia_translate.rb");
+        if (rb_gv_get("$!") == Qnil)
+            runCustomScript("essentia_preload/essentia_pretranslate.rb");
+        return;
+    }
+#endif
     essentiaLoadPhase("start");
 
     essentiaLoadPhase("preloads");

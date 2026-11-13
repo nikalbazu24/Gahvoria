@@ -40,6 +40,11 @@ public final class TranslationPhaseOneTest {
         equal("\\c[1]Bienvenido \\PN!\nPrepárate <b>ya</b>.", result.get(original));
         equal(Collections.singletonList(null),
             NeuralText.translate(Collections.singletonList("Hello ⟦0⟧!"), spans -> Collections.singletonList(null)));
+        equal(Arrays.asList(null, "⟦0⟧ ¡Vamos!", "Final"),
+            NeuralText.translate(Arrays.asList("Hello ⟦0⟧ again", "⟦0⟧ Go!", "End"), spans -> {
+                equal(Arrays.asList("Hello", "again", "Go!", "End"), spans);
+                return Arrays.asList(null, "otra vez", "¡Vamos!", "Final");
+            }));
         equal(Collections.singletonList("⟦0⟧!"),
             NeuralText.translate(Collections.singletonList("⟦0⟧!"), spans -> { throw new AssertionError("No text"); }));
     }

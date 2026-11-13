@@ -15,11 +15,14 @@ import java.util.Map;
 final class TranslationMemory implements Closeable {
     private static final int MAX_ROW_BYTES = 64 * 1024;
     private final RandomAccessFile file;
+    private final java.nio.channels.FileLock lock;
     private final Map<String, String> entries = new LinkedHashMap<>();
 
     TranslationMemory(File path) throws IOException {
         file = new RandomAccessFile(path, "rw");
         try {
+            lock = file.getChannel().tryLock();
+            if (lock == null) throw new IOException("La memoria de traducción está en uso");
             load();
         } catch (IOException | RuntimeException failure) {
             file.close();

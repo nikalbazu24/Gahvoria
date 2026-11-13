@@ -22,6 +22,8 @@ import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
+import io.github.nikalbazu24.gahvoria.data.Translations
+import io.github.nikalbazu24.gahvoria.data.TranslationPreparationService
 import android.net.Uri
 import android.content.Intent
 import io.github.nikalbazu24.gahvoria.core.StoreCatalog
@@ -236,15 +238,23 @@ class AppState(private val activity: Activity) {
                 return
             }
         }
-        val now = System.currentTimeMillis()
-        library.update(game.path) { it.copy(lastPlayed = now) }
-        settings.startSession(game.path, now)
-        if (engine == null) settings.setRetried(game.path, false)
-        // Off the main thread: reading a big game's scripts to choose the engine takes seconds, and a previous session may still be closing.
+        val preparing = TranslationPreparationService.active
         Thread({
-            if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)   // or the new one starts inside a dying process and hangs
-            runCatching { Launcher.profile(game) }                            // warms the cache that engineFor uses
-            activity.runOnUiThread { Launcher.play(activity, game, engine, now, skipTranslationPreparation) }
+            if (!TranslationPreparationService.pauseAndWait()) {
+                activity.runOnUiThread { say("La traducción está guardando el último lote. Vuelve a abrir el juego en unos segundos.", NoticeKind.WARN) }
+                return@Thread
+            }
+            if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)
+            runCatching { Launcher.profile(game) }
+            activity.runOnUiThread {
+                val now = System.currentTimeMillis()
+                library.update(game.path) { it.copy(lastPlayed = now) }
+                settings.startSession(game.path, now)
+                if (engine == null) settings.setRetried(game.path, false)
+                val status = preparationStatus(game)
+                val prepared = translateTarget == "es" && status != null && status.total > 0 && status.reviewed == status.total
+                Launcher.play(activity, game, engine, now, skipTranslationPreparation || preparing || prepared)
+            }
         }, "GahvoriaPlay").start()
         selected = 0
     }
@@ -330,6 +340,76 @@ class AppState(private val activity: Activity) {
             }
         }
     }
+    var startingPreparation by mutableStateOf(false)
+        private set
+
+    fun preparationStatus(g: Game) = TranslationPreparationService.status(Translations.catalog(activity, g))
+
+    fun prepareTranslation(g: Game) {
+        if (preparationStatus(g)?.active == true) {
+            TranslationPreparationService.pause()
+            return
+        }
+        if (startingPreparation || TranslationPreparationService.active) {
+            say("Ya hay una traducción en preparación.", NoticeKind.WARN)
+            return
+        }
+        if (!g.kind.isRpgMaker || !hasAccess || !File(g.path).isDirectory) {
+            say("Necesito acceso a la carpeta RPG Maker de este juego para preparar su traducción.", NoticeKind.WARN)
+            return
+        }
+        if (translateTarget != "es") {
+            say("La preparación Neural está disponible en español. Elige español en Ajustes → Traducción.", NoticeKind.WARN)
+            return
+        }
+        startingPreparation = true
+        val base = Translations.catalog(activity, g)
+        worker.execute {
+            val result = runCatching {
+                val dir = base.parentFile ?: error("Falta la carpeta de traducción")
+                if (!dir.mkdirs() && !dir.isDirectory) error("No pude crear la memoria de traducción")
+                val revisionFile = File(base.path + ".revision")
+                val revision = Translations.catalogRevision(g)
+                val ready = File(base.path + ".ready")
+                val oldRevision = runCatching { revisionFile.readText() }.getOrNull()
+                if (oldRevision != revision) {
+                    if (ready.exists() && !ready.delete()) error("No pude renovar el catálogo")
+                    File(base.path + ".limited").delete()
+                    File(base.path + ".status").delete()
+                    revisionFile.writeText(revision)
+                }
+                if (!ready.isFile) Launcher.profile(g)
+                for (suffix in listOf(".error", ".skip")) {
+                    val marker = File(base.path + suffix)
+                    if (marker.exists() && !marker.delete()) error("No pude reanudar la lectura")
+                }
+                !ready.isFile
+            }
+            activity.runOnUiThread {
+                startingPreparation = false
+                val needsScan = result.getOrElse {
+                    say(it.message ?: "No pude preparar la traducción.", NoticeKind.ERROR)
+                    return@runOnUiThread
+                }
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                if (Launcher.gameRunning(activity)) {
+                    say("Cierra el juego para preparar su traducción.", NoticeKind.WARN)
+                    return@runOnUiThread
+                }
+                if (!TranslationPreparationService.start(activity, base, g.title)) {
+                    say("No pude iniciar la preparación en segundo plano.", NoticeKind.ERROR)
+                    return@runOnUiThread
+                }
+                chooseTranslateOn(true)
+                setTranslateGame(g, true)
+                if (needsScan) runCatching { Launcher.scanTranslation(activity, g, base) }.onFailure {
+                    TranslationPreparationService.pause()
+                    say("No pude abrir el lector del juego.", NoticeKind.ERROR)
+                }
+            }
+        }
+    }
+
     fun translateGame(g: Game) = settings.translateGame(g.path)
     fun setTranslateGame(g: Game, on: Boolean) { settings.setTranslateGame(g.path, on); coverVersion++ }
     fun screenMode(g: Game) = settings.screen(g.path)
@@ -341,6 +421,11 @@ class AppState(private val activity: Activity) {
     fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)
     fun translateStatus() = io.github.nikalbazu24.gahvoria.data.Translations.status(activity)
     fun clearTranslations() {
+        if (startingPreparation || TranslationPreparationService.active) {
+            say("Pausa la preparación antes de borrar las traducciones.", NoticeKind.WARN)
+            return
+        }
+        TranslationPreparationService.forgetStatus()
         io.github.nikalbazu24.gahvoria.data.Translations.clearAll(activity)
         translationsVersion++
         say("Borré las traducciones guardadas. Tus juegos y partidas no se tocaron.", NoticeKind.OK)
@@ -360,6 +445,12 @@ class AppState(private val activity: Activity) {
 
     /** Deletes the game's folder, saves, shortcuts, cover and what Gahvoria kept about it. Only after both confirmations. */
     fun deleteGame(g: Game) {
+        if (startingPreparation || preparationStatus(g)?.active == true) {
+            deleting = null
+            say("Pausa la preparación antes de borrar el juego.", NoticeKind.WARN)
+            return
+        }
+        TranslationPreparationService.forgetStatus()
         val plan = deletePlan(g)
         deleting = null
         worker.execute {
@@ -466,7 +557,7 @@ class AppState(private val activity: Activity) {
         }
     }
 
-    fun addFound() {
+    fun addFound(prepare: Boolean = false) {
         val f = found ?: return
         val g = Game(f.dir.absolutePath, f.inspection.title, f.inspection.kind, f.inspection.essentials, addedAt = System.currentTimeMillis())
         games = Library.ordered(library.add(g))
@@ -475,6 +566,7 @@ class AppState(private val activity: Activity) {
         addMessage = null
         tab = Tab.LIBRARY
         say("${g.title} está en tu biblioteca.", NoticeKind.OK)
+        if (prepare) { optionsFor = g; prepareTranslation(g) }
         refreshShortcuts()
         refreshCovers()
     }

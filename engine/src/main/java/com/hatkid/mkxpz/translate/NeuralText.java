@@ -16,6 +16,8 @@ final class NeuralText {
 
     static List<String> translate(List<String> texts, Inference inference) throws IOException {
         List<String> result = new ArrayList<>(texts.size());
+        List<List<String>> rows = new ArrayList<>(texts.size());
+        List<String> inputs = new ArrayList<>();
         for (String text : texts) {
             List<String> segments = new ArrayList<>();
             Matcher matcher = MARKER.matcher(text);
@@ -26,25 +28,28 @@ final class NeuralText {
             }
             segments.add(text.substring(start));
 
-            List<String> inputs = new ArrayList<>();
+            rows.add(segments);
             for (String segment : segments) if (hasLetters(segment)) inputs.add(segment.trim());
-            if (inputs.isEmpty()) {
-                result.add(text);
-                continue;
-            }
-            List<String> outputs = inference.run(inputs);
-            if (outputs.size() != inputs.size()) throw new IOException("Respuesta incompleta del modelo Neural");
+        }
+        List<String> outputs = new ArrayList<>(inputs.size());
+        for (int start = 0; start < inputs.size(); start += 32) {
+            List<String> batch = inputs.subList(start, Math.min(start + 32, inputs.size()));
+            List<String> translated = inference.run(batch);
+            if (translated.size() != batch.size()) throw new IOException("Respuesta incompleta del modelo Neural");
+            outputs.addAll(translated);
+        }
 
+        int index = 0;
+        for (int row = 0; row < texts.size(); row++) {
+            Matcher matcher = MARKER.matcher(texts.get(row));
             StringBuilder joined = new StringBuilder();
-            int index = 0;
             boolean valid = true;
-            matcher.reset();
-            for (String segment : segments) {
+            for (String segment : rows.get(row)) {
                 if (hasLetters(segment)) {
                     String translated = outputs.get(index++);
                     if (translated == null || translated.trim().isEmpty()) {
                         valid = false;
-                        break;
+                        continue;
                     }
                     int left = 0;
                     int right = segment.length();

@@ -130,13 +130,30 @@ fun GameScreen(s: AppState, g: Game) {
                 var rev by remember(g.path) { mutableIntStateOf(0) }
                 val mode = remember(g.path, rev) { s.screenMode(g) }
                 val retro = remember(g.path, rev) { s.retro(g) }
-                val tr = remember(g.path, rev) { s.translateGame(g) }
+                val tr = remember(g.path, rev, s.coverVersion) { s.translateGame(g) }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Traducir este juego",
                         if (!s.translateOn) "Primero activa «Traducir mientras juegas» en Ajustes → Traducción."
                         else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "La memoria del juego sigue disponible. Agrega tu clave de DeepL para traducir frases nuevas."
                         else "Traduce el texto del juego al idioma elegido. Las frases quedan guardadas para la próxima vez. No traduce texto dibujado en imágenes.",
                         role = Role.Switch, onClick = { s.setTranslateGame(g, !tr); rev++ }) { Toggle(tr) }
+                }
+                if (g.kind.isRpgMaker) {
+                    val status = s.preparationStatus(g)
+                    val action = when {
+                        status?.active == true -> "Pausar"
+                        status != null && status.total > 0 && status.reviewed == status.total -> "Revisar"
+                        status != null -> "Reanudar"
+                        else -> "Preparar"
+                    }
+                    Glass(Modifier.fillMaxWidth()) {
+                        RowItem("Preparar traducción",
+                            if (s.startingPreparation) "Comprobando archivos…"
+                            else status?.description ?: "Escanea el juego y traduce al español en segundo plano.",
+                            onClick = { s.prepareTranslation(g) }) {
+                            T(action, 12.sp, FontWeight.Bold, c.accent)
+                        }
+                    }
                 }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Original (4:3)", "La forma con que se hizo el juego, con barras a los lados.", role = Role.RadioButton,
@@ -290,6 +307,12 @@ fun AddScreen(s: AppState) {
                 else -> {
                     if (i.support != Support.PLAYABLE) T("Puedes añadirlo para tenerlo a mano; se podrá jugar cuando su motor esté listo.", 13.sp, FontWeight.Medium, c.muted)
                     PrimaryButton("Añadir a la biblioteca", Modifier.fillMaxWidth()) { s.addFound() }
+                    if (f.inspection.kind.isRpgMaker) {
+                        Glass(Modifier.fillMaxWidth()) {
+                            RowItem("Añadir y preparar traducción", "Al español, en segundo plano.",
+                                onClick = { s.addFound(prepare = true) })
+                        }
+                    }
                 }
             }
         }

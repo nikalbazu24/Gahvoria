@@ -75,6 +75,7 @@ public class GameActivity extends SDLActivity
     /** A small copy of the game's cover, for the blurred background of the loading screen ("" if none). */
     public static final String EXTRA_COVER = "gahvoria.COVER";
     /** Translation: the folder that keeps this game's translations, the provider, the target language and the DeepL key. */
+    public static final String EXTRA_TRANSLATION_CATALOG = "gahvoria.TRANSLATION_CATALOG";
     public static final String EXTRA_LAUNCH_AT = "gahvoria.LAUNCH_AT";
     public static final String EXTRA_SKIP_TR_PREPARATION = "gahvoria.SKIP_TR_PREPARATION";
     public static final String EXTRA_TR_DIR = "gahvoria.TR_DIR";
@@ -151,9 +152,23 @@ public class GameActivity extends SDLActivity
         sMain = new Handler(Looper.getMainLooper());
         sVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         if (valid) {
-            mTrust = new FutureTask<>(() -> trustFile(getApplicationContext()));
-            new Thread(mTrust, "GahvoriaTrust").start();
-            prepareEnvironment(new File(path), i);
+            String catalog = i.getStringExtra(EXTRA_TRANSLATION_CATALOG);
+            if (catalog == null) {
+                mTrust = new FutureTask<>(() -> trustFile(getApplicationContext()));
+                new Thread(mTrust, "GahvoriaTrust").start();
+                prepareEnvironment(new File(path), i);
+            } else {
+                try {
+                    setenv("ESSENTIA_TR_ROOT", path);
+                    setenv("ESSENTIA_TR_CATALOG", catalog);
+                    setenv("ESSENTIA_TR_TARGET", "es");
+                } catch (Exception failure) {
+                    Log.w(TAG, "Could not configure translation scan", failure);
+                    super.onCreate(savedInstanceState);
+                    finish();
+                    return;
+                }
+            }
         }
 
         super.onCreate(savedInstanceState);
@@ -187,6 +202,10 @@ public class GameActivity extends SDLActivity
             @Override
             public void exit()
             {
+                if (i.hasExtra(EXTRA_TRANSLATION_CATALOG)) {
+                    try { new File(i.getStringExtra(EXTRA_TRANSLATION_CATALOG) + ".skip").createNewFile(); }
+                    catch (IOException failure) { Log.w(TAG, "Could not pause catalog scan", failure); }
+                }
                 if (mPreparesTranslation) {
                     mTranslator.skipPreparation();
                     translationPreparationMarker(GameActivity.this, i.getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();
@@ -208,6 +227,9 @@ public class GameActivity extends SDLActivity
             }
         });
         mLayout.addView(sScreen, new RelativeLayout.LayoutParams(-1, -1));
+        if (i.hasExtra(EXTRA_TRANSLATION_CATALOG)) {
+            sScreen.setTranslationPreparation("Leyendo mapas, eventos y scripts…", "Pausar lectura", this::finish);
+        }
     }
 
     private com.hatkid.mkxpz.translate.TranslatorService mTranslator;
@@ -439,6 +461,7 @@ public class GameActivity extends SDLActivity
     @Override
     protected String[] getArguments()
     {
+        if (mTrust == null) return new String[0];
         try {
             String trust = mTrust.get().getAbsolutePath();
             setenv("ESSENTIA_CA_FILE", trust);
@@ -666,6 +689,11 @@ public class GameActivity extends SDLActivity
     protected void onDestroy()
     {
         if (mTrust != null) mTrust.cancel(true);
+        String catalog = getIntent().getStringExtra(EXTRA_TRANSLATION_CATALOG);
+        if (catalog != null && !new File(catalog + ".ready").isFile() && !new File(catalog + ".error").isFile()) {
+            try { new File(catalog + ".skip").createNewFile(); }
+            catch (IOException failure) { Log.w(TAG, "Could not close translation scan", failure); }
+        }
         if (mTranslator != null) mTranslator.stop();
         if (mPreparesTranslation && isFinishing()) {
             translationPreparationMarker(this, getIntent().getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();

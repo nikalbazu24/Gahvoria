@@ -87,3 +87,11 @@ La pantalla de carga incluye la etapa **Preparando traducción** entre los pasos
 La preparación automática concede hasta 4 segundos al escaneo y deja el resto de un presupuesto de 12 segundos para que Neural traduzca los primeros lotes. Se comprueba el plazo entre archivos, comandos y tandas. Al agotarse el presupuesto, se abre el juego con los resultados disponibles y se evita esperar el resto del catálogo. Las traducciones completadas se reutilizan. Una operación individual de lectura o inferencia puede tardar más que su siguiente punto de comprobación. El trabajo completo desde la biblioteca queda para una fase separada.
 
 Cada lanzamiento registra cuándo el motor entra en la preparación. Si Android registra un cierre anormal durante esa etapa, el lanzador reabre con el mismo motor y omite la preparación previa en ese intento. El reintento de motor conserva su regla habitual para errores del juego fuera de esta etapa.
+
+## Preparación desde la biblioteca
+
+- En las opciones del juego, abre **Pantalla → Preparar traducción**. También se puede pedir al añadir una carpeta. La preparación usa el modelo Neural inglés → español y activa la traducción para ese juego.
+- El motor lee mapas, eventos, catálogos y literales antes de ejecutar scripts del fangame. El catálogo vive en el directorio privado de traducciones. La lectura vuelve a la biblioteca cuando acaba y el servicio de Android traduce por lotes en segundo plano con una notificación.
+- **Pausar** y abrir un juego liberan el modelo en el límite del lote. **Reanudar** vuelve a recorrer el catálogo y omite frases con traducción guardada. La memoria se escribe por lote y sobrevive al cierre de la app. La revisión por nombres, tamaños y fechas de los archivos invalida el catálogo cuando cambian.
+- El contador cubre las frases únicas detectadas por el extractor. Excluye las cadenas del glosario y no mide textos compuestos dinámicamente ni texto incrustado en imágenes. Una respuesta idéntica al original sigue pendiente en la memoria.
+- Para probar en Android, prepara un juego, cambia de app, pausa desde la notificación, vuelve a la biblioteca y reanuda. Abre el juego durante la preparación y revisa la memoria y las partidas al volver. El rendimiento se mide en el dispositivo y depende del tamaño del catálogo.

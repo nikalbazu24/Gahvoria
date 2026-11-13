@@ -11,6 +11,7 @@ import io.github.nikalbazu24.gahvoria.core.Shortcuts
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
+import io.github.nikalbazu24.gahvoria.data.TranslationPreparationService
 import java.io.File
 
 /**
@@ -24,18 +25,32 @@ class LaunchActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val problem = runCatching { open() }.getOrElse { "No pude abrir el juego: ${it.message ?: "error desconocido"}" }
-        if (problem != null) {
-            // Gahvoria's own screen says what happened, in its own style.
-            startActivity(Intent(this, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_NOTICE, problem)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
-        }
+        if (TranslationPreparationService.active) {
+            Thread({
+                val paused = TranslationPreparationService.pauseAndWait()
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (paused) openAndFinish(skipPreparation = true)
+                    else showProblem("La traducción está guardando el último lote. Vuelve a abrir el juego en unos segundos.")
+                }
+            }, "GahvoriaShortcut").start()
+        } else openAndFinish()
+    }
+
+    private fun openAndFinish(skipPreparation: Boolean = false) {
+        val problem = runCatching { open(skipPreparation) }.getOrElse { "No pude abrir el juego: ${it.message ?: "error desconocido"}" }
+        if (problem == null) finish() else showProblem(problem)
+    }
+
+    private fun showProblem(problem: String) {
+        startActivity(Intent(this, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_NOTICE, problem)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
         finish()
     }
 
     /** Starts the game and returns null, or the reason it could not. */
-    private fun open(): String? {
+    private fun open(skipPreparation: Boolean): String? {
         val target = requested() ?: return "No entendí qué juego abrir. Crea los accesos otra vez desde Ajustes."
         if (!Storage.hasAccess(this)) return "Gahvoria necesita acceso a tus archivos para abrir juegos."
         val dir = Shortcuts.resolve(target) ?: return "No encuentro la carpeta del juego. ¿La moviste o borraste?"
@@ -50,7 +65,7 @@ class LaunchActivity : Activity() {
             library.update(game.path) { it.copy(lastPlayed = now) }
             Settings(this).startSession(game.path, now)
         }
-        Launcher.play(this, game, launchAt = now)
+        Launcher.play(this, game, launchAt = now, skipTranslationPreparation = skipPreparation)
         return null
     }
 

@@ -65,6 +65,7 @@ final class LoadingScreen extends FrameLayout
     private State shown;
     private String translationPreparation;
     private Runnable skipPreparation;
+    private String skipLabel;
     private boolean preparationFinished;
 
     private final TextView clock;
@@ -218,6 +219,12 @@ final class LoadingScreen extends FrameLayout
 
     void setTranslationPreparation(String message, Runnable skip)
     {
+        setTranslationPreparation(message, "Abrir con lo traducido", skip);
+    }
+
+    void setTranslationPreparation(String message, String label, Runnable skip)
+    {
+        skipLabel = label;
         if (finished) return;
         boolean changed = (translationPreparation == null) != (message == null);
         if (changed && message == null) preparationFinished = true;
@@ -351,7 +358,7 @@ final class LoadingScreen extends FrameLayout
     {
         actions.removeAllViews();
         if (translationPreparation != null) {
-            addAction("Abrir con lo traducido", true, skipPreparation);
+            addAction(skipLabel, true, skipPreparation);
             addAction("Salir", false, host::exit);
             actions.getChildAt(0).requestFocus();
             return;

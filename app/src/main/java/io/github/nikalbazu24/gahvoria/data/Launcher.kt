@@ -110,6 +110,15 @@ object Launcher {
         while (gameRunning(a) && System.currentTimeMillis() < end) Thread.sleep(80)
     }
 
+    fun scanTranslation(a: Activity, game: Game, catalog: File) {
+        val dir = File(game.path)
+        // The scan never executes the game or initializes its save directory.
+        val intent = GameActivity.intent(a, dir, game.title, dir, engineFor(a, game),
+            GameActivity.SCREEN_ORIGINAL, Storage.rtpRoot(), false, "Preparar traducción", colors(a))
+            .putExtra(GameActivity.EXTRA_TRANSLATION_CATALOG, catalog.absolutePath)
+        a.startActivity(intent)
+    }
+
     /** Opens the game; [override] forces one engine (the automatic retry). Returns the engine it started with. */
     fun play(a: Activity, game: Game, override: String? = null, launchAt: Long = 0, skipTranslationPreparation: Boolean = false): String {
         val dir = File(game.path)
