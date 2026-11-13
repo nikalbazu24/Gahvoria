@@ -35,21 +35,26 @@ class InstallService : Service() {
         private const val ID = 4107
         private const val DONE_ID = 4108
         private const val CHANNEL = "install"
+        /** The "it's ready" notice pops up over whatever is on screen, a game included. */
+        private const val DONE_CHANNEL = "install_done"
         private const val TEXT = "text"
         @Volatile private var lastUpdate = 0L
 
         private fun manager(c: Context) = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         private fun channel(c: Context) {
-            if (Build.VERSION.SDK_INT >= 26)
-                manager(c).createNotificationChannel(NotificationChannel(CHANNEL, "Instalación de juegos", NotificationManager.IMPORTANCE_LOW))
+            if (Build.VERSION.SDK_INT >= 26) {
+                manager(c).createNotificationChannel(NotificationChannel(CHANNEL, "Instalación en curso", NotificationManager.IMPORTANCE_LOW))
+                manager(c).createNotificationChannel(NotificationChannel(DONE_CHANNEL, "Juego listo", NotificationManager.IMPORTANCE_HIGH))
+            }
         }
 
         private fun build(c: Context, text: String, done: Int, total: Int, ongoing: Boolean = true): Notification {
             channel(c)
             val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            return NotificationCompat.Builder(c, CHANNEL)
+            return NotificationCompat.Builder(c, if (ongoing) CHANNEL else DONE_CHANNEL)
+                .setPriority(if (ongoing) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
                 .setSmallIcon(if (ongoing) android.R.drawable.stat_sys_download else android.R.drawable.stat_sys_download_done)
                 .setContentTitle("Gahvoria")
                 .setContentText(text)

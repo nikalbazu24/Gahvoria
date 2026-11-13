@@ -440,20 +440,54 @@ public class GameActivity extends SDLActivity
         mKeyboardButton = b;
     }
 
+    private TypingView mTyping;
+    private boolean mTypingOpen;
+
+    /** Gahvoria native (eventthread.cpp): puts typed text into mkxp-z's text buffer, read by Input.gets. */
+    private static native void enqueueKeyboardText(byte[] utf8);
+
     private void toggleKeyboard()
     {
+        android.view.inputmethod.InputMethodManager imm =
+            (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         try {
-            if (SDLActivity.isScreenKeyboardShown()) {
-                android.view.inputmethod.InputMethodManager imm =
-                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                imm.hideSoftInputFromWindow(getWindow().getDecorView().getWindowToken(), 0);
-                SDLActivity.onNativeKeyboardFocusLost();
-            } else {
-                SDLActivity.showTextInput(0, 0, mLook.dp(1), mLook.dp(1));
+            if (mTyping == null) {
+                mTyping = new TypingView(this, text -> {
+                    try { enqueueKeyboardText(TypingView.utf8(text)); } catch (Throwable t) { Log.w(TAG, "Typed text not delivered", t); }
+                });
+                mTyping.onClosed = this::closeKeyboard;
+                mLayout.addView(mTyping, new RelativeLayout.LayoutParams(1, 1));
             }
+            if (mTypingOpen && imeVisible()) { closeKeyboard(); return; }
+            mTyping.requestFocus();
+            imm.showSoftInput(mTyping, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            mTypingOpen = true;
         } catch (Throwable t) {
             Log.w(TAG, "Keyboard button failed", t);
             notice("No pude abrir el teclado.", mLook.warn);
+        }
+    }
+
+    /** Whether the phone's keyboard is on screen (Android 11+ knows it; before, the button's own memory is used). */
+    private boolean imeVisible()
+    {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsets in = getWindow().getDecorView().getRootWindowInsets();
+            if (in != null) return in.isVisible(android.view.WindowInsets.Type.ime());
+        }
+        return mTypingOpen;
+    }
+
+    private void closeKeyboard()
+    {
+        mTypingOpen = false;
+        try {
+            android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (mTyping != null) imm.hideSoftInputFromWindow(mTyping.getWindowToken(), 0);
+            if (mSurface != null) mSurface.requestFocus();   // the controls go back to the game
+        } catch (Throwable t) {
+            Log.w(TAG, "Closing the keyboard failed", t);
         }
     }
 

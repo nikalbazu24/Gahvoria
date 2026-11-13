@@ -71,6 +71,13 @@ Java_com_hatkid_mkxpz_MainActivity_enqueueKeyboardText(JNIEnv *env, jclass, jbyt
     env->GetByteArrayRegion(utf8, 0, size, reinterpret_cast<jbyte *>(event.text.text));
     if (!env->ExceptionCheck()) SDL_PushEvent(&event);
 }
+
+/* Gahvoria: the same, for the keyboard button of GameActivity (TypingView) */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hatkid_mkxpz_GameActivity_enqueueKeyboardText(JNIEnv *env, jclass cls, jbyteArray utf8)
+{
+    Java_com_hatkid_mkxpz_MainActivity_enqueueKeyboardText(env, cls, utf8);
+}
 #endif
 
 typedef void (ALC_APIENTRY *LPALCDEVICEPAUSESOFT) (ALCdevice *device);
