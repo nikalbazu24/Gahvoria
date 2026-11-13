@@ -59,7 +59,7 @@ Dir.mktmpdir('gahvoria-pretranslation') do |dir|
 pbMessage("Pick one", ["Go", 'Stay'])
 pbShowCommands(nil, ["Red", "Blue",])
 pbShowCommands(nil, ["Unsafe", dynamic()])
-  CHOICES
+CHOICES
   check(['Pick one', 'Go', 'Stay', 'Red', 'Blue'], script_choices)
 
   collected = []
