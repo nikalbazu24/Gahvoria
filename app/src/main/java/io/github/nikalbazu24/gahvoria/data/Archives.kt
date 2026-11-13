@@ -22,10 +22,30 @@ object Archives {
     }
 
     fun open(c: Context, uri: Uri, kind: ArchiveKind): ArchiveSource = when (kind) {
-        ArchiveKind.ZIP -> ZipSource { c.contentResolver.openInputStream(uri)!! }
+        ArchiveKind.ZIP -> Zip(c, uri)
         ArchiveKind.SEVEN_Z -> SevenZ(c, uri)
         ArchiveKind.RAR -> Rar(c, uri)
         ArchiveKind.UNKNOWN -> throw IllegalArgumentException("Formato no compatible")
+    }
+
+    /** .zip read by position, so entries a stream cannot read (stored with a descriptor, zip64) work too. */
+    private class Zip(val c: Context, val uri: Uri) : ArchiveSource {
+        override fun walk(visit: (String, Boolean, InputStream) -> Unit) {
+            val pfd = c.contentResolver.openFileDescriptor(uri, "r") ?: error("No pude abrir el archivo")
+            pfd.use {
+                FileInputStream(it.fileDescriptor).channel.use { ch ->
+                    val f = try { org.apache.commons.compress.archivers.zip.ZipFile.builder().setSeekableByteChannel(ch).get() }
+                    catch (e: Exception) { throw IllegalStateException("No pude abrir este .zip: ${e.message ?: "archivo dañado"}", e) }
+                    f.use { z ->
+                        for (e in z.entriesInPhysicalOrder.toList()) {
+                            if (e.isDirectory) { visit(e.name, true, ByteArrayInputStream(ByteArray(0))); continue }
+                            if (!z.canReadEntryData(e)) throw IllegalStateException("Este .zip usa un método de compresión o una contraseña que no puedo leer.")
+                            z.getInputStream(e).use { s -> visit(e.name, false, s) }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private class SevenZ(val c: Context, val uri: Uri) : ArchiveSource {

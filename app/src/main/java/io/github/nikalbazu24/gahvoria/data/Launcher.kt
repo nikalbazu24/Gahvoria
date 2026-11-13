@@ -60,6 +60,23 @@ object Launcher {
         else -> null
     }
 
+    private fun gameProcesses(a: Activity): List<android.app.ActivityManager.RunningAppProcessInfo> =
+        (a.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)
+            ?.runningAppProcesses.orEmpty().filter { it.processName == a.packageName + ":game" }
+
+    /** True while the game's process still exists (it ends by itself a moment after the game closes). */
+    fun gameRunning(a: Activity) = gameProcesses(a).isNotEmpty()
+
+    /**
+     * Ends the game's process and waits (at most 3 s) until it is gone. Ruby cannot start twice in one process, so a new
+     * game must never start inside one that is still shutting down: that left the screen stuck. Blocking: call it off the main thread.
+     */
+    fun stopGame(a: Activity) {
+        gameProcesses(a).forEach { android.os.Process.killProcess(it.pid) }
+        val end = System.currentTimeMillis() + 3000
+        while (gameRunning(a) && System.currentTimeMillis() < end) Thread.sleep(80)
+    }
+
     /** Opens the game; [override] forces one engine (the automatic retry). Returns the engine it started with. */
     fun play(a: Activity, game: Game, override: String? = null): String {
         val dir = File(game.path)

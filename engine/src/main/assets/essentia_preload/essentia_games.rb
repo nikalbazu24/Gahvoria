@@ -37,7 +37,9 @@ module EssentiaGames
     end
 
     def old_resizer?
-      Object.private_method_defined?(:pbSetResizeFactor2) || Object.method_defined?(:pbSetResizeFactor2)
+      %i[pbSetResizeFactor2 pbSetResizeFactor pbConfigureWindowedScreen].any? do |m|
+        Object.private_method_defined?(m) || Object.method_defined?(m)
+      end
     end
 
     # Screen at the game's own size, no zoom, no offsets
@@ -120,9 +122,52 @@ module EssentiaGames
       @version_wrapping = false
     end
 
+    # Some old Essentials games (Insurgence) leave the screen at RPG Maker XP's 640x480 and draw their 512x384
+    # picture in a corner of it. When the game says it is 512x384 and the screen is still 640x480, the
+    # screen takes the game's size, so the picture fills the display.
+    def fix_default_size
+      return if @resizing || @default_fixed
+      return unless Object.const_defined?(:DEFAULTSCREENWIDTH) && Object.const_defined?(:DEFAULTSCREENHEIGHT)
+      w = Object.const_get(:DEFAULTSCREENWIDTH).to_i
+      h = Object.const_get(:DEFAULTSCREENHEIGHT).to_i
+      return if w <= 0 || h <= 0 || w >= 640 || h >= 480
+      return unless Graphics.essentia_native_width == 640 && Graphics.essentia_native_height == 480
+      @resizing = true
+      @default_fixed = true
+      set_size(w, h)
+    rescue Exception
+    ensure
+      @resizing = false
+    end
+
+    # Pokémon Z saves "which slot was last played" with File.open(..., 'w') and the write fails ("not opened for
+    # writing"). The same file is written with File.new, which does not go through whatever File.open the game
+    # has; it only remembers a convenience, so a failure to write is not allowed to stop the game.
+    def tame_last_played
+      return if @taming_last
+      @taming_last = true
+      Object.class_eval do
+        def pbStoredLastPlayed(savenum, auto)
+          f = File.new("LastSave.dat", "w")
+          begin
+            f.write("#{savenum}\n#{auto}")
+          ensure
+            f.close
+          end
+          nil
+        rescue Exception
+          nil
+        end
+      end
+    rescue Exception
+    ensure
+      @taming_last = false
+    end
+
     def tick
       @frame += 1
       return unless @frame <= 2 || (@frame % 60).zero?
+      fix_default_size
       tame_resizer
       keep_snapshot
       tame_version_check
@@ -155,6 +200,7 @@ class << Object
     essentia_games_method_added(name) if respond_to?(:essentia_games_method_added, true)
     EssentiaGames.tame_resizer if name.to_s == 'pbConfigureWindowedScreen'
     EssentiaGames.tame_version_check if name.to_s == 'pbCheckVersionOnLoad'
+    EssentiaGames.tame_last_played if name.to_s == 'pbStoredLastPlayed'
   end
 end
 

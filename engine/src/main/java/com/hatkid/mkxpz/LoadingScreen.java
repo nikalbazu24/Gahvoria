@@ -107,6 +107,13 @@ final class LoadingScreen extends FrameLayout
         left.setOrientation(LinearLayout.VERTICAL);
         left.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
+        // The cartridge floats up and tilts: its parents must not cut it at their edges.
+        setClipChildren(false);
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
+        left.setClipChildren(false);
+        left.setClipToPadding(false);
+        left.setPadding(look.dp(8), look.dp(14), 0, 0);
         View cart = new Cartridge(c, look);
         left.addView(cart, new LinearLayout.LayoutParams(look.dp(64), look.dp(64)));
         floatCartridge(c, cart);

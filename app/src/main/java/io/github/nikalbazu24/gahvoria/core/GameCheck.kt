@@ -24,6 +24,14 @@ object GameCheck {
         else out.addAll(checkIni(runCatching { ini.readText() }.getOrDefault("")))
         val data = lower["data"]?.let { File(dir, it) }
         if (data == null || !data.isDirectory) out.add(Finding(Level.PROBLEM, "Falta la carpeta Data", "Ahí viven los mapas y los scripts del juego."))
+        if (data != null && data.isDirectory) {
+            val inData = data.list().orEmpty().map { it.lowercase(Locale.ROOT) }.toSet()
+            if ("scripts.rxdata" in inData) {
+                val missing = listOf("Animations", "Tilesets", "CommonEvents", "System", "MapInfos").filter { "${it.lowercase(Locale.ROOT)}.rxdata" !in inData }
+                if (missing.isNotEmpty()) out.add(Finding(Level.PROBLEM, "Faltan archivos en Data",
+                    missing.joinToString(", ") { "$it.rxdata" } + ". El juego se cierra al arrancar sin ellos; suele pasar si la carpeta se copió o descomprimió a medias."))
+            }
+        }
         val archive = names.firstOrNull { val n = it.lowercase(Locale.ROOT); n.endsWith(".rgssad") || n.endsWith(".rgss2a") || n.endsWith(".rgss3a") }
         if (archive != null) {
             out.add(Finding(Level.INFO, "Archivo comprimido del juego ($archive)", "El motor puede leerlo, pero Gahvoria no puede revisar sus scripts: no habrá chequeo de scripts, versión ni extracto de errores."))

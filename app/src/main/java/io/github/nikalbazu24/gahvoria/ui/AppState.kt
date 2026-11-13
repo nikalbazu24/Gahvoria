@@ -208,7 +208,13 @@ class AppState(private val activity: Activity) {
         library.update(game.path) { it.copy(lastPlayed = now) }
         settings.startSession(game.path, now)
         if (engine == null) settings.setRetried(game.path, false)
-        Launcher.play(activity, game, engine)
+        if (Launcher.gameRunning(activity)) {
+            // The previous session is still closing: end it first, or the new one starts inside a dying process and hangs.
+            worker.execute {
+                Launcher.stopGame(activity)
+                activity.runOnUiThread { Launcher.play(activity, game, engine) }
+            }
+        } else Launcher.play(activity, game, engine)
         selected = 0
     }
 
@@ -462,9 +468,10 @@ class AppState(private val activity: Activity) {
                 ZipPick(uri, name, null, "Ese archivo no es un .zip, .7z ni .rar. Si es un instalador (.exe), no se puede instalar aquí.", kind)
             } else runCatching {
                 val src = io.github.nikalbazu24.gahvoria.data.Archives.open(activity, uri, kind)
-                ZipInstaller.plan(ZipInstaller.listNames(src))
+                val names = ZipInstaller.listNames(src)
+                ZipInstaller.plan(names) to ZipInstaller.whyNot(names)
             }.fold(
-                { plan -> ZipPick(uri, name, plan, if (plan == null) "No encontré un juego de RPG Maker dentro de ese archivo." else null, kind) },
+                { (plan, why) -> ZipPick(uri, name, plan, if (plan == null) why else null, kind) },
                 { ZipPick(uri, name, null, it.message?.takeIf { m -> m.isNotBlank() } ?: "No pude leer ese archivo.", kind) },
             )
             activity.runOnUiThread { zipPick = pick }

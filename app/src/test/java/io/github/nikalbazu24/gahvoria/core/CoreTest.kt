@@ -514,5 +514,29 @@ class CoreTest {
         assertEquals(dev, UpdateChannel.base(dev, "cualquier cosa"))
         assertTrue(UpdateChannel.valid("stable") && !UpdateChannel.valid(null) && !UpdateChannel.valid("x"))
     }
+
+    @Test fun scriptsThatNeedModernRubyNeverGetTheClassicEngine() {
+        val old = GameProfile.parse(listOf("Settings" to "ESSENTIALS_VERSION = \"17.2\"", "PScreen_Load" to null))
+        assertEquals(Game.ENGINE_CLASSIC, old.recommendedEngine)
+        val withMkxp = GameProfile.parse(listOf("MKXP_Compatibility" to "Encoding.default_internal = Encoding::UTF_8",
+            "Settings" to "ESSENTIALS_VERSION = \"17.2\"", "PScreen_Load" to null))
+        assertTrue(withMkxp.modernOnly)
+        assertEquals(Game.ENGINE_MODERN, withMkxp.recommendedEngine)
+    }
+
+    @Test fun theCheckNamesTheMissingDataFiles() {
+        val g = folder("Game.ini", "Data/Scripts.rxdata", "Data/Tilesets.rxdata", "Data/System.rxdata")
+        val f = GameCheck.check(g).first { it.title == "Faltan archivos en Data" }
+        assertEquals(Level.PROBLEM, f.level)
+        assertTrue(f.detail.contains("Animations.rxdata") && f.detail.contains("CommonEvents.rxdata") && !f.detail.contains("Tilesets.rxdata"))
+    }
+
+    @Test fun anArchiveWithoutAGameSaysWhatItHolds() {
+        assertEquals("Juego/", ZipInstaller.plan(listOf("Juego/Data/System.rxdata", "Juego/Audio/a.ogg"))!!.root)
+        assertTrue(ZipInstaller.whyNot(listOf("Setup.exe", "readme.txt")).contains("instalador"))
+        assertTrue(ZipInstaller.whyNot(listOf("Solar/Eclipse.7z")).contains("otro archivo comprimido"))
+        assertTrue(ZipInstaller.whyNot(listOf("docs/a.txt", "docs/b.txt")).contains("Contiene: docs"))
+        assertEquals("El archivo está vacío.", ZipInstaller.whyNot(emptyList()))
+    }
 }
 

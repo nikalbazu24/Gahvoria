@@ -17,6 +17,8 @@ data class GameProfile(
     val gameVersion: String = "",
     /** Old Essentials window resizer (Sprite_Resizer), typical of v16-17. */
     val oldResizer: Boolean = false,
+    /** The scripts need Ruby 1.9+ (an mkxp-z compatibility script, Encoding...): the classic engine (Ruby 1.8) cannot run them. */
+    val modernOnly: Boolean = false,
 ) {
     /** The Essentials version as a number (17.2, 21.1...), or 0 if unknown. */
     val versionNumber: Float
@@ -24,7 +26,7 @@ data class GameProfile(
 
     /** Essentials 17 and 18 were written for RPG Maker XP's Ruby 1.8: the classic engine from the start. */
     val recommendedEngine: String
-        get() = if (essentials && !oldResizer && versionNumber >= 17f && versionNumber < 19f)
+        get() = if (essentials && !modernOnly && !oldResizer && versionNumber >= 17f && versionNumber < 19f)
             Game.ENGINE_CLASSIC else Game.ENGINE_MODERN
 
     val label: String
@@ -80,7 +82,10 @@ data class GameProfile(
             var version = ""
             var gameVersion = ""
             var oldResizer = false
+            var modernOnly = false
             for ((name, code) in sections) {
+                if (name.contains("mkxp", ignoreCase = true)) modernOnly = true
+                if (code != null && (code.contains("Encoding.default_") || code.contains("Encoding::UTF_8"))) modernOnly = true
                 if (name.equals("Sprite_Resizer", ignoreCase = true)) { oldResizer = true; essentials = true }
                 if (name.startsWith("PokeBattle_") || name.startsWith("PScreen_") || name == "Compiler") essentials = true
                 if (code == null) continue
@@ -90,7 +95,7 @@ data class GameProfile(
                     if (v != null) { version = v.groupValues[1]; essentials = true }
                 }
             }
-            return GameProfile(essentials, version, gameVersion, oldResizer)
+            return GameProfile(essentials, version, gameVersion, oldResizer, modernOnly)
         }
 
         /** Every script section as (name, code), for the creator's pre-flight check. Empty if the scripts can't be read. */

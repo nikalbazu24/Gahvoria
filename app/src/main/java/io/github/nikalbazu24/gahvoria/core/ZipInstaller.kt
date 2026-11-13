@@ -62,6 +62,7 @@ object ZipInstaller {
             val root = when {
                 lower.endsWith("/game.ini") || lower == "game.ini" -> n.dropLast("game.ini".length)
                 Regex("(^|.*/)data/scripts\\.(rxdata|rvdata2?)$").matches(lower) -> n.substring(0, lower.lastIndexOf("data/scripts."))
+                Regex("(^|.*/)data/system\\.(rxdata|rvdata2?)$").matches(lower) -> n.substring(0, lower.lastIndexOf("data/system."))
                 lower.endsWith(".rgssad") || lower.endsWith(".rgss2a") || lower.endsWith(".rgss3a") -> n.substring(0, n.lastIndexOf('/') + 1)
                 else -> continue
             }
@@ -69,6 +70,22 @@ object ZipInstaller {
         }
         val r = best ?: return null
         return Plan(r, files.count { it.startsWith(r) })
+    }
+
+    /**
+     * Why no game was found, in plain words, from what the archive holds: a Windows installer, another compressed file
+     * inside, or just a list of what is at the top so the player (or a report) can see what it is.
+     */
+    fun whyNot(names: List<String>): String {
+        val files = names.map(::clean).filter { it.isNotEmpty() && !it.startsWith("__MACOSX/") }
+        if (files.isEmpty()) return "El archivo está vacío."
+        val inner = files.firstOrNull { it.lowercase(Locale.ROOT).let { l -> l.endsWith(".zip") || l.endsWith(".7z") || l.endsWith(".rar") } }
+        if (inner != null) return "Dentro hay otro archivo comprimido (${inner.substringAfterLast('/')}). Descomprime ese en lugar de este."
+        val top = files.map { it.substringBefore('/') }.distinct()
+        val exe = files.any { it.lowercase(Locale.ROOT).endsWith(".exe") }
+        val shown = top.take(6).joinToString(", ") + if (top.size > 6) " y ${top.size - 6} más" else ""
+        return "No encontré un juego de RPG Maker (busco Game.ini y la carpeta Data). Contiene: $shown." +
+            if (exe && files.none { it.lowercase(Locale.ROOT).contains("data/") }) " Parece un instalador de Windows (.exe): no se puede instalar aquí." else ""
     }
 
     /** A folder name for the game that doesn't exist yet: "Name", then "Name (2)"... */
