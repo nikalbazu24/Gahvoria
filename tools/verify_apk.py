@@ -14,6 +14,10 @@ with zipfile.ZipFile(apk) as archive:
         'assets/essentia_preload/essentia_compat.rb',
         'assets/licenses/montserrat-OFL.txt',
     }
+    rbconfigs = [n for n in names if n.startswith('assets/ruby-runtime/lib/ruby/3.1.0/')
+                 and n.endswith('/rbconfig.rb') and 'aarch64' in n]
+    if len(rbconfigs) != 1 or archive.getinfo(rbconfigs[0]).file_size == 0:
+        raise SystemExit('APK missing the Android ARM64 Ruby configuration')
     missing = required - names
     if missing:
         raise SystemExit('APK incomplete: ' + ', '.join(sorted(missing)))

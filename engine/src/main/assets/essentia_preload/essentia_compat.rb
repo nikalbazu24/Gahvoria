@@ -6,6 +6,17 @@
 #  * Essentia.fix_legacy_syntax: rewrites old Ruby 1.8 syntax that modern Ruby
 #    rejects. The engine uses it to retry a game script that fails to parse.
 
+# Resolve rbconfig before a game adds its desktop Ruby libraries to the load path.
+ruby_archdir = ENV['GAHVORIA_RUBY_ARCHDIR'].to_s
+unless ruby_archdir.empty?
+  $LOAD_PATH.unshift(ruby_archdir)
+  begin
+    require File.join(ruby_archdir, 'rbconfig')
+  rescue LoadError => error
+    warn("Gahvoria: #{error.message}")
+  end
+end
+
 begin
   require 'stringio'
 rescue LoadError
