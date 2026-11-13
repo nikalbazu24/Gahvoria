@@ -253,6 +253,38 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   assert_equal('\\xn[Tía]...', EssentiaTranslate.message_text('\\xn[Aunt]...', 0))
   assert_equal('\\xn[Uncleared]...', EssentiaTranslate.message_text('\\xn[Uncleared]...', 0))
 
+  def getFormattedText(_bitmap, _x, _y, _width, _height, text, *_options)
+    text
+  end
+
+  def getLineBrokenChunks(_bitmap, text, _width)
+    text.split(' ')
+  end
+
+  help = "Enter text using the keyboard. Press\nEnter to confirm, or Esc to cancel."
+  appearance = 'Select your appearance.'
+  difficulty = "I see… So you only want the toughest\nbattles?"
+  assert_equal('<c2=000000>Escribe con el teclado. Enter para aceptar o Esc para cancelar.',
+               getFormattedText(menu, 0, 0, 150, -1, '<c2=000000>' + help))
+  assert_equal(['Elige', 'tu', 'aspecto.'], getLineBrokenChunks(menu, appearance, 160))
+  assert_equal('Elige tu aspecto.', getFormattedText(menu, 0, 0, 150, -1, appearance))
+  assert_equal('Nombre propio', getFormattedText(menu, 0, 0, 150, -1, 'Nombre propio'))
+  assert_equal('Ya veo… ¿Solo quieres los combates más difíciles?', EssentiaTranslate.message_text(difficulty, 0))
+  assert_equal('TONO', EssentiaTranslate.rendering_text('TONE'))
+  assert_equal('No uses el arte de este juego con IA.',
+               EssentiaTranslate.rendering_text("Do not feed this game’s art to AI."))
+  assert_equal('Los personajes y sucesos de este juego son ficticios.',
+               EssentiaTranslate.rendering_text("The characters and events depicted\nin this game are fictional."))
+
+  class Window_TextEntry_Keyboard
+    def refresh(bitmap)
+      bitmap.draw_text(0, 0, 100, 20, 'Save')
+    end
+  end
+  EssentiaTranslate.install
+  Window_TextEntry_Keyboard.new.refresh(menu)
+  assert_equal('Save', menu.drawn.last)
+
   def pbMessage(text, choices = nil)
     choices ? pbShowCommands(nil, choices) : text
   end

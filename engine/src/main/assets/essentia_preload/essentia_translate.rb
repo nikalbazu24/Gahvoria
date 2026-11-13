@@ -47,6 +47,11 @@ module EssentiaTranslate
     'Tasks' => 'Tareas',
     'TMs' => 'MT',
     'Appearance' => 'Aspecto',
+    'Select your appearance.' => 'Elige tu aspecto.',
+    'Select your appearance' => 'Elige tu aspecto',
+    'Your name?' => '¿Tu nombre?',
+    'Enter text using the keyboard. Press Enter to confirm, or Esc to cancel.' =>
+      'Escribe con el teclado. Enter para aceptar o Esc para cancelar.',
     'Difficulty' => 'Dificultad',
     'Info' => 'Info',
     'Press Start' => 'Pulsa START',
@@ -84,6 +89,18 @@ module EssentiaTranslate
   SETUP_SPANISH = {
     'appearance' => 'Aspecto', 'name' => 'Nombre', 'difficulty' => 'Dificultad',
     'additions' => 'Extras', "let's go!!!" => '¡Vamos!'
+  }
+  SOLAR_TEXT_SPANISH = {
+    'tone' => 'TONO',
+    'basic reading ability is needed to fully enjoy this game.' =>
+      'Para disfrutar plenamente del juego, necesitas saber leer.',
+    "do not feed this game's art to ai." => 'No uses el arte de este juego con IA.',
+    'the characters and events depicted in this game are fictional.' =>
+      'Los personajes y sucesos de este juego son ficticios.',
+    "don't take it too seriously." => 'No te lo tomes demasiado en serio.',
+    "you're more casual and laidback?" => '¿Eres más bien relajado?',
+    "you're more casual and laid-back?" => '¿Eres más bien relajado?',
+    'i see... so you only want the toughest battles?' => 'Ya veo… ¿Solo quieres los combates más difíciles?'
   }
   SPEAKER_SPANISH = { 'aunt' => 'Tía', 'uncle' => 'Tío', 'mom' => 'Mamá', 'dad' => 'Papá' }
   NAME_BOX = /\\xn\[([^\[\]\\\r\n]+)\]/i
@@ -301,6 +318,19 @@ module EssentiaTranslate
       UI_SPANISH_FOLDED[normalized.downcase]
     end
 
+    def visible_label(text)
+      return nil unless SPANISH && text.is_a?(String) && !player_name?(text)
+      return nil if text.instance_variable_get(:@gahvoria_translated)
+      # The formatter can add a color prefix, and the game can supply manual line breaks.
+      return nil if text.size > 512
+      match = /\A((?:<[^<>\r\n]{1,80}>)*)([^<>]*)((?:<\/[A-Za-z0-9]+>)*)\z/.match(text)
+      return nil unless match
+      body = match[2].gsub("’", "'").gsub("…", "...").gsub(/\s+/, ' ').strip
+      label = ui_label(body)
+      label ||= SOLAR_TEXT_SPANISH[body.downcase] if SOLAR_ECLIPSE
+      marked(match[1] + label + match[3]) if label
+    end
+
     def player_name
       player = defined?($player) && $player
       player ||= defined?($Trainer) && $Trainer
@@ -345,11 +375,10 @@ module EssentiaTranslate
     def message_text(source, wait)
       return lookup(source, wait) unless SPANISH && source.is_a?(String)
       return source if source.instance_variable_get(:@gahvoria_translated)
+      label = visible_label(source)
+      return label if label
       key = message_key(source)
       token = PLAYER_NAME_TOKEN
-      if SOLAR_ECLIPSE && source.gsub("’", "'") =~ /\A(?:you're|are you) more casual and (?:laidback|laid.back)\?\z/i
-        return marked('¿Eres más bien relajado?')
-      end
       translated = lookup(key, wait)
       if key != source
         translated = translated.equal?(key) ? source : marked(translated.gsub(token) { player_name.to_s })
@@ -367,8 +396,8 @@ module EssentiaTranslate
       return text if @verbatim > 0 || (!choice && !@displaying.empty?)
       if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
         return text if player_name?(text)
-        label = ui_label(text)
-        return marked(label) if label
+        label = visible_label(text)
+        return label if label
       end
       lookup(text)
     end
@@ -515,6 +544,10 @@ module EssentiaTranslate
         end
       elsif kind == :verbatim
         return verbatim { original.bind(receiver).call(*args, &block) }
+      elsif kind == :layout
+        label = visible_label(args[argument]) if @verbatim == 0 && @displaying.empty?
+        args[argument] = label if label
+        return verbatim { original.bind(receiver).call(*args, &block) }
       elsif kind == :bitmap_init
         result = original.bind(receiver).call(*args, &block)
         localize_title_prompt(receiver, args[0]) if args.size == 1
@@ -637,6 +670,9 @@ module EssentiaTranslate
         wrap_method(Bitmap, :draw_text, 0, 0, :bitmap_text)
         wrap_method(Bitmap, :text_size, 0, 0, :measure)
       end
+      wrap_top(:getLineBrokenChunks, 1, 0, :layout)
+      wrap_top(:getFormattedText, 5, 0, :layout)
+      wrap_top(:getFormattedTextForDims, 5, 0, :layout)
       wrap_top(:pbDrawTextPositions, 1, 0, :text_positions)
       [:pbDrawPlainText, :pbDrawShadowText, :pbDrawOutlineText].each { |name| wrap_top(name, 5, 0, :draw) }
       wrap_top(:drawFormattedTextEx, 4, 0, :draw)
@@ -646,6 +682,12 @@ module EssentiaTranslate
       if defined?(Window_DrawableCommand)
         wrap_method(Window_DrawableCommand, :refresh, 0, 0, :paint)
         wrap_method(Window_DrawableCommand, :getAutoDims, 0, 0, :command_size)
+      end
+      if defined?(Window_TextEntry)
+        wrap_method(Window_TextEntry, :refresh, 0, 0, :verbatim)
+      end
+      if defined?(Window_TextEntry_Keyboard)
+        wrap_method(Window_TextEntry_Keyboard, :refresh, 0, 0, :verbatim)
       end
       wrap_method(PokemonLoadPanel, :refresh, 0, 0, :paint) if defined?(PokemonLoadPanel)
       wrap_method(Window_PokemonOption, :refresh, 0, 0, :paint) if defined?(Window_PokemonOption)
@@ -715,7 +757,7 @@ unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
     alias_method :essentia_translation_method_added, :method_added
     def method_added(name)
       essentia_translation_method_added(name)
-      if name.to_s =~ /\A(?:pbMessage|pbMessageDisplay|pbShowCommands|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
+      if name.to_s =~ /\A(?:pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
         EssentiaTranslate.install
       end
     end
