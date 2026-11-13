@@ -71,6 +71,47 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     File.open(answers, 'ab') { |f| f.write("Open the door\tAbre la puerta\n") }
   end
   assert_equal('Abre la puerta', pbMessage(pending))
+
+  # Some Essentials cutscenes assign the text directly to the dialogue window.
+  class Window_AdvancedTextPokemon
+    attr_accessor :letterbyletter
+    attr_reader :text
+    def text=(value)
+      @text = value
+    end
+  end
+
+  Graphics.update
+  window = Window_AdvancedTextPokemon.new
+  intro = 'Take on the Gym Challenge!'
+  spanish = '¡Enfréntate al desafío de los gimnasios!'
+  window.text = 'An ordinary window label'
+  assert_equal('An ordinary window label', window.text)
+  window.letterbyletter = true
+
+  before = Dir[File.join(requests, '*.req')].size
+  Thread.new do
+    sleep(0.05)
+    File.open(answers, 'ab') do |f|
+      f.write(EssentiaTranslate.esc(intro) + "\t" + EssentiaTranslate.esc(spanish) + "\n")
+    end
+  end
+  window.text = intro
+  assert_equal(spanish, window.text)
+  assert_equal(before + 1, Dir[File.join(requests, '*.req')].size)
+
+  window.text = window.text
+  EssentiaTranslate.flush
+  assert_equal(before + 1, Dir[File.join(requests, '*.req')].size)
+
+  # A display wrapper can write transformed text to the same window without sending it twice.
+  def pbMessageDisplay(window, text)
+    window.text = "<b>" + text + "</b>"
+  end
+  pbMessageDisplay(window, intro)
+  assert_equal("<b>" + spanish + "</b>", window.text)
+  EssentiaTranslate.flush
+  assert_equal(before + 1, Dir[File.join(requests, '*.req')].size)
 end
 
 puts 'Ruby translation bridge checks passed'

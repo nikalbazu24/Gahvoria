@@ -53,3 +53,7 @@ En **Ajustes → Traducción → Con qué traducir**, la opción **Gahvoria Neur
 La primera compilación con el nuevo canal se instala manualmente encima de Gahvoria. En ella, **Actualizaciones → Todas las versiones** consulta la prepublicación `neural-beta`. **Solo versiones estables** sigue consultando el canal estable. Las compilaciones oficiales de desarrollo siguen consultando `dev`. Al cambiar de canal, Android solo permite instalar una versión con código superior.
 
 El flujo normal compila y verifica ambos motores y publica en `neural-beta` al hacer push a `experimental/neural-ai-phase-1` si la firma de Gahvoria está disponible. Los pull requests producen artefactos de prueba, sin publicar en Releases. La beta no se marca como la última versión general del repositorio.
+
+## Diálogos de introducción
+
+El puente ahora cubre asignaciones directas a la ventana de diálogo de Pokémon Essentials cuando el juego muestra texto letra por letra. La captura habitual por `pbMessage` y `pbMessageDisplay` conserva prioridad para evitar traducir dos veces el mismo diálogo. Se amplía la espera acotada del diálogo a 650 ms y se mantienen los menús sin espera. La prueba de Ruby simula la asignación directa, una respuesta tardía y el redibujado. Falta comprobar la introducción real de Solar Eclipse en la Thor. Para frases nuevas usar **En el teléfono (gratis)**. **Gahvoria Neural AI** sigue consultando solo la memoria guardada.

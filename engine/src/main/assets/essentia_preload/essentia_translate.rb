@@ -22,6 +22,7 @@ module EssentiaTranslate
   MAX_SESSION_ENTRIES = 4096
   MAX_REQUEST_FILES = 128
   RETRY_SECONDS = 18
+  DIALOGUE_WAIT = 0.65
   @hooked = {}
   @originals = []
 
@@ -125,8 +126,8 @@ module EssentiaTranslate
       request(text)
       if @pending[text] && wait > 0 && flush
         deadline = Time.now + wait
-        while Time.now < deadline
-          sleep(0.04)
+        while (remaining = deadline - Time.now) > 0
+          sleep([0.04, remaining].min)
           load_new
           return translated_copy(text) if @map.has_key?(text)
         end
@@ -162,7 +163,14 @@ module EssentiaTranslate
 
     def invoke(index, receiver, args, block)
       original, argument, wait, kind = @originals[index]
-      if kind == :commands
+      if kind == :window
+        # pbMessageDisplay already intercepts complete text before it expands controls.
+        # Direct scene writers bypass it and give the letter-by-letter window the original.
+        if @displaying.empty? && receiver.respond_to?(:letterbyletter) && receiver.letterbyletter &&
+           (!receiver.respond_to?(:text) || receiver.text != args[argument])
+          args[argument] = lookup(args[argument], wait)
+        end
+      elsif kind == :commands
         if args[argument].is_a?(Array)
           args[argument] = args[argument].map { |text| lookup(text) }
         end
@@ -178,23 +186,36 @@ module EssentiaTranslate
       original.bind(receiver).call(*args, &block)
     end
 
-    def wrap_top(name, argument, wait, kind)
-      meta = class << Kernel; self; end
-      [Object, Kernel, meta].each do |owner|
-        next unless owner.method_defined?(name) || owner.private_method_defined?(name)
-        current = owner.instance_method(name)
-        next if current.respond_to?(:owner) && current.owner != owner
-        next if @hooked[[owner, name]] == current
-        private_method = owner.private_method_defined?(name)
-        index = @originals.size
-        @originals << [current, argument, wait, kind]
-        # Ruby 1.8 accepts &block on a method definition, but not in define_method's block.
+    def wrap_method(owner, name, argument, wait, kind)
+      return unless owner.instance_methods(false).any? { |method| method.to_s == name.to_s } ||
+                    owner.private_instance_methods(false).any? { |method| method.to_s == name.to_s }
+      current = owner.instance_method(name)
+      return if @hooked[[owner, name]] == current
+      private_method = owner.private_method_defined?(name)
+      protected_method = owner.protected_method_defined?(name)
+      index = @originals.size
+      @originals << [current, argument, wait, kind]
+      # Ruby 1.8 accepts &block on a method definition, but not in define_method's block.
+      if kind == :window
+        owner.class_eval("def text=(value); EssentiaTranslate.invoke(#{index}, self, [value], nil); end")
+      else
         owner.class_eval("def #{name}(*args, &block); EssentiaTranslate.invoke(#{index}, self, args, block); end")
         owner.send(:ruby2_keywords, name) if owner.respond_to?(:ruby2_keywords, true)
-        owner.send(:private, name) if private_method
-        @hooked[[owner, name]] = owner.instance_method(name)
       end
+      owner.send(:private, name) if private_method
+      owner.send(:protected, name) if protected_method
+      @hooked[[owner, name]] = owner.instance_method(name)
     rescue StandardError
+    end
+
+    def wrap_top(name, argument, wait, kind)
+      meta = class << Kernel; self; end
+      [Object, Kernel, meta].each { |owner| wrap_method(owner, name, argument, wait, kind) }
+    end
+
+    def wrap_dialogue_window
+      return unless defined?(Window_AdvancedTextPokemon)
+      wrap_method(Window_AdvancedTextPokemon, :text=, 0, DIALOGUE_WAIT, :window)
     end
 
     def wrap_messages
@@ -224,10 +245,11 @@ module EssentiaTranslate
       return if @installing
       @installing = true
       begin
-        wrap_top(:pbMessage, 0, 0.35, :message)
-        wrap_top(:pbMessageDisplay, 1, 0.35, :message)
+        wrap_top(:pbMessage, 0, DIALOGUE_WAIT, :message)
+        wrap_top(:pbMessageDisplay, 1, DIALOGUE_WAIT, :message)
         wrap_top(:pbShowCommands, 1, 0, :commands)
         wrap_messages
+        wrap_dialogue_window
       ensure
         @installing = false
       end
