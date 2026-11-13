@@ -174,7 +174,7 @@ fun GameScreen(s: AppState, g: Game) {
             }
             else -> {
                 val classic = s.classicAvailable()
-                val profile = remember(g.path) { s.profile(g) }
+                val profile = remember(g.path, s.profileTick) { s.profile(g) }
                 val autoPick = if (profile.recommendedEngine == Game.ENGINE_CLASSIC && classic) "clásico" else "moderno"
                 Glass(Modifier.fillMaxWidth()) {
                     val options = listOf(

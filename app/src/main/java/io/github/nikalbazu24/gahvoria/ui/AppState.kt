@@ -169,7 +169,12 @@ class AppState(private val activity: Activity) {
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
             val played0 = library.load().firstOrNull { it.path == path }
-            val errRaw = GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })
+            val rubyError = GameReport.errorSince(activity, at, File(path), played0?.let { saveDir(it) })
+            // No Ruby error but the game's process died in an abnormal way (memory, native crash...): ask Android why.
+            val exitNote = if (rubyError == null && played0 != null) Launcher.abnormalExit(activity, at) else null
+            val errRaw: String? = rubyError ?: exitNote?.let {
+                "Gahvoria ${BuildConfig.VERSION_NAME}\nJuego: ${played0?.title}\n\nEl proceso del juego terminó de forma inesperada.\n$it"
+            }
             val usedEngine = settings.lastEngine(path)
             val auto = played0 != null && played0.engine == Game.ENGINE_AUTO
             // A creator's own game keeps the history of its errors, including the ones that were retried.
@@ -228,13 +233,12 @@ class AppState(private val activity: Activity) {
         library.update(game.path) { it.copy(lastPlayed = now) }
         settings.startSession(game.path, now)
         if (engine == null) settings.setRetried(game.path, false)
-        if (Launcher.gameRunning(activity)) {
-            // The previous session is still closing: end it first, or the new one starts inside a dying process and hangs.
-            worker.execute {
-                Launcher.stopGame(activity)
-                activity.runOnUiThread { Launcher.play(activity, game, engine) }
-            }
-        } else Launcher.play(activity, game, engine)
+        // Off the main thread: reading a big game's scripts to choose the engine takes seconds, and a previous session may still be closing.
+        Thread({
+            if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)   // or the new one starts inside a dying process and hangs
+            runCatching { Launcher.profile(game) }                            // warms the cache that engineFor uses
+            activity.runOnUiThread { Launcher.play(activity, game, engine) }
+        }, "GahvoriaPlay").start()
         selected = 0
     }
 
@@ -252,7 +256,36 @@ class AppState(private val activity: Activity) {
     }
 
     fun classicAvailable() = Launcher.classicAvailable(activity)
-    fun profile(game: Game) = Launcher.profile(game)
+    /** The app itself closed on its own last time: say so and offer to send what Android recorded (it is the player's choice). */
+    fun offerCrashReport(text: String) {
+        if (!GameReport.canSend()) { say("Gahvoria se cerró la última vez, pero esta versión no puede enviar informes.", NoticeKind.WARN); return }
+        say("Gahvoria se cerró sola la última vez.", NoticeKind.WARN, "Enviar informe") {
+            Thread({
+                val ok = runCatching { GameReport.send("app-cierre", text) }.isSuccess
+                activity.runOnUiThread { say(if (ok) "Informe enviado. Gracias." else "No se pudo enviar el informe.", if (ok) NoticeKind.OK else NoticeKind.WARN) }
+            }, "GahvoriaCrashReport").start()
+        }
+    }
+
+    /** Goes up when a game's scripts have been read in the background, so the screens that show them look again. */
+    var profileTick by mutableIntStateOf(0)
+        private set
+    private val profilesLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * What a game's scripts say. Reading them (several MB for a big game) is done in a background thread: until it is ready the
+     * screens get an empty profile and draw again when it arrives, so opening a screen never freezes the app.
+     */
+    fun profile(game: Game): io.github.nikalbazu24.gahvoria.core.GameProfile {
+        profileTick  // read: whoever draws with this profile is told when it changes
+        io.github.nikalbazu24.gahvoria.core.GameProfile.cached(File(game.path))?.let { return it }
+        if (profilesLoading.add(game.path)) Thread({
+            runCatching { Launcher.profile(game) }
+            profilesLoading.remove(game.path)
+            activity.runOnUiThread { profileTick++ }
+        }, "GahvoriaProfile").start()
+        return io.github.nikalbazu24.gahvoria.core.GameProfile()
+    }
     fun lastLoad(game: Game): LoadRecord? = Launcher.lastLoad(activity, game)
 
     fun saveDir(game: Game) = Launcher.saveDir(game)

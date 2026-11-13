@@ -53,6 +53,39 @@ object Launcher {
     fun lastLoad(a: Activity, game: Game): LoadRecord? =
         runCatching { LoadTimes.lastFor(LoadTimes.parse(File(a.filesDir, "load_times.tsv").readText()), game.title) }.getOrNull()
 
+    /**
+     * When the game's process (":game") ended after [since] in an abnormal way, a sentence saying how Android saw it
+     * (memory, native crash, signal...); null if it ended normally or Android (before 11) does not tell. A game that closes
+     * "out of nowhere" leaves no Ruby error, so this is the only trace of why.
+     */
+    fun abnormalExit(a: Activity, since: Long): String? {
+        if (android.os.Build.VERSION.SDK_INT < 30) return null
+        val am = a.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return null
+        val infos = runCatching { am.getHistoricalProcessExitReasons(a.packageName, 0, 12) }.getOrNull().orEmpty()
+        val i = infos.filter { it.processName == a.packageName + ":game" && it.timestamp >= since }.maxByOrNull { it.timestamp } ?: return null
+        val reason = when (i.reason) {
+            android.app.ApplicationExitInfo.REASON_EXIT_SELF -> "salió por sí mismo"
+            android.app.ApplicationExitInfo.REASON_SIGNALED -> "lo terminó una señal del sistema"
+            android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "el sistema lo cerró por poca memoria"
+            android.app.ApplicationExitInfo.REASON_CRASH -> "excepción de Java"
+            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo del código nativo del motor"
+            android.app.ApplicationExitInfo.REASON_ANR -> "dejó de responder"
+            android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "usó demasiados recursos"
+            android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "lo cerraste tú"
+            android.app.ApplicationExitInfo.REASON_USER_STOPPED -> "lo detuvo el usuario"
+            else -> "motivo " + i.reason
+        }
+        val abnormal = when (i.reason) {
+            android.app.ApplicationExitInfo.REASON_SIGNALED, android.app.ApplicationExitInfo.REASON_LOW_MEMORY,
+            android.app.ApplicationExitInfo.REASON_CRASH, android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
+            android.app.ApplicationExitInfo.REASON_ANR, android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> true
+            android.app.ApplicationExitInfo.REASON_EXIT_SELF -> i.status != 0
+            else -> false
+        }
+        if (!abnormal) return null
+        return "Android dice: $reason (estado ${i.status}). ${i.description.orEmpty()} Memoria al cerrar: ${i.pss / 1024} MB (RSS ${i.rss / 1024} MB)."
+    }
+
     /** The other engine, or null when it is not in this APK. */
     fun otherEngine(a: Activity, used: String): String? = when {
         used == GameActivity.ENGINE_CLASSIC -> GameActivity.ENGINE_MODERN

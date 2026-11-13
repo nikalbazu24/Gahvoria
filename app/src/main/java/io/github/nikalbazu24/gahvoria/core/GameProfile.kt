@@ -72,6 +72,13 @@ data class GameProfile(
          * Reading a game's scripts means parsing a file of several MB, and the app asks for the profile again and again
          * (opening a game, its options, the creator panel). The result is kept while the scripts file stays the same.
          */
+        /** The profile if it was already read and the scripts have not changed; null otherwise. Never reads the scripts. */
+        fun cached(dir: File): GameProfile? {
+            val scripts = scriptsFile(dir) ?: return GameProfile()
+            val hit = cache[scripts.path] ?: return null
+            return hit.second.takeIf { hit.first == Stamp(scripts.length(), scripts.lastModified()) }
+        }
+
         fun read(dir: File): GameProfile {
             val scripts = scriptsFile(dir) ?: return GameProfile()
             val stamp = Stamp(scripts.length(), scripts.lastModified())

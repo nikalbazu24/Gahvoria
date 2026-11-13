@@ -14,7 +14,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val crashFile = java.io.File(filesDir, "last_app_crash.txt")
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { crashFile.writeText("Gahvoria ${BuildConfig.VERSION_NAME}\nHilo: ${t.name}\n" + android.util.Log.getStackTraceString(e).take(6000)) }
+            before?.uncaughtException(t, e)
+        }
         state = AppState(this)
+        if (crashFile.exists()) {
+            val text = runCatching { crashFile.readText() }.getOrDefault("")
+            crashFile.delete()
+            if (text.isNotBlank()) state.offerCrashReport(text)
+        }
         intent?.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
         setContent { GahvoriaApp(state) }
     }

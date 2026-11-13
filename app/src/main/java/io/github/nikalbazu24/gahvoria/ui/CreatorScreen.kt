@@ -96,7 +96,7 @@ private fun CreatorGame(s: AppState, g: Game) {
 @Composable
 private fun Summary(s: AppState, g: Game) {
     val c = LocalColors.current
-    val p = remember(g.path) { s.profile(g) }
+    val p = remember(g.path, s.profileTick) { s.profile(g) }
     val newer = s.storeUpdate(g)
     if (newer != null) Glass(Modifier.fillMaxWidth()) {
         RowItem("Versión nueva en la tienda", "La tienda lista la ${newer.version} y tu juego dice ${p.gameVersion}. Si ya la publicaste, juégala aquí para probarla.",

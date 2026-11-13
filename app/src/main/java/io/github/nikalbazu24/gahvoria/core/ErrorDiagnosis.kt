@@ -28,6 +28,9 @@ object ErrorDiagnosis {
             modernEngine && classicAvailable && (low.contains("syntaxerror") || low.contains("marshal") || low.contains("dump format error") || low.contains("incompatible")) ->
                 Diagnosis("Este juego parece necesitar el motor clásico", "El juego usa algo de Ruby antiguo que el motor moderno no entiende" + (where?.let { " (" + it + ")" } ?: "") + ".",
                     Fix.CLASSIC_ENGINE, "Sí, probando otro motor", "Puedo reintentar con el motor clásico. Tus partidas no se tocan.")
+            low.contains("terminó de forma inesperada") ->
+                Diagnosis("El juego se cerró de golpe", text.substringAfter("inesperada.").trim().ifEmpty { "Android cerró el proceso del juego sin que el juego dejara un error." },
+                    Fix.TRY_AGAIN, "Puede ayudar", "Cierra otras apps y vuelve a abrirlo. Si se repite, envía el informe: dice por qué lo cerró Android.")
             low.contains("systemstackerror") || low.contains("stack level too deep") ->
                 Diagnosis("Error dentro del script del juego", "El juego se llamó a sí mismo sin parar" + (where?.let { " (" + it + ")" } ?: "") + ".",
                     Fix.NONE, "No desde la app", "Es un fallo del juego o de un mod. Envía el informe para revisarlo.")
