@@ -76,3 +76,9 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 ## Gahvoria Neural AI (experimental)
 
 La auditoría, la primera reparación del traductor y el plan del modelo local están en [Gahvoria Neural AI](NEURAL_AI.md).
+
+
+### Arranque de Pokémon Reborn
+
+- El perfil automático comprueba los scripts externos indicados por el arranque, incluyendo los ajustes de Reborn que su cargador descubre dinámicamente. Si encuentra sintaxis de hash de Ruby moderno, corrige la elección incluso si el modo automático había memorizado el motor clásico.
+- Si el motor clásico devuelve el error de sintaxis correspondiente, el informe ofrece reabrir con el motor moderno. La corrección se comprueba con scripts de prueba y queda pendiente de verificar con Reborn en el teléfono.

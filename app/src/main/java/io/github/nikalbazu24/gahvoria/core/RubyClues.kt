@@ -14,6 +14,7 @@ data class RubyClues(val modern: List<String>, val classic: List<String>, val so
         val NONE = RubyClues(emptyList(), emptyList())
 
         private val MODERN = listOf(
+            "claves de hash con dos puntos" to Regex("""(?:\{|,)\s*[a-zA-Z_]\w*:\s*:[a-zA-Z_]\w*"""),
             "%i[ ]" to Regex("""(?<![\w%])%[iI][\[({<]"""),
             "-> (lambda)" to Regex("""(?:=|,|\()\s*->\s*[({|\w]"""),
             "&. (navegación segura)" to Regex("""\w&\.\w"""),

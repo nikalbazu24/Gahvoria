@@ -194,7 +194,8 @@ class AppState(private val activity: Activity) {
             } else if (played0 != null) {
                 val other = usedEngine?.let { Launcher.otherEngine(activity, it) }
                 // A missing file is not fixed by the other engine: reopening would only close the game a second time.
-                val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true)
+                val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true) &&
+                    (other != Game.ENGINE_CLASSIC || Launcher.profile(played0).clues.modern.isEmpty())
                 // Failed while starting (first 90 s), or with the classic Ruby 1.8 / modern Ruby 3 clash at any moment (Pokémon Ópalo: after the new game).
                 val clash = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.engineClash(errRaw, (usedEngine ?: "modern") != "classic")
                 if (!interruptedPreparation && auto && other != null && engineFixable && !settings.retried(path) && (played < 90_000 || clash)) {
@@ -518,10 +519,10 @@ class AppState(private val activity: Activity) {
         }
     }
 
-    /** The diagnosis said the classic engine may fix it: switch this game to it and open it again. */
-    fun retryClassic(e: ErrorReport) {
+    /** Applies the engine selected from the error report. */
+    fun retryEngine(e: ErrorReport, engine: String) {
         errorReport = null
-        changeGame(e.game.path) { it.copy(engine = Game.ENGINE_CLASSIC) }
+        changeGame(e.game.path) { it.copy(engine = engine) }
         games.firstOrNull { it.path == e.game.path }?.let { play(it) }
     }
 

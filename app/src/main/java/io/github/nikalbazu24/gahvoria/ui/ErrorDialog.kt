@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.core.Fix
+import io.github.nikalbazu24.gahvoria.core.Game
 
 /** A game closed with an error: the library blurs behind this window, which says what failed and what can be done. */
 @Composable
@@ -66,8 +67,11 @@ fun ErrorDialog(s: AppState, e: ErrorReport) {
             }
             Spacer(Modifier.height(18.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (e.diagnosis.fix == Fix.CLASSIC_ENGINE) {
-                    PrimaryButton("Probar motor clásico", Modifier.fillMaxWidth()) { s.retryClassic(e) }
+                if (e.diagnosis.fix == Fix.CLASSIC_ENGINE || e.diagnosis.fix == Fix.MODERN_ENGINE) {
+                    val modern = e.diagnosis.fix == Fix.MODERN_ENGINE
+                    val label = if (modern) "Probar motor moderno" else "Probar motor clásico"
+                    val engine = if (modern) Game.ENGINE_MODERN else Game.ENGINE_CLASSIC
+                    PrimaryButton(label, Modifier.fillMaxWidth()) { s.retryEngine(e, engine) }
                     SecondaryButton("Enviar informe", Modifier.fillMaxWidth()) { s.sendReport(e.game, e.text); s.errorReport = null }
                 } else {
                     PrimaryButton(if (s.canSendReports) "Enviar informe" else "Copiar informe", Modifier.fillMaxWidth()) {

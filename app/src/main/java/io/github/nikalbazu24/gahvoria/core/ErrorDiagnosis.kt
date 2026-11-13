@@ -1,7 +1,7 @@
 package io.github.nikalbazu24.gahvoria.core
 
 /** What a player can do about an error, in order of how much Gahvoria can do by itself. */
-enum class Fix { CLASSIC_ENGINE, TRY_AGAIN, NONE }
+enum class Fix { CLASSIC_ENGINE, MODERN_ENGINE, TRY_AGAIN, NONE }
 
 /** The error in plain words: what failed, whether the app can fix it, and what to do next. */
 data class Diagnosis(val title: String, val detail: String, val fix: Fix, val canFixHere: String, val advice: String)
@@ -39,6 +39,9 @@ object ErrorDiagnosis {
             missing != null || low.contains("no such file or directory") || low.contains("unable to find file") ->
                 Diagnosis("Falta un archivo del juego", "No encontré " + (missing ?: "un archivo que el juego pide") + ". Puede faltar en la carpeta o tener otro nombre.",
                     Fix.NONE, "No desde la app", "Envía el informe y reviso el detalle. Tus partidas no se tocan.")
+            !modernEngine && low.contains("odd number list for hash") && low.contains("syntax error") ->
+                Diagnosis("Este juego necesita el motor moderno", "El motor clásico no puede leer la sintaxis de sus tablas.",
+                    Fix.MODERN_ENGINE, "Sí, con el motor moderno", "Reabre el juego con el motor moderno.")
             modernEngine && classicAvailable && (low.contains("syntaxerror") || low.contains("marshal") || low.contains("dump format error") || low.contains("incompatible")) ->
                 Diagnosis("Este juego parece necesitar el motor clásico", "El juego usa algo de Ruby antiguo que el motor moderno no entiende" + (where?.let { " (" + it + ")" } ?: "") + ".",
                     Fix.CLASSIC_ENGINE, "Sí, probando otro motor", "Puedo reintentar con el motor clásico. Tus partidas no se tocan.")

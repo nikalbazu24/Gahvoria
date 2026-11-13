@@ -630,6 +630,35 @@ class CoreTest {
         assertEquals(Game.ENGINE_CLASSIC, profile("ESSENTIALS_VERSION = \"17.2\"").recommendedEngine)
     }
 
+    @Test fun externalBootScriptsOverrideALearnedClassicEngine() {
+        val root = scriptsFile("script" to """
+            ESSENTIALS_VERSION = "18.1"
+            eval(File.read("Scripts/Reborn/Bootstrap.rb"))
+            eval(File.read("Scripts/ScriptLoader.rb"))
+        """.trimIndent())
+        try {
+            val scripts = File(root, "Scripts/Reborn").apply { mkdirs() }
+            File(scripts, "Bootstrap.rb").writeText("# bootstrap")
+            val settings = File(scripts, "Settings.rb")
+            assertEquals(Game.ENGINE_CLASSIC, GameProfile.read(root).recommendedEngine)
+            settings.writeText("ENCOUNTERS = [{ species: :TEST, level: 2 }]")
+            assertNull(GameProfile.cached(root))
+            val profile = GameProfile.read(root)
+            assertEquals(Game.ENGINE_MODERN, profile.recommendedEngine)
+            assertEquals(Game.ENGINE_MODERN, profile.automaticEngine(Game.ENGINE_CLASSIC))
+            assertTrue(profile.engineReason.contains("Scripts/Reborn/Settings.rb"))
+            assertEquals(Game.ENGINE_CLASSIC,
+                GameProfile.parse(listOf("Legacy" to "ESSENTIALS_VERSION = \"18.1\"")).automaticEngine(null))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun classicHashSyntaxErrorSuggestsModernEngine() {
+        val report = "Script 'loader' line 3: SyntaxError occured.\nSettings:1: odd number list for Hash\nSettings:1: syntax error"
+        assertEquals(Fix.MODERN_ENGINE, ErrorDiagnosis.diagnose(report, false, true).fix)
+    }
+
     @Test fun missingDataIsFoundWithoutReadingScripts() {
         val g = Files.createTempDirectory("g").toFile()
         File(g, "Data").mkdirs()
