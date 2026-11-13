@@ -179,7 +179,8 @@ public class GameActivity extends SDLActivity
 
         if (mTouch) addKeyboardButton();
 
-        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted, new LoadingScreen.Host()
+        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted,
+            mTranslator != null && !mTranslator.preparationPath().isEmpty(), new LoadingScreen.Host()
         {
             @Override
             public void exit()

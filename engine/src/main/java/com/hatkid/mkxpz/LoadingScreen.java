@@ -65,6 +65,7 @@ final class LoadingScreen extends FrameLayout
     private State shown;
     private String translationPreparation;
     private Runnable skipPreparation;
+    private boolean preparationFinished;
 
     private final TextView clock;
     private final TextView badge;
@@ -73,6 +74,8 @@ final class LoadingScreen extends FrameLayout
     private final TextView[] phaseTimes = new TextView[3];
     private final TextView[] phaseNames = new TextView[3];
     private final View[] dots = new View[3];
+    private final TextView preparationName;
+    private final View preparationDot;
     private final LinearLayout actions;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable()
@@ -86,7 +89,7 @@ final class LoadingScreen extends FrameLayout
         }
     };
 
-    LoadingScreen(Context c, Look look, String title, String info, String coverPath, long startedAt, Host host)
+    LoadingScreen(Context c, Look look, String title, String info, String coverPath, long startedAt, boolean preparesTranslation, Host host)
     {
         super(c);
         this.look = look;
@@ -143,7 +146,18 @@ final class LoadingScreen extends FrameLayout
         LinearLayout list = new LinearLayout(c);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(0, look.dp(14), 0, look.dp(6));
+        preparationName = preparesTranslation ? text(c, "Preparando traducción", 13, look.faint, false) : null;
+        preparationDot = preparesTranslation ? new View(c) : null;
         for (int i = 0; i < 3; i++) {
+            if (i == 2 && preparesTranslation) {
+                LinearLayout preparationRow = new LinearLayout(c);
+                preparationRow.setGravity(Gravity.CENTER_VERTICAL);
+                preparationRow.setPadding(0, look.dp(4), 0, look.dp(4));
+                preparationRow.addView(preparationDot, new LinearLayout.LayoutParams(look.dp(12), look.dp(12)));
+                preparationName.setPadding(look.dp(10), 0, 0, 0);
+                preparationRow.addView(preparationName, new LinearLayout.LayoutParams(0, -2, 1f));
+                list.addView(preparationRow);
+            }
             LinearLayout row = new LinearLayout(c);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -206,6 +220,7 @@ final class LoadingScreen extends FrameLayout
     {
         if (finished) return;
         boolean changed = (translationPreparation == null) != (message == null);
+        if (changed && message == null) preparationFinished = true;
         translationPreparation = message;
         skipPreparation = skip;
         lastChange = SystemClock.elapsedRealtime();
@@ -281,7 +296,7 @@ final class LoadingScreen extends FrameLayout
         times[phase] = now - phaseStarted;
         clock.setText(clock(now - started));
         for (int i = 0; i < 3; i++) {
-            boolean done = i < phase, on = i == phase;
+            boolean done = i < phase, on = i == phase && translationPreparation == null;
             phaseNames[i].setTextColor(on ? look.ink : done ? look.muted : look.faint);
             phaseTimes[i].setText(i <= phase ? sec(times[i]) : "");
             GradientDrawable d = new GradientDrawable();
@@ -291,6 +306,16 @@ final class LoadingScreen extends FrameLayout
             else d.setStroke(look.dp(2), look.faint);
             dots[i].setBackground(d);
             dots[i].setAlpha(on ? (float) (0.65 + 0.35 * Math.sin(now / 250.0)) : 1f);
+        }
+        if (preparationName != null) {
+            boolean active = translationPreparation != null;
+            preparationName.setTextColor(active ? look.ink : preparationFinished ? look.muted : look.faint);
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            if (active) dot.setColor(look.accent);
+            else if (preparationFinished) dot.setColor(look.muted);
+            else dot.setStroke(look.dp(2), look.faint);
+            preparationDot.setBackground(dot);
         }
         long stall = now - Math.max(lastChange, waitFrom);
         State s = translationPreparation != null ? State.LOAD :
