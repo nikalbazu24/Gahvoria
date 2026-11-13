@@ -6,6 +6,7 @@ plugins {
 
 // Build number from GitHub Actions: every build has a higher versionCode, so the updater knows which is newer.
 val buildNumber = (System.getenv("GAHVORIA_BUILD_NUMBER") ?: "0").toInt()
+val devTag = if (System.getenv("GAHVORIA_DEV_TAG") == "neural-beta") "neural-beta" else "dev"
 
 // Fixed signature: the keystore and its password come from the repository secrets.
 val keystorePath: String? = System.getenv("GAHVORIA_KEYSTORE_FILE")
@@ -22,7 +23,7 @@ android {
         targetSdk = 33
         versionCode = maxOf(1, buildNumber)
         versionName = "0.1.$buildNumber"
-        buildConfigField("String", "UPDATE_BASE", "\"https://github.com/nikalbazu24/Gahvoria/releases/download/dev/\"")
+        buildConfigField("String", "UPDATE_BASE", "\"https://github.com/nikalbazu24/Gahvoria/releases/download/$devTag/\"")
         buildConfigField("String", "REPORT_URL", "\"https://script.google.com/macros/s/AKfycbxMUM_5NoCyJCmurvDWFRJ5zTgk70F5-9s4_RessUcL8YbmeRpkEYA6WEdON6Ym_Cyn/exec\"")
         // Secret from GitHub (GAHVORIA_REPORT_TOKEN). Empty in local builds: then reports are only copied.
         buildConfigField("String", "REPORT_TOKEN", "\"" + (System.getenv("GAHVORIA_REPORT_TOKEN") ?: "").replace("\"", "") + "\"")

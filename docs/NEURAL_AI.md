@@ -47,3 +47,9 @@ Para cualquier runtime integrado, revisar [MPL y licencias secundarias](https://
 Solar Eclipse (RPG Maker XP y Essentials 19.1) siguió mostrando el original en la Thor con el proveedor local. El proceso `:game` no ejecutaba el inicializador automático de ML Kit del proceso principal. El servicio lo inicializa una vez en ese proceso, antes de crear clientes de idioma o traducción. Se refresca el aviso al volver del juego y se distingue falta de texto, preparación de idioma, fallo y aciertos de memoria. La prueba en la Thor está pendiente de repetir con el APK nuevo.
 
 En **Ajustes → Traducción → Con qué traducir**, la opción **Gahvoria Neural AI** activa la ruta experimental. Mientras se integra el modelo, esta ruta reutiliza únicamente la memoria por juego e idioma y muestra el texto original cuando no encuentra una coincidencia. Las frases del modo experimental no se envían a DeepL ni a ML Kit. Para verificar la reparación del proveedor local en Solar Eclipse, elegir **En el teléfono (gratis)**.
+
+## Actualizaciones de la beta
+
+La primera compilación con el nuevo canal se instala manualmente encima de Gahvoria. En ella, **Actualizaciones → Todas las versiones** consulta la prepublicación `neural-beta`. **Solo versiones estables** sigue consultando el canal estable. Las compilaciones oficiales de desarrollo siguen consultando `dev`. Al cambiar de canal, Android solo permite instalar una versión con código superior.
+
+El flujo normal compila y verifica ambos motores y publica en `neural-beta` al hacer push a `experimental/neural-ai-phase-1` si la firma de Gahvoria está disponible. Los pull requests producen artefactos de prueba, sin publicar en Releases. La beta no se marca como la última versión general del repositorio.

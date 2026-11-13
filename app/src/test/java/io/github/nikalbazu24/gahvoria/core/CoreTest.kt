@@ -512,6 +512,10 @@ class CoreTest {
         assertEquals(dev, UpdateChannel.base(dev, UpdateChannel.DEV))
         assertEquals("https://github.com/nikalbazu24/Gahvoria/releases/download/stable/", UpdateChannel.base(dev, UpdateChannel.STABLE))
         assertEquals(dev, UpdateChannel.base(dev, "cualquier cosa"))
+        val beta = "https://github.com/nikalbazu24/Gahvoria/releases/download/neural-beta/"
+        assertEquals(beta, UpdateChannel.base(beta, UpdateChannel.DEV))
+        assertEquals(beta, UpdateChannel.base(beta, "cualquier cosa"))
+        assertEquals("https://github.com/nikalbazu24/Gahvoria/releases/download/stable/", UpdateChannel.base(beta, UpdateChannel.STABLE))
         assertTrue(UpdateChannel.valid("stable") && !UpdateChannel.valid(null) && !UpdateChannel.valid("x"))
     }
 
