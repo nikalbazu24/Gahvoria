@@ -71,6 +71,7 @@ fun GahvoriaApp(s: AppState) {
                 s.deleting?.let { DeleteDialog(s, it) }
                 s.importOffer?.let { ImportDialog(s, it) }
                 s.intro?.let { IntroScreen(it, s.introIsUpdate) { s.finishIntro() } }
+                s.zipProgress?.let { text -> InstallPill(text, Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) }
                 s.notice?.let { n ->
                     NoticeCard(n, Modifier.align(Alignment.BottomCenter).padding(bottom = if (rail) 16.dp else 88.dp)) { s.notice = null }
                 }
@@ -93,6 +94,17 @@ private fun Content(s: AppState) {
         Tab.STORE -> StoreScreen(s)
         Tab.UPDATES -> UpdatesScreen(s)
         Tab.SETTINGS -> SettingsScreen(s)
+    }
+}
+
+/** Shown on every screen while a game is being unpacked in the background. */
+@Composable
+private fun InstallPill(text: String, modifier: Modifier) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(99.dp)
+    Row(modifier.background(c.bg2, shape).border(1.dp, c.line, shape).padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        T(text, 12.sp, FontWeight.Bold, c.ink)
     }
 }
 

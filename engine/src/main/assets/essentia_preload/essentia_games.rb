@@ -37,7 +37,7 @@ module EssentiaGames
     end
 
     def old_resizer?
-      %i[pbSetResizeFactor2 pbSetResizeFactor pbConfigureWindowedScreen].any? do |m|
+      [:pbSetResizeFactor2, :pbSetResizeFactor, :pbConfigureWindowedScreen].any? do |m|
         Object.private_method_defined?(m) || Object.method_defined?(m)
       end
     end

@@ -175,7 +175,10 @@ private fun ZipView(s: AppState, onBack: () -> Unit) {
                 }
             }
             pick.problem?.let { T(it, 13.sp, FontWeight.Medium, c.warn) }
-            s.zipProgress?.let { T(it, 13.sp, FontWeight.SemiBold, c.muted) }
+            s.zipProgress?.let {
+                T(it, 13.sp, FontWeight.SemiBold, c.muted)
+                T("Puedes salir de esta pantalla o usar otras apps: sigue en segundo plano y te avisa cuando termine.", 12.sp, FontWeight.Medium, c.muted)
+            }
             if (pick.plan != null) PrimaryButton(if (busy) "Instalando…" else "Instalar y agregar a la biblioteca", Modifier.fillMaxWidth(), enabled = !busy) { s.installZip() }
         }
     }

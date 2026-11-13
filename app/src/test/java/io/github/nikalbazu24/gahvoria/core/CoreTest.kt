@@ -582,4 +582,56 @@ class CoreTest {
         for (m in 0..2) assertEquals(m, Depth.modeOf(Depth.angleOf(m)))
         assertEquals(60, Depth.clamp(200)); assertEquals(0, Depth.clamp(-5))
     }
+
+    /**
+     * The classic engine is Ruby 1.8.7: a single "%i[...]" or "{ key: value }" in a script it loads stops every game
+     * with a SyntaxError (it happened with Solar Eclipse). essentia_compat.rb is for the modern engine only.
+     */
+    @Test fun scriptsOfTheClassicEngineUseOldRubySyntax() {
+        val dir = File("../engine/src/main/assets/essentia_preload")
+        val bad = Regex("""%[iI][\[(]|->|&\.|(?<!\\)\.\(|[({,]\s*[a-z_]+:\s""")
+        val problems = mutableListOf<String>()
+        for (f in dir.listFiles { x -> x.extension == "rb" && x.name != "essentia_compat.rb" }!!.sortedBy { it.name }) {
+            f.readLines().forEachIndexed { n, line ->
+                val code = line.substringBefore(" #").trimStart()
+                if (!code.startsWith("#") && bad.containsMatchIn(code)) problems += "${f.name}:${n + 1}: ${line.trim()}"
+            }
+        }
+        assertTrue("Sintaxis de Ruby moderno en scripts del motor clásico:\n" + problems.joinToString("\n"), problems.isEmpty())
+    }
+
+    @Test fun theEngineIsChosenFromTheRubyTheScriptsNeed() {
+        fun profile(vararg code: String) = GameProfile.parse(code.mapIndexed { i, c -> "Section$i" to (c as String?) })
+        // Ruby 1.9+ syntax: only the modern engine can read it, even in an old Essentials
+        val modern = profile("ESSENTIALS_VERSION = \"17.2\"", "x = [1].map { |a| a }\nCOLS = %i[a b]")
+        assertEquals(Game.ENGINE_MODERN, modern.recommendedEngine)
+        assertTrue(modern.engineReason.contains("%i"))
+        assertEquals(Game.ENGINE_MODERN, profile("f = ->(x) { x }").recommendedEngine)
+        assertEquals(Game.ENGINE_MODERN, profile("a&.b").recommendedEngine)
+        // Ruby 1.8 habits (a byte read as a number): classic, with the reason
+        val old = profile("class File\n  def each_byte\n  end\nend", "def fgetdw(file)\nend")
+        assertEquals(Game.ENGINE_CLASSIC, old.recommendedEngine)
+        assertTrue(old.engineReason.contains("antiguo"))
+        // both kinds: the syntax decides, because the classic engine cannot even parse the script
+        assertEquals(Game.ENGINE_MODERN, profile("x = \$KCODE", "COLS = %i[a]").recommendedEngine)
+        // Essentials 19+ is modern even if a script reads bytes
+        assertEquals(Game.ENGINE_MODERN, profile("module Essentials\n  VERSION = \"21.1\"\nend", "c = f.getc").recommendedEngine)
+        // comments do not count
+        assertEquals(Game.ENGINE_MODERN, profile("# x = ->(a) { a }\n# COLS = %i[a]").recommendedEngine)
+        // nothing at all: modern; Essentials 17 without clues: classic as before
+        assertEquals(Game.ENGINE_MODERN, profile("puts 1").recommendedEngine)
+        assertEquals(Game.ENGINE_CLASSIC, profile("ESSENTIALS_VERSION = \"17.2\"").recommendedEngine)
+    }
+
+    @Test fun missingDataIsFoundWithoutReadingScripts() {
+        val g = Files.createTempDirectory("g").toFile()
+        File(g, "Data").mkdirs()
+        assertTrue(GameCheck.missingData(g).isEmpty())            // no scripts: nothing to judge
+        File(g, "Data/Scripts.rxdata").writeText("x")
+        File(g, "Data/System.rxdata").writeText("x")
+        File(g, "Data/MapInfos.rxdata").writeText("x")
+        assertEquals(listOf("Animations", "Tilesets", "CommonEvents"), GameCheck.missingData(g))
+        for (n in listOf("Animations", "Tilesets", "CommonEvents")) File(g, "Data/$n.rxdata").writeText("x")
+        assertTrue(GameCheck.missingData(g).isEmpty())
+    }
 }

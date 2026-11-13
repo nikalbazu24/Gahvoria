@@ -181,7 +181,9 @@ class AppState(private val activity: Activity) {
                 settings.setRetried(path, false)
             } else if (played0 != null) {
                 val other = usedEngine?.let { Launcher.otherEngine(activity, it) }
-                if (auto && other != null && !settings.retried(path) && played < 90_000) {
+                // A missing file is not fixed by the other engine: reopening would only close the game a second time.
+                val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true)
+                if (auto && other != null && engineFixable && !settings.retried(path) && played < 90_000) {
                     // Failed while starting: reopen once with the other engine, without asking.
                     settings.setRetried(path, true)
                     settings.setLearnedEngine(path, null)
@@ -208,11 +210,20 @@ class AppState(private val activity: Activity) {
 
     // ---------------------------------------------------------------- library
 
-    fun play(game: Game, engine: String? = null) {
+    fun play(game: Game, engine: String? = null, force: Boolean = false) {
         val dir = File(game.path)
         if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
         if (!game.kind.isRpgMaker) { say("Este motor todavía no se puede jugar en Gahvoria.", NoticeKind.WARN); return }
+        // Before opening: a game missing files of its Data folder closes by itself at start-up (Solar Eclipse, copied or unpacked halfway).
+        if (!force) {
+            val missing = io.github.nikalbazu24.gahvoria.core.GameCheck.missingData(dir)
+            if (missing.isNotEmpty()) {
+                say("${game.title} no se abrirá: le faltan ${missing.joinToString(", ") { "$it.rxdata" }} en Data. Suele pasar si se descomprimió a medias; vuelve a instalarlo desde su archivo original.",
+                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true) }
+                return
+            }
+        }
         val now = System.currentTimeMillis()
         library.update(game.path) { it.copy(lastPlayed = now) }
         settings.startSession(game.path, now)
@@ -513,15 +524,25 @@ class AppState(private val activity: Activity) {
         if (!hasAccess) { say("Primero da acceso a tus archivos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (zipProgress != null) return
         zipProgress = "Preparando…"
-        worker.execute {
+        val name = pick.name
+        io.github.nikalbazu24.gahvoria.data.InstallService.start(activity, "Instalando $name…")
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            runCatching { activity.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 41) }
+        // Its own thread (not the shared worker): the rest of the app keeps working, and the service keeps the process alive.
+        Thread({
             val result = runCatching {
                 val base = File(Storage.root(), "Juegos").also { it.mkdirs() }
                 val title = plan.root.trimEnd('/').substringAfterLast('/').ifEmpty { pick.name.substringBeforeLast('.') }
                 val dest = ZipInstaller.freeFolder(base, title)
                 val src = io.github.nikalbazu24.gahvoria.data.Archives.open(activity, pick.uri, pick.kind)
-                val n = ZipInstaller.extract(src, plan, dest) { c -> activity.runOnUiThread { zipProgress = "Descomprimiendo… $c de ${plan.files} archivos" } }
+                val n = ZipInstaller.extract(src, plan, dest) { c ->
+                    io.github.nikalbazu24.gahvoria.data.InstallService.progress(activity, "$name: $c de ${plan.files} archivos", c, plan.files)
+                    activity.runOnUiThread { zipProgress = "Descomprimiendo… $c de ${plan.files} archivos" }
+                }
                 dest to n
             }
+            io.github.nikalbazu24.gahvoria.data.InstallService.finish(activity,
+                result.fold({ (dest, _) -> "${dest.name} está instalado y en tu biblioteca." }, { "No pude instalar $name. No quedó nada a medias." }))
             activity.runOnUiThread {
                 zipProgress = null
                 result.onSuccess { (dest, _) ->
@@ -535,7 +556,7 @@ class AppState(private val activity: Activity) {
                     refreshCovers()
                 }.onFailure { say("No pude instalar el juego: " + (it.message ?: "error desconocido") + ". No quedó nada a medias.", NoticeKind.ERROR) }
             }
-        }
+        }, "GahvoriaInstall").start()
     }
 
     /** A creator proposes a game: the link and a short description go to the review box (the same private place as reports). */

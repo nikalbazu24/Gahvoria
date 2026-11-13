@@ -19,15 +19,38 @@ data class GameProfile(
     val oldResizer: Boolean = false,
     /** The scripts need Ruby 1.9+ (an mkxp-z compatibility script, Encoding...): the classic engine (Ruby 1.8) cannot run them. */
     val modernOnly: Boolean = false,
+    /** What the scripts say about the Ruby they need (see [RubyClues]). */
+    val clues: RubyClues = RubyClues.NONE,
 ) {
     /** The Essentials version as a number (17.2, 21.1...), or 0 if unknown. */
     val versionNumber: Float
         get() = Regex("""(\d+(?:\.\d+)?)""").find(essentialsVersion)?.value?.toFloatOrNull() ?: 0f
 
-    /** Essentials 17 and 18 were written for RPG Maker XP's Ruby 1.8: the classic engine from the start. */
+    /**
+     * The engine that suits the game, decided from its scripts before opening it:
+     *  1. Scripts that need Ruby 1.9+ (syntax or methods only it has) can only run on the modern engine.
+     *  2. Scripts with Ruby 1.8 habits (and not Essentials 19+, which is modern) go to the classic engine, which is Ruby 1.8.
+     *  3. Essentials 17 and 18 were written for RPG Maker XP's Ruby 1.8: classic, unless they carry the old window resizer.
+     *  4. Anything else: modern.
+     */
     val recommendedEngine: String
-        get() = if (essentials && !modernOnly && !oldResizer && versionNumber >= 17f && versionNumber < 19f)
-            Game.ENGINE_CLASSIC else Game.ENGINE_MODERN
+        get() = when {
+            modernOnly -> Game.ENGINE_MODERN
+            clues.classic.isNotEmpty() && !(essentials && versionNumber >= 19f) -> Game.ENGINE_CLASSIC
+            essentials && !oldResizer && versionNumber >= 17f && versionNumber < 19f -> Game.ENGINE_CLASSIC
+            else -> Game.ENGINE_MODERN
+        }
+
+    /** Why [recommendedEngine] was chosen, in one sentence for the player. */
+    val engineReason: String
+        get() = when {
+            modernOnly && clues.modern.isNotEmpty() -> "sus scripts usan Ruby moderno: " + clues.modern.first()
+            modernOnly -> "sus scripts incluyen ayudas para Ruby moderno"
+            recommendedEngine == Game.ENGINE_CLASSIC && clues.classic.isNotEmpty() -> "sus scripts son de Ruby antiguo: " + clues.classic.first()
+            recommendedEngine == Game.ENGINE_CLASSIC -> "Essentials $essentialsVersion se hizo para Ruby antiguo"
+            essentials && versionNumber >= 19f -> "Essentials $essentialsVersion usa Ruby moderno"
+            else -> "no hay señales de Ruby antiguo"
+        }
 
     val label: String
         get() = when {
@@ -53,7 +76,7 @@ data class GameProfile(
             val scripts = scriptsFile(dir) ?: return GameProfile()
             val stamp = Stamp(scripts.length(), scripts.lastModified())
             cache[scripts.path]?.let { (s, p) -> if (s == stamp) return p }
-            val profile = runCatching { parse(readSections(scripts.readBytes(), 400)) }.getOrDefault(GameProfile())
+            val profile = runCatching { parse(allSections(scripts.readBytes())) }.getOrDefault(GameProfile())
             cache[scripts.path] = stamp to profile
             return profile
         }
@@ -106,7 +129,9 @@ data class GameProfile(
                     if (v != null) { version = v.groupValues[1]; essentials = true }
                 }
             }
-            return GameProfile(essentials, version, gameVersion, oldResizer, modernOnly)
+            val clues = RubyClues.scan(sections)
+            if (clues.modern.isNotEmpty()) modernOnly = true
+            return GameProfile(essentials, version, gameVersion, oldResizer, modernOnly, clues)
         }
 
         /** Every script section as (name, code), for the creator's pre-flight check. Empty if the scripts can't be read. */

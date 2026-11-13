@@ -25,12 +25,9 @@ object GameCheck {
         val data = lower["data"]?.let { File(dir, it) }
         if (data == null || !data.isDirectory) out.add(Finding(Level.PROBLEM, "Falta la carpeta Data", "Ahí viven los mapas y los scripts del juego."))
         if (data != null && data.isDirectory) {
-            val inData = data.list().orEmpty().map { it.lowercase(Locale.ROOT) }.toSet()
-            if ("scripts.rxdata" in inData) {
-                val missing = listOf("Animations", "Tilesets", "CommonEvents", "System", "MapInfos").filter { "${it.lowercase(Locale.ROOT)}.rxdata" !in inData }
-                if (missing.isNotEmpty()) out.add(Finding(Level.PROBLEM, "Faltan archivos en Data",
-                    missing.joinToString(", ") { "$it.rxdata" } + ". El juego se cierra al arrancar sin ellos; suele pasar si la carpeta se copió o descomprimió a medias."))
-            }
+            val missing = missingData(dir)
+            if (missing.isNotEmpty()) out.add(Finding(Level.PROBLEM, "Faltan archivos en Data",
+                missing.joinToString(", ") { "$it.rxdata" } + ". El juego se cierra al arrancar sin ellos; suele pasar si la carpeta se copió o descomprimió a medias."))
         }
         val archive = names.firstOrNull { val n = it.lowercase(Locale.ROOT); n.endsWith(".rgssad") || n.endsWith(".rgss2a") || n.endsWith(".rgss3a") }
         if (archive != null) {
@@ -44,6 +41,18 @@ object GameCheck {
         }
         out.addAll(checkScripts(scripts))
         return out
+    }
+
+    /**
+     * The RPG Maker XP data files a game with loose scripts needs to start and that are not in its Data folder (names without
+     * the extension). Light: only lists the folder, so it can run every time a game opens.
+     */
+    fun missingData(dir: File): List<String> {
+        val data = dir.list()?.firstOrNull { it.equals("Data", ignoreCase = true) }?.let { File(dir, it) } ?: return emptyList()
+        if (!data.isDirectory) return emptyList()
+        val inData = data.list().orEmpty().map { it.lowercase(Locale.ROOT) }.toSet()
+        if ("scripts.rxdata" !in inData) return emptyList()
+        return listOf("Animations", "Tilesets", "CommonEvents", "System", "MapInfos").filter { "${it.lowercase(Locale.ROOT)}.rxdata" !in inData }
     }
 
     internal fun checkIni(text: String): List<Finding> {

@@ -155,7 +155,9 @@ class String
       if byte && other.is_a?(Numeric)
         [other, byte]
       else
-        raise TypeError, "String can't be coerced into #{other.class}"
+        # Say what the text was: a report of this error must show whether it was empty, longer than one byte or
+        # a letter that is not ASCII (a binary file read as text), which is what decides the fix.
+        raise TypeError, "String can't be coerced into #{other.class} (text of #{bytesize} bytes, encoding #{encoding}, bytes #{unpack('C*')[0, 8].inspect})"
       end
     end
   end
