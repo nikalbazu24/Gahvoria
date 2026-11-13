@@ -24,9 +24,20 @@ module EssentiaTranslate
   RETRY_SECONDS = 18
   DIALOGUE_WAIT = 0.65
   SPANISH = ENV['ESSENTIA_TR_TARGET'] == 'es'
+  SOLAR_ECLIPSE = ENV['ESSENTIA_TR_GAME'].to_s.downcase.gsub(/[^a-z]/, '').include?('solareclipse')
+  SOLAR_SPLASHES = [
+    [[180, 205], ['Un juego de', 'Peti & Gelato']],
+    [[66, 120, 147, 175, 229, 283, 311],
+     ['Este es un juego sin fines de lucro hecho por fans.', '',
+      'Este juego no está afiliado a Nintendo,',
+      'The Pokémon Company, Creatures Inc. ni Game Freak.', '',
+      'Apoya los lanzamientos oficiales.', '',
+      'Si pagaste por este juego, te estafaron.']]
+  ]
   UI_SPANISH = {
     'Press Start' => 'Pulsa START',
     'Press Enter' => 'Pulsa Enter',
+    'A game by' => 'Un juego de',
     'Press any key' => 'Pulsa cualquier tecla',
     'Continue' => 'Continuar',
     'New Game' => 'Nueva partida',
@@ -141,7 +152,7 @@ module EssentiaTranslate
 
     def load_if_due
       now = Time.now.to_f
-      return if now - @last_load < 0.12
+      return if !@paint_stack.empty? || now - @last_load < 0.12
       @last_load = now
       load_new
       refresh_ready_windows
@@ -194,7 +205,9 @@ module EssentiaTranslate
     # Repaint only known windows that drew an original while inference was pending.
     # Limit retained windows and the number repainted per frame.
     def paint(window)
-      state = [window, {}]
+      load_if_due
+      stable_widths = window.class.ancestors.any? { |type| type.to_s =~ /Option|Settings/ }
+      state = [window, {}, nil, stable_widths ? {} : nil]
       @paint_stack << state
       begin
         yield
@@ -242,7 +255,7 @@ module EssentiaTranslate
     def rendering_text(text)
       return text if @verbatim > 0 || !@displaying.empty?
       if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
-        label = UI_SPANISH[text]
+        label = UI_SPANISH[text] || (text =~ /\Apress\s+(?:the\s+)?(?:enter|start)(?:\s+key)?[!.]?\z/i ? 'Pulsa para empezar' : nil)
         if label
           result = label.dup
           result.instance_variable_set(:@gahvoria_translated, true)
@@ -261,36 +274,125 @@ module EssentiaTranslate
       end
     end
 
-    # Essentials often ships the flashing title instruction as a standalone sprite.
-    # Match only prompt assets in title folders and preserve the bitmap dimensions.
-    def localize_title_prompt(bitmap, path)
-      return unless SPANISH && path.is_a?(String)
-      normalized = path.tr('\\', '/').sub(/\A\.\/+/, '')
-      return unless normalized =~ /\AGraphics\/(?:Titles|Title|UI\/(?:Titles|Title|Title Screen))\/([^\/]+)\z/i
-      filename = $1.sub(/\.(?:png|bmp|gif|webp)\z/i, '').downcase.gsub(/[ _-]/, '')
-      case filename
-      when 'start', 'pressstart', 'pressenter', 'presstostart', 'startprompt', 'titlepressstart'
-        label = 'Pulsa para empezar'
-      else
-        return
-      end
+    # Solar Eclipse's two intro slides have white text on a black 4:3 canvas.
+    # Recognize their distinct line positions and margins before drawing Spanish.
+    def solar_splash(bitmap)
       width, height = bitmap.width, bitmap.height
-      return if width < 48 || height < 10 || height > 160 || width < height * 2
+      return nil unless width >= 320 && height >= 240 && width <= 1280 && (width * 3 - height * 4).abs <= 8
+      dark_margins = [[12, 12], [500, 12], [12, 370], [500, 370], [256, 26]].all? do |point|
+        color = bitmap.get_pixel(width * point[0] / 512, height * point[1] / 384)
+        color.red < 28 && color.green < 28 && color.blue < 28 && color.alpha > 200
+      end
+      return nil unless dark_margins
+      centers = []
+      first = nil
+      0.step(380, 3) do |y|
+        hits = 0
+        32.step(480, 3) do |x|
+          color = bitmap.get_pixel(width * x / 512, height * y / 384)
+          hits += 1 if color.red > 145 && color.green > 145 && color.blue > 145 && color.alpha > 180
+        end
+        if hits >= 3
+          first = y if first.nil?
+        elsif first
+          centers << (first + y - 3) / 2 if y - first >= 6
+          first = nil
+        end
+      end
+      SOLAR_SPLASHES.each do |signature, lines|
+        if centers.size == signature.size && centers.zip(signature).all? { |pair| (pair[0] - pair[1]).abs <= 9 }
+          return lines
+        end
+      end
+      nil
+    end
+
+    def title_prompt_rect(bitmap)
+      width, height = bitmap.width, bitmap.height
+      return [0, 0, width, height] if width >= 48 && height >= 10 && height <= 160 && width >= height * 2
+      return nil unless SOLAR_ECLIPSE && width >= 320 && height >= 240 && width <= 1280
+      # Some title prompts are transparent canvases the size of the whole screen.
+      # Find only their lower, compact band of visible pixels.
+      min_x = width
+      max_x = 0
+      min_y = height
+      max_y = 0
+      return nil if bitmap.get_pixel(width / 2, height / 3).alpha >= 48
+      step = [width / 160, 2].max
+      0.step(height - 1, step) do |y|
+        0.step(width - 1, step) do |x|
+          next if bitmap.get_pixel(x, y).alpha < 48
+          min_x = x if x < min_x
+          max_x = x if x > max_x
+          min_y = y if y < min_y
+          max_y = y if y > max_y
+        end
+      end
+      return nil unless min_y >= height * 2 / 3 && max_y - min_y <= height / 6 &&
+                        max_x - min_x >= width / 10 && max_x - min_x <= width * 3 / 4 &&
+                        (min_x + max_x - width).abs <= width / 5
+      left = [min_x - 8, 0].max
+      top = [min_y - 4, 0].max
+      right = [max_x + 9, width].min
+      bottom = [max_y + 5, height].min
+      [left, top, right - left, bottom - top]
+    end
+
+    def replace_title_text(bitmap, rect, lines, opaque)
+      x, y, width, height = rect
       replacement = Bitmap.new(width, height)
       begin
+        replacement.fill_rect(0, 0, width, height, Color.new(0, 0, 0)) if opaque
+        row_height = opaque ? height * 7 / 100 : height
         font = replacement.font
-        font.size = [[height - 2, 32].min, 10].max
-        font.bold = true
+        font.size = [[row_height - 2, 32].min, 9].max
+        font.bold = !opaque
         font.color = Color.new(255, 255, 255)
-        font.outline = true if font.respond_to?(:outline=)
-        verbatim { replacement.draw_text(0, 0, width, height, label, 1) }
-        bitmap.clear
-        bitmap.blt(0, 0, replacement, Rect.new(0, 0, width, height))
+        font.outline = !opaque if font.respond_to?(:outline=)
+        top = (height - row_height * lines.size) / 2
+        verbatim do
+          lines.each_with_index do |line, index|
+            replacement.draw_text(4, top + index * row_height, width - 8, row_height, line, 1)
+          end
+        end
+        if opaque
+          bitmap.clear
+        else
+          bitmap.clear_rect(x, y, width, height)
+        end
+        bitmap.blt(x, y, replacement, Rect.new(0, 0, width, height))
       ensure
         replacement.dispose
       end
+    end
+
+    def localize_title_prompt(bitmap, path)
+      return unless SPANISH && path.is_a?(String)
+      normalized = path.tr('\\', '/').sub(/\A\.\/+/, '')
+      title_folder = normalized =~ /\AGraphics\/(?:Titles|Title|UI\/(?:Titles|Title|Title Screen))\//i
+      filename = normalized.split('/').last.to_s.sub(/\.(?:png|bmp|gif|webp)\z/i, '').downcase.gsub(/[ _-]/, '')
+      solar_intro = SOLAR_ECLIPSE && normalized =~ /\AGraphics\/(?:Pictures|UI|Titles?)\//i &&
+                    (title_folder || normalized =~ /\/(?:intro(?:duction)?|splashes|splash|title(?:[ _-]?screen)?s?)\//i ||
+                     filename =~ /\A(?:splash|intro|credit|disclaimer|notice|warning|press)/)
+      return unless title_folder || solar_intro
+
+      if filename =~ /\A(?:start|pressstart|pressenter|presstostart|startprompt|titlepressstart|titlepressenter|titlestart|enter|press)\z/
+        rect = title_prompt_rect(bitmap)
+        if rect
+          label = filename.include?('enter') ? 'Pulsa Enter' : 'Pulsa para empezar'
+          replace_title_text(bitmap, rect, [label], false)
+        end
+      elsif solar_intro
+        lines = solar_splash(bitmap)
+        if lines
+          replace_title_text(bitmap, [0, 0, bitmap.width, bitmap.height], lines, true)
+        elsif bitmap.height >= 240 && (title_folder || filename =~ /(?:title|start|enter|prompt)/)
+          rect = title_prompt_rect(bitmap)
+          replace_title_text(bitmap, rect, ['Pulsa Enter'], false) if rect
+        end
+      end
     rescue StandardError
-      # Keep the game's graphic if this engine cannot generate the replacement.
+      # Leave unrecognized artwork on the normal rendering path.
     end
 
     # ------------------------------------------------------------ hooks
@@ -315,9 +417,21 @@ module EssentiaTranslate
         text = args[slot]
         if text.is_a?(String) && text =~ /[A-Za-z]{2}/
           args[slot] = rendering_text(text)
+          widths = @paint_stack.empty? ? nil : @paint_stack.last[3]
+          if slot == 4 && widths && text != args[slot] && widths[text] && widths[text] > 0 && args[2].is_a?(Integer)
+            args[2] = args[2] > 0 ? [args[2], widths[text]].min : widths[text]
+          end
         end
       elsif kind == :measure
-        args[0] = rendering_text(args[0]) unless @paint_stack.empty?
+        unless @paint_stack.empty? || @verbatim > 0
+          widths = @paint_stack.last[3]
+          if widths && args[0].is_a?(String)
+            result = original.bind(receiver).call(*args, &block)
+            widths[args[0]] = result.width if result.respond_to?(:width)
+            return result
+          end
+          args[0] = rendering_text(args[0])
+        end
       elsif kind == :text_positions
         if args[argument].is_a?(Array) && @verbatim == 0
           args[argument] = args[argument].map do |row|
@@ -332,7 +446,15 @@ module EssentiaTranslate
         end
         return verbatim { original.bind(receiver).call(*args, &block) }
       elsif kind == :draw
-        args[argument] = rendering_text(args[argument])
+        source = args[argument]
+        args[argument] = rendering_text(source)
+        widths = @paint_stack.empty? ? nil : @paint_stack.last[3]
+        # Option rows often advance x using a separate measurement of each value.
+        # Keep that slot fixed and let RGSS fit the translated glyphs inside it.
+        if widths && argument == 5 && args[3].is_a?(Integer) &&
+           source != args[argument] && widths[source] && widths[source] > 0
+          args[3] = args[3] > 0 ? [args[3], widths[source]].min : widths[source]
+        end
         return verbatim { original.bind(receiver).call(*args, &block) }
       elsif kind == :window
         # pbMessageDisplay already intercepts complete text before it expands controls.
@@ -414,6 +536,7 @@ module EssentiaTranslate
         wrap_method(Window_DrawableCommand, :getAutoDims, 0, 0, :command_size)
       end
       wrap_method(PokemonLoadPanel, :refresh, 0, 0, :paint) if defined?(PokemonLoadPanel)
+      wrap_method(Window_PokemonOption, :refresh, 0, 0, :paint) if defined?(Window_PokemonOption)
     end
 
     def wrap_messages

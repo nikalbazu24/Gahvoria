@@ -2,7 +2,10 @@
 require 'tmpdir'
 
 class Color
-  def initialize(*args); end
+  attr_reader :red, :green, :blue, :alpha
+  def initialize(red, green, blue, alpha = 255)
+    @red, @green, @blue, @alpha = red, green, blue, alpha
+  end
 end
 
 class Rect
@@ -13,14 +16,32 @@ class Bitmap
   Font = Struct.new(:size, :bold, :color)
   attr_reader :width, :height, :font, :drawn
   def initialize(*args)
-    @width, @height = args.size == 1 ? [512, 44] : args
+    @source = args[0] if args.size == 1
+    @width, @height = @source ? (@source.end_with?('start.png') ? [512, 44] : [512, 384]) : args
     @font = Font.new
     @drawn = []
   end
   def draw_text(*args)
     @drawn << (args.size <= 3 ? args[1] : args[4])
   end
-  def text_size(value); value.size; end
+  def text_size(value); Struct.new(:width).new(value.size); end
+  def fill_rect(*args); end
+  def clear_rect(*args); @drawn.clear; end
+  def get_pixel(x, y)
+    centers = case @source
+              when 'Graphics/Titles/splash1.png'; [180, 205]
+              when 'Graphics/Titles/splash2.png'; [66, 120, 147, 175, 229, 283, 311]
+              else; []
+              end
+    if @source == 'Graphics/Titles/press_enter.png'
+      return (x >= 180 && x <= 330 && y >= 344 && y <= 364) ? Color.new(255, 255, 255) : Color.new(0, 0, 0, 0)
+    end
+    if x >= 48 && x < 464 && centers.any? { |center| (center - y).abs <= 8 }
+      Color.new(255, 255, 255)
+    else
+      Color.new(0, 0, 0)
+    end
+  end
   def clear; @drawn.clear; end
   def blt(_x, _y, source, _rect); @drawn.concat(source.drawn); end
   def dispose; end
@@ -52,6 +73,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   ENV['ESSENTIA_TR_FILE'] = answers
   ENV['ESSENTIA_TR_REQ'] = requests
   ENV['ESSENTIA_TR_TARGET'] = 'es'
+  ENV['ESSENTIA_TR_GAME'] = 'Pokemon Solar Eclipse'
   load script
 
   def pbMessage(text)
@@ -140,7 +162,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   assert_equal(before + 1, Dir[File.join(requests, '*.req')].size)
   def pbDrawTextPositions(bitmap, rows)
     rows.each do |row|
-      bitmap.draw_text(0, 0, bitmap.text_size(row[0]), 20, row[0])
+      bitmap.draw_text(0, 0, bitmap.text_size(row[0]).width, 20, row[0])
     end
   end
 
@@ -153,6 +175,29 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   assert_equal(['Pulsa para empezar'], Bitmap.new('Graphics/Titles/start.png').drawn)
   assert_equal([], Bitmap.new('Graphics/Titles/title.png').drawn)
   assert_equal([], Bitmap.new('Graphics/Pictures/start.png').drawn)
+  assert_equal(['Un juego de', 'Peti & Gelato'], Bitmap.new('Graphics/Titles/splash1.png').drawn)
+  assert_equal(true, Bitmap.new('Graphics/Titles/splash2.png').drawn.include?('Si pagaste por este juego, te estafaron.'))
+  assert_equal(['Pulsa Enter'], Bitmap.new('Graphics/Titles/press_enter.png').drawn)
+  menu.draw_text(0, 0, 100, 20, 'PRESS ENTER')
+  assert_equal('Pulsa para empezar', menu.drawn.last)
+
+  class Window_PokemonOption
+    def refresh
+      bitmap = Bitmap.new(100, 40)
+      offset = bitmap.text_size('On').width
+      pbDrawShadowText(bitmap, 0, 0, 100, 20, 'On')
+      pbDrawShadowText(bitmap, offset, 0, 100, 20, 'Off')
+    end
+  end
+  # Option drawing helpers are top-level in Essentials.
+  def pbDrawShadowText(bitmap, x, y, width, height, value)
+    $option_rectangles << [x, width, value]
+    bitmap.draw_text(x, y, width, height, value)
+  end
+  $option_rectangles = []
+  EssentiaTranslate.install
+  Window_PokemonOption.new.refresh
+  assert_equal([[0, 2, 'Sí'], [2, 100, 'No']], $option_rectangles)
 
   class Window_DrawableCommand
     attr_reader :bitmap, :selected
