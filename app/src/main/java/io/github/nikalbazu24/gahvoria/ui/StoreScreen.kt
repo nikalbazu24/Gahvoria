@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,11 +63,12 @@ fun StoreScreen(s: AppState) {
                     if (i > 0) Divider()
                     Row(Modifier.fillMaxWidth().press(RoundedCornerShape(0.dp)) { sel = g; view = 1 }.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Cartridge(46.dp)
+                        StoreArtBox(s, g, 54.dp)
                         Spacer(Modifier.size(14.dp))
                         Column(Modifier.weight(1f)) {
                             T(g.title, 15.sp, FontWeight.ExtraBold)
-                            T(g.creator, 12.sp, FontWeight.Medium, c.muted)
+                            T("por " + g.creator.ifEmpty { "Autor por confirmar" }, 12.sp, FontWeight.Medium, c.muted)
+                            if (g.description.isNotEmpty()) T(g.description, 11.sp, FontWeight.Medium, c.faint, maxLines = 2)
                             Spacer(Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Tag(langName(g), if (g.lang == "en") c.accent2 else c.muted)
@@ -89,6 +92,16 @@ fun StoreScreen(s: AppState) {
     }
 }
 
+/** The game's picture from its creator's page, or the drawn cartridge while there is none. */
+@Composable
+private fun StoreArtBox(s: AppState, g: StoreGame, size: androidx.compose.ui.unit.Dp) {
+    val art = s.storeArt.peek(g).also { s.storeArtVersion }
+    if (art != null) androidx.compose.foundation.Image(
+        art.asImageBitmap(), null, Modifier.size(size).clip(RoundedCornerShape(12.dp)),
+        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+    ) else Cartridge(size)
+}
+
 private fun langName(g: StoreGame) = when (g.lang) { "en" -> "Inglés"; "es" -> "Español"; else -> "Idioma por confirmar" }
 
 @Composable
@@ -102,11 +115,18 @@ private fun GameSheet(s: AppState, g: StoreGame, onBack: () -> Unit, onInstall: 
     val c = LocalColors.current
     Page(g.title, onBack = onBack) {
         Glass(Modifier.fillMaxWidth()) {
+            val art = s.storeArt.peek(g).also { s.storeArtVersion }
+            if (art != null) {
+                androidx.compose.foundation.Image(
+                    art.asImageBitmap(), null, Modifier.fillMaxWidth().height(170.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+                s.storeArt.credit(g)?.let { T(it, 10.sp, FontWeight.Medium, c.faint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
+            }
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Cartridge(64.dp)
-                Spacer(Modifier.size(16.dp))
+                if (art == null) { Cartridge(64.dp); Spacer(Modifier.size(16.dp)) }
                 Column {
-                    T(g.creator, 14.sp, FontWeight.Bold)
+                    T("por " + g.creator.ifEmpty { "Autor por confirmar" }, 14.sp, FontWeight.Bold)
                     T(g.description, 12.sp, FontWeight.Medium, c.muted)
                 }
             }

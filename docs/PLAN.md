@@ -57,3 +57,11 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - No existe todavía un canal jugador → creador: los informes y pedidos llegan al buzón privado de Nicolás, no al creador del juego.
 - Canal de actualizaciones: `dev` (por defecto, cada compilación) o `stable` (flujo manual `promote.yml`, copia los archivos de `dev` a Releases → stable). Si aún no hay estable, la app lo dice y no falla. Cambiar el valor por defecto a `stable` queda para cuando haya una versión estable probada.
 - Pendiente: probar el panel en el teléfono y la Thor; ejecutar «Promover a estable» la primera vez.
+
+## Boceto v16 (0.5, en pruebas)
+- Paletas: once (`core/Palette.kt`), cada una con esquema oscuro y claro; una prueba comprueba el contraste.
+- Icono: el manifiesto declara un `activity-alias` por paleta (`.IconGrafito`, `.IconOceano`…, solo el elegido está activo) y `data/AppIcon.kt` los alterna con `DONT_KILL_APP`. Interruptor «Cambiar también el icono» en Ajustes → Apariencia. Algunos launchers tardan en notarlo y un acceso fijado a mano puede haber que volver a ponerlo. Una prueba exige que cada paleta tenga su alias e icono. Sin verificar en el teléfono.
+- Tienda: la imagen sale del `og:image` de la página oficial del juego (`core/StoreImages`, `data/StoreArt`), se guarda pequeña en caché y se busca de nuevo cada semana. No se guardan enlaces de imágenes propios; campo opcional `image` en `store.json` para fijar una. Páginas de MEGA, MediaFire, Pastebin y similares no se consultan (su imagen es el logo del sitio). Sin Internet o sin imagen queda el cartucho dibujado. Se respeta «Buscar imágenes en Internet».
+- Juegos nuevos en la lista: Reborn, Rejuvenation y Clockwork, con enlace al foro de Reborn Evolved. Ese sitio no deja que un programa lo lea: no pude comprobar creador, versión ni formato de descarga. Están «Sin probar» y con esa nota.
+- Teclado: botón ⌨ (arriba a la derecha, solo con controles táctiles) que abre el teclado de SDL. Envía teclas y texto. Sin verificar en el juego.
+- 2D / 2.5D / 3D: `ESSENTIA_TILT` (grados, 0–60). `GraphicsPrivate::essentiaTilt` dibuja el cuadro final en 28 franjas con perspectiva (solo con Android y sin modo ambiente). Inclina todo el cuadro, también menús y batallas, y los toques sobre la imagen no siguen la inclinación. Compilado solo en CI; sin medir en la Thor.

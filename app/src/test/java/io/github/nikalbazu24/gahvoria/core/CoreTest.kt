@@ -538,5 +538,48 @@ class CoreTest {
         assertTrue(ZipInstaller.whyNot(listOf("docs/a.txt", "docs/b.txt")).contains("Contiene: docs"))
         assertEquals("El archivo está vacío.", ZipInstaller.whyNot(emptyList()))
     }
-}
 
+    @Test fun theProfileIsReadOnceWhileTheScriptsStayTheSame() {
+        val g = folder("Data/Scripts.rxdata")
+        val a = GameProfile.read(g)
+        assertTrue(GameProfile.read(g) === a)
+        File(g, "Data/Scripts.rxdata").writeText("changed")
+        assertTrue(GameProfile.read(g) !== a)
+    }
+
+    @Test fun everyPaletteHasItsLauncherIcon() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        for (p in Palettes.all) {
+            val cls = ".Icon" + p.id.replaceFirstChar { it.uppercase() }
+            assertTrue("falta el acceso $cls", manifest.contains("android:name=\"$cls\""))
+            assertTrue("falta ic_fg_${p.id}", File("src/main/res/drawable/ic_fg_${p.id}.xml").exists())
+            assertTrue("falta ic_launcher_${p.id}", File("src/main/res/mipmap-anydpi-v26/ic_launcher_${p.id}.xml").exists())
+        }
+    }
+
+    @Test fun storeImageFromPageMetadata() {
+        val html = """<head><meta property="og:title" content="x"><meta content="/img/portada.png?a=1&amp;b=2" property="og:image"></head>"""
+        assertEquals("https://sitio.com/img/portada.png?a=1&b=2", StoreImages.ogImage(html, "https://sitio.com/juego/"))
+        assertEquals("https://cdn.com/t.jpg", StoreImages.ogImage("""<meta name='twitter:image' content='https://cdn.com/t.jpg'>""", "https://sitio.com/"))
+        assertEquals(null, StoreImages.ogImage("""<meta property="og:image" content="http://sitio.com/a.jpg">""", "https://sitio.com/"))
+        assertEquals(null, StoreImages.ogImage("<html></html>", "https://sitio.com/"))
+        assertTrue(!StoreImages.hasUsefulImage("https://mega.nz/folder/abc"))
+        assertTrue(!StoreImages.hasUsefulImage("https://www.mediafire.com/file/x"))
+        assertTrue(StoreImages.hasUsefulImage("https://p-insurgence.com/"))
+    }
+
+    @Test fun bundledStoreParsesAndHasCreators() {
+        val games = StoreCatalog.parse(File("src/main/assets/store.json").readText())
+        assertTrue(games.size >= 12)
+        assertTrue(games.all { it.creator.isNotBlank() && it.description.isNotBlank() })
+        assertEquals(games.size, games.map { it.id }.toSet().size)
+    }
+
+    @Test fun depthModesAndAnglesAgree() {
+        assertEquals(0, Depth.modeOf(0))
+        assertEquals(1, Depth.modeOf(Depth.DEFAULT_25D))
+        assertEquals(2, Depth.modeOf(Depth.DEFAULT_3D))
+        for (m in 0..2) assertEquals(m, Depth.modeOf(Depth.angleOf(m)))
+        assertEquals(60, Depth.clamp(200)); assertEquals(0, Depth.clamp(-5))
+    }
+}

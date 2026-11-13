@@ -42,7 +42,11 @@ import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.core.LoadTimes
+import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import kotlin.math.roundToInt
 import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
@@ -147,6 +151,24 @@ fun GameScreen(s: AppState, g: Game) {
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Pantalla retro", "Líneas finas como de tele antigua sobre la imagen.",
                         role = Role.Switch, onClick = { s.setRetro(g, !retro); rev++ }) { Toggle(retro) }
+                }
+                var tilt by remember(g.path, rev) { mutableIntStateOf(s.tilt(g)) }
+                Label("Profundidad (experimental)")
+                Glass(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Segmented(Depth.names, Depth.modeOf(tilt)) { tilt = Depth.angleOf(it); s.setTilt(g, tilt) }
+                        T("Inclina la imagen hacia atrás con perspectiva, como un diorama. Es solo un efecto sobre la imagen final: el juego no cambia. Por ahora inclina todo el cuadro, también menús y batallas, y los toques sobre la imagen no siguen la inclinación. Sin medir en la Thor.",
+                            12.sp, FontWeight.Medium, c.muted)
+                        if (tilt > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                            T("Inclinación", 12.sp, FontWeight.Bold, c.muted)
+                            Slider(
+                                tilt.toFloat(), { tilt = it.roundToInt() }, onValueChangeFinished = { s.setTilt(g, tilt) },
+                                valueRange = 5f..Depth.MAX.toFloat(), modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                                colors = SliderDefaults.colors(thumbColor = c.accent, activeTrackColor = c.accent, inactiveTrackColor = c.line),
+                            )
+                            T("$tilt°", 12.sp, FontWeight.Bold)
+                        }
+                    }
                 }
                 T("Los cambios se aplican la próxima vez que abras el juego.", 12.sp, FontWeight.Medium, c.muted)
             }
@@ -467,6 +489,12 @@ private fun SecContent(s: AppState, sec: Sec) {
             }
             Sec.LOOK -> {
                 Segmented(listOf("Sistema", "Oscuro", "Claro"), ThemeMode.entries.indexOf(s.mode)) { s.chooseMode(ThemeMode.entries[it]) }
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Cambiar también el icono", "El icono de Gahvoria en tu inicio toma los colores elegidos.",
+                        role = Role.Switch, onClick = { s.chooseIconFollows(!s.iconFollows) }) {
+                        Toggle(s.iconFollows)
+                    }
+                }
                 Glass(Modifier.fillMaxWidth()) {
                 Palettes.all.forEachIndexed { i, p ->
                     if (i > 0) Divider()

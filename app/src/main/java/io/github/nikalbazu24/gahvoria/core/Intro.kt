@@ -47,6 +47,12 @@ object Intro {
             Slide("Versión nueva de un juego", "Si la tienda lista una versión más nueva del juego que tienes, las opciones del juego te lo avisan."),
             Slide("Canal de actualizaciones", "En Actualizar puedes elegir recibir todas las versiones o solo las estables."),
         ),
+        5 to listOf(
+            Slide("Más colores", "Once paletas en Ajustes → Apariencia, y el icono de Gahvoria en tu inicio cambia con ellas (se puede apagar)."),
+            Slide("Tienda con imágenes", "Cada juego muestra su imagen, su creador y su descripción, tomados de la página oficial. Hay más juegos en la lista."),
+            Slide("Teclado en el juego", "Un botón ⌨ arriba a la derecha abre el teclado del teléfono para escribir nombres y códigos."),
+            Slide("2D, 2.5D y 3D (experimental)", "En las opciones de cada juego puedes inclinar la imagen con perspectiva. Es un efecto sin medir en la Thor."),
+        ),
     )
 
     val LATEST: Int get() = UPDATES.maxOfOrNull { it.first } ?: 0

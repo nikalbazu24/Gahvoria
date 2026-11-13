@@ -82,6 +82,17 @@ public final class TranslatorService
         mKey = key == null ? "" : key.trim();
     }
 
+    /** ML Kit runs through Google Play services: without them (many handhelds) it can never translate. */
+    public static boolean mlkitAvailable(Context c)
+    {
+        try {
+            c.getPackageManager().getPackageInfo("com.google.android.gms", 0);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public File translationsFile() { return mFile; }
     public File requestDir() { return mReqDir; }
 
@@ -94,6 +105,12 @@ public final class TranslatorService
             f.delete();
         loadKnown();
         mRunning = true;
+        if (PROVIDER_MLKIT.equals(mProvider) && !mlkitAvailable(mContext)) {
+            // Say it plainly instead of waiting for texts that will never be translated.
+            mRunning = false;
+            status("Este equipo no tiene servicios de Google Play: el traductor del teléfono no puede funcionar. Usa DeepL en Ajustes → Traducción.");
+            return;
+        }
         Thread t = new Thread(this::loop, "gahvoria-translate");
         t.setDaemon(true);
         t.start();
@@ -130,7 +147,7 @@ public final class TranslatorService
                 return;
             } catch (Throwable e) {
                 Log.w(TAG, "Translation round failed", e);
-                status("Error: " + shorten(e));
+                status(friendly(e));
                 try { Thread.sleep(2000); } catch (InterruptedException ie) { return; }
             }
         }
@@ -332,6 +349,18 @@ public final class TranslatorService
             } else sb.append(c);
         }
         return sb.toString();
+    }
+
+    /** A failure in words the player can act on. */
+    private static String friendly(Throwable e)
+    {
+        String all = e.getClass().getSimpleName() + " " + e.getMessage() + " " + (e.getCause() == null ? "" : e.getCause().getMessage());
+        String low = all.toLowerCase(Locale.ROOT);
+        if (low.contains("mlkitexception") || low.contains("google play") || low.contains("gms"))
+            return "El traductor del teléfono falló (necesita servicios de Google Play y conexión la primera vez). Si no funciona, usa DeepL.";
+        if (low.contains("timeout") || low.contains("unknownhost") || low.contains("unable to resolve"))
+            return "Sin conexión: no pude traducir. Las frases ya traducidas siguen funcionando.";
+        return "Error: " + shorten(e);
     }
 
     private static String shorten(Throwable e)

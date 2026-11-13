@@ -849,6 +849,56 @@ struct GraphicsPrivate {
      * Works with every game, because the game itself is not changed. */
     bool essentiaAmbientOn = false;
     bool essentiaAmbientReady = false;
+    /* Gahvoria "2.5D / 3D" effect (experimental): the final picture is drawn as a slab leaning
+     * back, with perspective. It only touches the last step, so the game itself is not changed.
+     * ESSENTIA_TILT is the angle in degrees (0 = off, flat as always). */
+    float essentiaTiltDeg = 0.f;
+    Quad essentiaTiltQuad;
+
+    void essentiaTilt(TEXFBO &src, const Vec2i &srcSize) {
+        const int N = 28;                       /* horizontal strips: each one is nearly flat, so the texture does not warp */
+        const float th = essentiaTiltDeg * 3.14159265f / 180.f;
+        const float W = (float)scSize.x, H = (float)scSize.y;
+        const float cx = scOffset.x + W / 2.f, cy = scOffset.y + H / 2.f;
+        const float D = (W > H ? W : H) * 1.5f; /* camera distance */
+        const float sinT = sinf(th), cosT = cosf(th);
+        /* The near (bottom) edge is the widest: scale everything so that it fits the old width */
+        const float fit = 1.f / (D / (D - 0.5f * H * sinT));
+
+        glState.viewport.pushSet(IntRect(0, 0, winSize.x, winSize.y));
+        SimpleShader &shader = shState->shaders().simple;
+        shader.bind();
+        shader.applyViewportProj();
+        shader.setTranslation(Vec2i());
+        shader.setTexSize(Vec2i(src.width, src.height));
+        TEX::bind(src.tex);
+        TEX::setSmooth(true);
+        glState.blend.pushSet(false);
+
+        for (int i = 0; i < N; ++i) {
+            const float v0 = (float)i / N, v1 = (float)(i + 1) / N;
+            float y[2], hw[2];
+            const float vs[2] = { v0, v1 };
+            for (int e = 0; e < 2; ++e) {
+                const float vp = 0.5f - vs[e];          /* +0.5 at the top of the picture, -0.5 at the bottom */
+                const float Y = vp * H * cosT, Z = vp * H * sinT;
+                const float k = D / (D + Z) * fit;
+                y[e] = cy + Y * k;                      /* window y grows upwards */
+                hw[e] = 0.5f * W * k;
+            }
+            Vertex *v = essentiaTiltQuad.vert;
+            v[0].pos = Vec2(cx - hw[0], y[0]); v[0].texPos = Vec2(0.f,           v0 * srcSize.y);
+            v[1].pos = Vec2(cx + hw[0], y[0]); v[1].texPos = Vec2((float)srcSize.x, v0 * srcSize.y);
+            v[2].pos = Vec2(cx + hw[1], y[1]); v[2].texPos = Vec2((float)srcSize.x, v1 * srcSize.y);
+            v[3].pos = Vec2(cx - hw[1], y[1]); v[3].texPos = Vec2(0.f,           v1 * srcSize.y);
+            essentiaTiltQuad.vboDirty = true;
+            essentiaTiltQuad.draw();
+        }
+
+        glState.blend.pop();
+        TEX::setSmooth(false);
+        glState.viewport.pop();
+    }
     TEXFBO essentiaBlur1, essentiaBlur2;
     Quad essentiaDim;
 
@@ -941,6 +991,11 @@ struct GraphicsPrivate {
 #ifdef MKXPZ_BUILD_ANDROID
         const char *mode = getenv("ESSENTIA_SCREEN_MODE");
         essentiaAmbientOn = mode && !strcmp(mode, "ambient");
+        const char *tilt = getenv("ESSENTIA_TILT");
+        if (tilt) {
+            float t = (float)atof(tilt);
+            essentiaTiltDeg = t < 0.f ? 0.f : (t > 60.f ? 60.f : t);
+        }
 #endif
     }
     
@@ -1168,9 +1223,17 @@ struct GraphicsPrivate {
             GLMeta::blitSource(screen.getPP().frontBuffer());
         }
 #endif
-        metaBlitBufferFlippedScaled(sourceSize);
-        
-        GLMeta::blitEnd();
+#ifdef MKXPZ_BUILD_ANDROID
+        if (essentiaTiltDeg > 0.5f && !essentiaAmbientOn && !integerScaleActive) {
+            GLMeta::blitEnd();
+            essentiaTilt(screen.getPP().frontBuffer(), scRes);
+        } else
+#endif
+        {
+            metaBlitBufferFlippedScaled(sourceSize);
+            
+            GLMeta::blitEnd();
+        }
         
         swapGLBuffer();
         
@@ -1386,10 +1449,17 @@ void Graphics::transition(int duration, const char *filename, int vague) {
         if (p->essentiaAmbientOn && !p->integerScaleActive)
             p->essentiaAmbient(transBuffer, p->scRes);
 #endif
-        GLMeta::blitBeginScreen(Vec2i(p->winSize));
-        GLMeta::blitSource(transBuffer);
-        p->metaBlitBufferFlippedScaled();
-        GLMeta::blitEnd();
+#ifdef MKXPZ_BUILD_ANDROID
+        if (p->essentiaTiltDeg > 0.5f && !p->essentiaAmbientOn && !p->integerScaleActive) {
+            p->essentiaTilt(transBuffer, p->scRes);
+        } else
+#endif
+        {
+            GLMeta::blitBeginScreen(Vec2i(p->winSize));
+            GLMeta::blitSource(transBuffer);
+            p->metaBlitBufferFlippedScaled();
+            GLMeta::blitEnd();
+        }
         
         p->swapGLBuffer();
     }

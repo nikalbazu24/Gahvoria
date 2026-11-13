@@ -20,6 +20,8 @@ data class StoreGame(
     val aliases: List<String>,
     /** The version the creator published, or "" when the list does not say. */
     val version: String = "",
+    /** A direct https link to a picture the creator published. When empty, the page's own share image is used. */
+    val image: String = "",
 ) {
     val tested get() = status == "tested"
     val installableHere get() = format == "zip"
@@ -51,6 +53,7 @@ object StoreCatalog {
                 note = m["note"] as? String ?: "",
                 aliases = (m["aliases"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
                 version = (m["version"] as? String)?.trim().orEmpty(),
+                image = (m["image"] as? String)?.trim()?.takeIf { it.startsWith("https://") }.orEmpty(),
             )
         }
     }

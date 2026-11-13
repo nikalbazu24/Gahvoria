@@ -42,9 +42,20 @@ data class GameProfile(
         private val ESS_MODULE = Regex("""module\s+Essentials\b[\s\S]{0,400}?\bVERSION\s*=\s*"([^"]+)"""")
         private val GAME_VERSION = Regex("""(?m)^\s*GAME_VERSION\s*=\s*["']([^"'\n]{1,24})["']""")
 
+        private data class Stamp(val length: Long, val modified: Long)
+        private val cache = java.util.concurrent.ConcurrentHashMap<String, Pair<Stamp, GameProfile>>()
+
+        /**
+         * Reading a game's scripts means parsing a file of several MB, and the app asks for the profile again and again
+         * (opening a game, its options, the creator panel). The result is kept while the scripts file stays the same.
+         */
         fun read(dir: File): GameProfile {
             val scripts = scriptsFile(dir) ?: return GameProfile()
-            return runCatching { parse(readSections(scripts.readBytes(), 400)) }.getOrDefault(GameProfile())
+            val stamp = Stamp(scripts.length(), scripts.lastModified())
+            cache[scripts.path]?.let { (s, p) -> if (s == stamp) return p }
+            val profile = runCatching { parse(readSections(scripts.readBytes(), 400)) }.getOrDefault(GameProfile())
+            cache[scripts.path] = stamp to profile
+            return profile
         }
 
         /**

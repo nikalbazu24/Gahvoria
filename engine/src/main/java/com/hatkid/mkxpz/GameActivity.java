@@ -81,6 +81,8 @@ public class GameActivity extends SDLActivity
     public static final String EXTRA_TR_KEY = "gahvoria.TR_KEY";
     /** Picture style ("crt" = old TV lines) and the wide-screen mode value. */
     public static final String EXTRA_FILTER = "gahvoria.FILTER";
+    /** Lean-back angle in degrees (0 to 60) of the experimental 2.5D / 3D effect; 0 = flat. */
+    public static final String EXTRA_TILT = "gahvoria.TILT";
 
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
@@ -103,6 +105,7 @@ public class GameActivity extends SDLActivity
     private boolean mTouch = true;
     private final Gamepad mGamepad = new Gamepad();
     private boolean mPadHidden;
+    private TextView mKeyboardButton;
     private FutureTask<File> mTrust;
     private Dialog mExit;
     private Look mLook;
@@ -174,6 +177,8 @@ public class GameActivity extends SDLActivity
         sFps.setVisibility(View.GONE);
         mLayout.addView(sFps, new RelativeLayout.LayoutParams(-2, -2));
 
+        if (mTouch) addKeyboardButton();
+
         sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted, new LoadingScreen.Host()
         {
             @Override
@@ -217,6 +222,12 @@ public class GameActivity extends SDLActivity
         setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
         setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
         mTranslator.start();
+        String p = i.getStringExtra(EXTRA_TR_PROVIDER);
+        if ((p == null || "mlkit".equals(p)) && !com.hatkid.mkxpz.translate.TranslatorService.mlkitAvailable(this)) {
+            // Handhelds without Google Play services: tell the player once the game is on screen.
+            new Handler(Looper.getMainLooper()).postDelayed(() ->
+                notice("El traductor del teléfono necesita servicios de Google, que este equipo no tiene. Usa DeepL en Ajustes → Traducción.", mLook.warn), 6000);
+        }
     }
 
     /** Settings the engine and its compatibility scripts read from the environment. */
@@ -238,6 +249,7 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_ASPECT", String.format(Locale.US, "%.4f", aspect));
             String filter = i.getStringExtra(EXTRA_FILTER);
             setenv("ESSENTIA_FILTER", filter == null ? "" : filter);
+            setenv("ESSENTIA_TILT", String.valueOf(Math.max(0, Math.min(60, i.getIntExtra(EXTRA_TILT, 0)))));
             startTranslator(i);
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
             File errorFile = new File(getFilesDir(), "last_error.txt");
@@ -335,6 +347,14 @@ public class GameActivity extends SDLActivity
     /** Android's trusted roots as a PEM file, so HTTPS inside games works with OpenSSL. */
     private static File trustFile(Context c) throws Exception
     {
+        // Building the file means reading ~140 certificates; the engine waits for it to start. Android's roots
+        // only change with the system or this app, so a file newer than both is reused.
+        File cached = new File(c.getCacheDir(), "android-trust.pem");
+        try {
+            long installed = c.getPackageManager().getPackageInfo(c.getPackageName(), 0).lastUpdateTime;
+            if (cached.isFile() && cached.length() > 1000 && cached.lastModified() > installed
+                && cached.lastModified() > System.currentTimeMillis() - 7L * 24 * 3600 * 1000) return cached;
+        } catch (Exception ignored) { }
         TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         factory.init((KeyStore) null);
         StringBuilder pem = new StringBuilder();
@@ -395,6 +415,48 @@ public class GameActivity extends SDLActivity
 
     // ------------------------------------------------------------ input
 
+    /**
+     * A small keyboard button (top right) for typing in the game: names, codes, searches. It opens the phone's keyboard
+     * through SDL, which sends both the key presses (for games that read keys) and the text (for games that read text).
+     */
+    private void addKeyboardButton()
+    {
+        TextView b = new TextView(this);
+        b.setText("⌨");
+        b.setTextSize(20);
+        b.setGravity(Gravity.CENTER);
+        b.setTextColor(mLook.ink);
+        b.setBackground(mLook.box(Look.withAlpha(mLook.bg2, 0xB0), 14, mLook.line));
+        b.setAlpha(0.7f);
+        b.setFocusable(false);
+        b.setContentDescription("Teclado");
+        b.setOnClickListener(v -> toggleKeyboard());
+        RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(mLook.dp(44), mLook.dp(44));
+        lp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        lp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+        lp.topMargin = mLook.dp(12);
+        lp.rightMargin = mLook.dp(12);
+        mLayout.addView(b, lp);
+        mKeyboardButton = b;
+    }
+
+    private void toggleKeyboard()
+    {
+        try {
+            if (SDLActivity.isScreenKeyboardShown()) {
+                android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (mTextEdit != null) imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
+                SDLActivity.onNativeKeyboardFocusLost();
+            } else {
+                SDLActivity.showTextInput(0, 0, mLook.dp(1), mLook.dp(1));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Keyboard button failed", t);
+            notice("No pude abrir el teclado.", mLook.warn);
+        }
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent evt)
     {
@@ -410,6 +472,7 @@ public class GameActivity extends SDLActivity
             // A physical controller or keyboard is in use: hide the touch controls.
             mGamepad.hideView();
             mPadHidden = true;
+            if (mKeyboardButton != null) mKeyboardButton.animate().alpha(0f).setDuration(500).start();
         }
         if (mGamepad.processGamepadEvent(evt)) return true;
         return super.dispatchKeyEvent(evt);
@@ -421,6 +484,7 @@ public class GameActivity extends SDLActivity
         if (mPadHidden && mTouch) {
             mGamepad.showView();
             mPadHidden = false;
+            if (mKeyboardButton != null) mKeyboardButton.animate().alpha(0.7f).setDuration(250).start();
         }
         return super.dispatchTouchEvent(evt);
     }

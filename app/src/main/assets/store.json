@@ -139,6 +139,54 @@
    "aliases": [
     "Pokémon GS Vitro"
    ]
+  },
+  {
+   "id": "reborn",
+   "title": "Reborn",
+   "creator": "Equipo de Reborn",
+   "lang": "en",
+   "page": "https://www.rebornevo.com/",
+   "host": "Reborn Evolved",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game muy conocido, con su propio foro oficial en Reborn Evolved, donde se publican las descargas y las actualizaciones.",
+   "note": "No pude abrir esta página para revisarla (el sitio no deja que lo lea un programa); el enlace es el de su foro. No sé qué formato de descarga ofrece hoy. Sin probar.",
+   "aliases": [
+    "Pokémon Reborn",
+    "Pokemon Reborn"
+   ]
+  },
+  {
+   "id": "rejuvenation",
+   "title": "Rejuvenation",
+   "creator": "Equipo de Rejuvenation",
+   "lang": "en",
+   "page": "https://www.rebornevo.com/forums/topic/53076-pokemon-rejuvenation-download/",
+   "host": "Reborn Evolved",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game con hilo de descarga propio en el foro de Reborn Evolved.",
+   "note": "No pude abrir esta página para revisarla; el enlace salió de una búsqueda. No sé qué formato de descarga ofrece hoy. Sin probar.",
+   "aliases": [
+    "Pokémon Rejuvenation",
+    "Pokemon Rejuvenation"
+   ]
+  },
+  {
+   "id": "clockwork",
+   "title": "Clockwork",
+   "creator": "Ver la ficha",
+   "lang": "en",
+   "page": "https://www.rebornevo.com/forums/topic/45963-pokemon-clockwork-150/",
+   "host": "Reborn Evolved",
+   "format": "other",
+   "status": "untested",
+   "description": "Fan game con hilo propio en el foro de Reborn Evolved.",
+   "note": "No pude abrir esta página para revisarla; el enlace salió de una búsqueda y no sé quién es el autor ni la versión actual. Sin probar.",
+   "aliases": [
+    "Pokémon Clockwork",
+    "Pokemon Clockwork"
+   ]
   }
  ]
 }

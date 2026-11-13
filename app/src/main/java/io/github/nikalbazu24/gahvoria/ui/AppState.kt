@@ -73,6 +73,8 @@ class AppState(private val activity: Activity) {
 
     var palette by mutableStateOf(settings.palette)
         private set
+    var iconFollows by mutableStateOf(settings.iconFollows)
+        private set
     var mode by mutableStateOf(settings.mode)
         private set
     var hasAccess by mutableStateOf(Storage.hasAccess(activity))
@@ -127,7 +129,17 @@ class AppState(private val activity: Activity) {
         notice = Notice(text, kind, action, onAction)
     }
 
-    fun choosePalette(id: String) { settings.palette = id; palette = id }
+    fun choosePalette(id: String) {
+        settings.palette = id; palette = id
+        worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, id, settings.iconFollows) }
+    }
+    fun chooseIconFollows(on: Boolean) {
+        settings.iconFollows = on; iconFollows = on
+        worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, settings.palette, on) }
+        if (on) say("El icono cambia con el color. Si un acceso que pusiste a mano en el inicio desaparece, agrégalo de nuevo.")
+    }
+    /** At start-up: make sure the icon in the launcher matches the setting (cheap when nothing changed). */
+    fun syncIcon() { worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, settings.palette, settings.iconFollows) } }
     fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
     fun chooseAutoCheck(on: Boolean) { settings.autoCheck = on; autoCheck = on }
 
@@ -276,6 +288,8 @@ class AppState(private val activity: Activity) {
     fun setScreenMode(g: Game, mode: String) { settings.setScreen(g.path, mode); coverVersion++ }
     fun retro(g: Game) = settings.retro(g.path)
     fun setRetro(g: Game, on: Boolean) { settings.setRetro(g.path, on); coverVersion++ }
+    fun tilt(g: Game) = settings.tilt(g.path)
+    fun setTilt(g: Game, deg: Int) = settings.setTilt(g.path, deg)
     fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)
     fun translateStatus() = io.github.nikalbazu24.gahvoria.data.Translations.status(activity)
     fun clearTranslations() {
@@ -420,19 +434,36 @@ class AppState(private val activity: Activity) {
     // ---------------------------------------------------------------- store
 
     var storeGames by mutableStateOf<List<StoreGame>>(emptyList())
+    val storeArt = io.github.nikalbazu24.gahvoria.data.StoreArt(activity) { settings.coversOnline }
+    /** Goes up each time a store picture arrives, so the store draws again. */
+    var storeArtVersion by mutableIntStateOf(0)
+        private set
+    private var storeArtBusy = false
+
+    /** Looks for the pictures of the store games, one by one and without blocking anything. */
+    fun refreshStoreArt() {
+        if (storeArtBusy || !settings.coversOnline) return
+        storeArtBusy = true
+        val list = storeGames
+        Thread {
+            try { for (g in list) if (storeArt.refresh(g)) activity.runOnUiThread { storeArtVersion++ } }
+            finally { storeArtBusy = false }
+        }.start()
+    }
 
     /** The store's list: the one shipped with the app, replaced by a newer one from the repository when there is Internet. */
     fun loadStore() {
         val cache = File(activity.filesDir, "store-${BuildConfig.VERSION_CODE}.json")
         val bundled = runCatching { activity.assets.open("store.json").bufferedReader().use { it.readText() } }.getOrDefault("")
         storeGames = StoreCatalog.parse(runCatching { cache.readText() }.getOrDefault("")).ifEmpty { StoreCatalog.parse(bundled) }
+        refreshStoreArt()
         worker.execute {
             runCatching {
                 val c = AppUpdater.open(StoreCatalog.URL)
                 try {
                     val text = c.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
                     val list = StoreCatalog.parse(text)
-                    if (list.isNotEmpty()) { cache.writeText(text); activity.runOnUiThread { storeGames = list } }
+                    if (list.isNotEmpty()) { cache.writeText(text); activity.runOnUiThread { storeGames = list; refreshStoreArt() } }
                 } finally { c.disconnect() }
             }
         }

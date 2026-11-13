@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         state = AppState(this)
         intent?.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
+        state.syncIcon()
         setContent { GahvoriaApp(state) }
     }
 

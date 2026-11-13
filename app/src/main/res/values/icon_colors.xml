@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="icon_bg_grafito">#FF0D0E12</color>
+    <color name="icon_bg_medianoche">#FF080B17</color>
+    <color name="icon_bg_esmeralda">#FF050F0C</color>
+    <color name="icon_bg_vino">#FF12070B</color>
+    <color name="icon_bg_violeta">#FF0A0717</color>
+    <color name="icon_bg_oceano">#FF06111A</color>
+    <color name="icon_bg_atardecer">#FF170A14</color>
+    <color name="icon_bg_menta">#FF0A1411</color>
+    <color name="icon_bg_sakura">#FF160C14</color>
+    <color name="icon_bg_carbon">#FF0B0B0B</color>
+    <color name="icon_bg_hielo">#FF0A1118</color>
+</resources>

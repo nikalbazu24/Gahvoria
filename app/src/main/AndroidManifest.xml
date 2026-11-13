@@ -28,12 +28,161 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode">
+        </activity>
+
+        <!-- Launcher icon in the colors of the "Grafito y coral" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconGrafito"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_grafito"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Medianoche y ámbar" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconMedianoche"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_medianoche"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Esmeralda" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconEsmeralda"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_esmeralda"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Vino y marfil" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconVino"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_vino"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Violeta" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconVioleta"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_violeta"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Océano" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconOceano"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_oceano"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Atardecer" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconAtardecer"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_atardecer"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Menta y crema" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconMenta"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_menta"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Sakura" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconSakura"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_sakura"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Carbón y oro" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconCarbon"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_carbon"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Launcher icon in the colors of the "Hielo" palette; only the one for the chosen palette is enabled. -->
+        <activity-alias
+            android:name=".IconHielo"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_hielo"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- The door for other launchers (Díptico, Daijishō, ES-DE, Cocoon, iiSU...): no screen, starts the game and closes. -->
         <activity

@@ -1,6 +1,7 @@
 package io.github.nikalbazu24.gahvoria.data
 
 import android.content.Context
+import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 
@@ -11,6 +12,11 @@ class Settings(context: Context) {
     var palette: String
         get() = Palettes.byId(prefs.getString("palette", Palettes.DEFAULT)).id
         set(v) = prefs.edit().putString("palette", v).apply()
+
+    /** The launcher icon takes the colors of the chosen palette. */
+    var iconFollows: Boolean
+        get() = prefs.getBoolean("icon_follows", true)
+        set(v) = prefs.edit().putBoolean("icon_follows", v).apply()
 
     var mode: ThemeMode
         get() = runCatching { ThemeMode.valueOf(prefs.getString("mode", ThemeMode.SYSTEM.name)!!) }.getOrDefault(ThemeMode.SYSTEM)
@@ -94,10 +100,13 @@ class Settings(context: Context) {
     fun setScreen(path: String, mode: String) = prefs.edit().putString("screen:$path", mode).apply()
     fun retro(path: String): Boolean = prefs.getBoolean("retro:$path", false)
     fun setRetro(path: String, on: Boolean) = prefs.edit().putBoolean("retro:$path", on).apply()
+    /** Lean-back angle in degrees for the 2.5D / 3D effect (0 = flat). */
+    fun tilt(path: String): Int = Depth.clamp(prefs.getInt("tilt:$path", 0))
+    fun setTilt(path: String, deg: Int) = prefs.edit().apply { if (deg <= 0) remove("tilt:$path") else putInt("tilt:$path", Depth.clamp(deg)) }.apply()
 
     /** Everything kept about one game (touch layout, translation, screen, engine memory) when it is deleted. */
     fun forgetGame(path: String) = prefs.edit().apply {
-        for (k in listOf("pad", "tr_game", "wide", "screen", "retro", "engine_last", "engine_ok", "engine_retry", "mine")) remove("$k:$path")
+        for (k in listOf("pad", "tr_game", "wide", "screen", "retro", "tilt", "engine_last", "engine_ok", "engine_retry", "mine")) remove("$k:$path")
     }.apply()
 
     /** The introduction was finished or skipped once. */

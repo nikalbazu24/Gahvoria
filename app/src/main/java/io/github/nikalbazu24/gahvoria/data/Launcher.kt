@@ -95,6 +95,7 @@ object Launcher {
             .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
             .putExtra(GameActivity.EXTRA_COVER, cover)
             .putExtra(GameActivity.EXTRA_FILTER, if (st.retro(game.path)) "crt" else "")
+            .putExtra(GameActivity.EXTRA_TILT, st.tilt(game.path))
         // Translation runs only when it is on in Ajustes AND for this game, and DeepL only with a key.
         if (st.translateOn && st.translateGame(game.path) && (st.translateProvider != "deepl" || st.deeplKey.isNotEmpty())) {
             intent.putExtra(GameActivity.EXTRA_TR_DIR, Translations.dirFor(a, game).absolutePath)
