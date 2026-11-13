@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /** Keep RPG Maker markers outside SentencePiece and restore them in their exact order. */
 final class NeuralText {
-    private static final Pattern MARKER = Pattern.compile("⟦[0-9]+⟧");
+    private static final Pattern MARKER = Pattern.compile("⟦([0-9]+)⟧");
 
     interface Inference {
         List<String> run(List<String> texts) throws IOException;
