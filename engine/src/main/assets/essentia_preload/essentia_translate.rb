@@ -297,10 +297,8 @@ module EssentiaTranslate
       label = UI_SPANISH[text]
       return label if label
       normalized = text.gsub("’", "'")
-      spanish = UI_SPANISH_FOLDED[normalized.downcase]
-      return spanish if spanish
       return 'Pulsa para empezar' if text =~ /\Apress\s+(?:the\s+)?(?:enter|start)(?:\s+key)?[!.]?\z/i
-      nil
+      UI_SPANISH_FOLDED[normalized.downcase]
     end
 
     def player_name
