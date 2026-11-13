@@ -9,8 +9,9 @@ import io.github.nikalbazu24.gahvoria.core.Palettes
  * The launcher icon in the colors of the chosen palette.
  *
  * Android cannot repaint an icon: the manifest declares one entry ("activity-alias") per palette and
- * only the chosen one is enabled. Changing it never closes the app (DONT_KILL_APP). Some launchers
- * take a few seconds to notice, and a shortcut the player pinned by hand may need to be added again.
+ * only the chosen one is enabled. Android closes the app when the entry that is running gets switched
+ * off, so this is only called when Gahvoria goes to the background (see MainActivity.onStop). Some
+ * launchers take a few seconds to notice, and a shortcut the player pinned by hand may need adding again.
  */
 object AppIcon {
     private fun alias(context: Context, id: String) =
@@ -23,10 +24,11 @@ object AppIcon {
         runCatching {
             val target = alias(context, want)
             // Turn the new one on first so that there is never a moment without an icon.
-            pm.setComponentEnabledSetting(target, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+            if (pm.getComponentEnabledSetting(target) != PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
+                pm.setComponentEnabledSetting(target, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
             for (p in Palettes.all) if (p.id != want) {
                 val other = alias(context, p.id)
-                if (pm.getComponentEnabledSetting(other) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED)
+                if (pm.getComponentEnabledSetting(other) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
                     pm.setComponentEnabledSetting(other, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
             }
         }

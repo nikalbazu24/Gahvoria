@@ -129,16 +129,13 @@ class AppState(private val activity: Activity) {
         notice = Notice(text, kind, action, onAction)
     }
 
-    fun choosePalette(id: String) {
-        settings.palette = id; palette = id
-        worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, id, settings.iconFollows) }
-    }
+    /** The icon follows when Gahvoria goes to the background (see [syncIcon]), never while it is open. */
+    fun choosePalette(id: String) { settings.palette = id; palette = id }
     fun chooseIconFollows(on: Boolean) {
         settings.iconFollows = on; iconFollows = on
-        worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, settings.palette, on) }
-        if (on) say("El icono cambia con el color. Si un acceso que pusiste a mano en el inicio desaparece, agrégalo de nuevo.")
+        if (on) say("El icono cambiará cuando salgas de Gahvoria. Si un acceso que pusiste a mano en el inicio desaparece, agrégalo de nuevo.")
     }
-    /** At start-up: make sure the icon in the launcher matches the setting (cheap when nothing changed). */
+    /** When Gahvoria goes to the background: make the launcher icon match the palette (does nothing when it already does). */
     fun syncIcon() { worker.execute { io.github.nikalbazu24.gahvoria.data.AppIcon.sync(activity, settings.palette, settings.iconFollows) } }
     fun chooseMode(m: ThemeMode) { settings.mode = m; mode = m }
     fun chooseAutoCheck(on: Boolean) { settings.autoCheck = on; autoCheck = on }

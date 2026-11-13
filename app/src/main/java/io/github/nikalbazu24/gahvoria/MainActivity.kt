@@ -16,7 +16,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         state = AppState(this)
         intent?.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
-        state.syncIcon()
         setContent { GahvoriaApp(state) }
     }
 
@@ -24,6 +23,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getStringExtra(EXTRA_NOTICE)?.let { state.say(it, io.github.nikalbazu24.gahvoria.ui.NoticeKind.WARN) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        state.syncIcon()
     }
 
     override fun onResume() {
