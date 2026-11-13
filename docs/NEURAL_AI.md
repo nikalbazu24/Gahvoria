@@ -75,3 +75,9 @@ Verificar en Solar Eclipse la pantalla de título, nueva partida, opciones, etiq
 ### Solar Eclipse 1.11.0
 
 Las capturas de esta versión identifican dos láminas negras con texto blanco (créditos y aviso) y «PRESS ENTER». La beta reconoce las dos láminas por su composición en recursos de inicio y traduce los avisos de título dibujados como texto o sprites compatibles, incluyendo un lienzo transparente con el texto abajo. No edita las imágenes en disco. Los cuadros de opciones conservan las posiciones y anchos que el juego calcula para sus valores. Las traducciones se dibujan dentro de ese espacio. Las pruebas reproducen las firmas de estas láminas y los anchos de opciones. Falta comprobar los archivos de la edición instalada en el dispositivo.
+
+## Preparación antes de jugar
+
+Cuando un juego tiene traducción habilitada con **Gahvoria Neural AI → Español**, el motor recopila textos antes de ejecutar los scripts. Busca diálogos y opciones de mapas y eventos comunes RPG Maker, literales de las llamadas de traducción o diálogo y catálogos de mensajes de Essentials. Prioriza los textos de scripts y el mapa inicial. No reescribe archivos del juego ni toca las partidas. Lo ya traducido se reutiliza desde la memoria local por juego. Los resultados se guardan por lotes y se cargan antes del título, incluso al abrir con una preparación parcial.
+
+La pantalla de carga muestra el avance y permite **Abrir con lo traducido**. Se escanean hasta 50.000 textos únicos o 24 MiB de solicitudes por arranque. El texto generado al jugar, los scripts que no exponen un literal y las imágenes sin localización específica siguen utilizando las rutas de traducción existentes cuando están disponibles. La primera pasada puede tomar varios minutos según el juego y el dispositivo.

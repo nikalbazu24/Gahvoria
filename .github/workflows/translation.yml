@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - 'engine/src/main/assets/essentia_preload/essentia_translate.rb'
+      - 'engine/src/main/assets/essentia_preload/essentia_pretranslate.rb'
+      - 'tools/tests/pretranslate_test.rb'
       - 'engine/src/main/java/com/hatkid/mkxpz/translate/**'
       - 'tools/tests/*Translation*'
       - 'tools/tests/translation*'
@@ -38,3 +40,4 @@ jobs:
         run: |
           ruby tools/tests/translation_bridge_test.rb
           ruby tools/tests/translation_bridge_test.rb --disabled
+          timeout 15 ruby tools/tests/pretranslate_test.rb

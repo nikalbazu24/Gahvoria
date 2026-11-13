@@ -53,6 +53,10 @@ public final class TranslatorService
     private final File mFile;
     private final File mResponses;
     private final File mStatus;
+    private final File mPreparation;
+    public interface PreparationProgress { void show(String message); }
+
+    private final PreparationProgress mProgress;
     private final String mProvider;
     private final String mTarget;
     private final String mKey;
@@ -75,7 +79,7 @@ public final class TranslatorService
     private String mLastVote = "";
     private int mVotes;
 
-    public TranslatorService(Context context, File dir, String provider, String target, String key)
+    public TranslatorService(Context context, File dir, String provider, String target, String key, PreparationProgress progress)
     {
         mContext = context.getApplicationContext();
         String tag = target == null ? "" : target.toLowerCase(Locale.ROOT);
@@ -85,12 +89,30 @@ public final class TranslatorService
         mReqDir = new File(session, "queue");
         mResponses = new File(session, "answers.tsv");
         mStatus = new File(context.getFilesDir(), "translate_status.txt");
+        mPreparation = new File(session, "prepare");
+        mProgress = progress;
         mProvider = provider == null ? PROVIDER_MLKIT : provider;
         mKey = key == null ? "" : key.trim();
     }
 
     public File translationsFile() { return mResponses; }
     public File requestDir() { return mReqDir; }
+
+    public String preparationPath() {
+        return PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget) ? mPreparation.getAbsolutePath() : "";
+    }
+
+    private File preparationFile(String suffix) {
+        return new File(mPreparation.getPath() + suffix);
+    }
+
+    public void skipPreparation() {
+        try {
+            preparationFile(".skip").createNewFile();
+        } catch (IOException failure) {
+            Log.w(TAG, "Could not skip translation preparation", failure);
+        }
+    }
 
     public void start() throws IOException
     {
@@ -101,6 +123,10 @@ public final class TranslatorService
             if ((entry.getName().endsWith(".req") || entry.getName().endsWith(".tmp")) && !entry.delete()) {
                 throw new IOException("No se pudo limpiar el buzón");
             }
+        }
+        for (String suffix : new String[]{".tmp", ".ready", ".done", ".skip", ".progress"}) {
+            File file = preparationFile(suffix);
+            if (file.exists() && !file.delete()) throw new IOException("No se pudo preparar el buzón de traducción");
         }
         try (RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) { responses.setLength(0); }
         mRunning = true;
@@ -122,7 +148,20 @@ public final class TranslatorService
              RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) {
             Map<File, Long> retryAfter = new LinkedHashMap<>();
             Map<File, Long> firstFailures = new LinkedHashMap<>();
+            boolean scanning = false;
+            boolean preparationHandled = preparationPath().isEmpty();
             while (mRunning) {
+                if (!preparationHandled && preparationFile(".ready").isFile()) {
+                    preparationHandled = true;
+                    prepare(memory, responses);
+                    scanning = false;
+                } else if (!preparationHandled && preparationFile(".skip").exists()) {
+                    preparationHandled = true;
+                    if (scanning) mProgress.show(null);
+                } else if (!preparationHandled && !scanning && preparationFile(".tmp").isFile()) {
+                    scanning = true;
+                    mProgress.show("Buscando textos del juego…");
+                }
                 File[] files = mReqDir.listFiles((d, name) -> name.endsWith(".req"));
                 if (files == null || files.length == 0) {
                     Thread.sleep(120);
@@ -172,6 +211,81 @@ public final class TranslatorService
                     if (mBergamot != null) mBergamot.close();
                 }
             }
+        }
+    }
+
+    private void prepare(TranslationMemory memory, RandomAccessFile responses) {
+        File ready = preparationFile(".ready");
+        File skip = preparationFile(".skip");
+        int processed = 0;
+        try {
+            if (skip.exists()) return;
+            mProgress.show("Preparando traducción del juego…");
+            int total = 0;
+            try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(ready), StandardCharsets.UTF_8))) {
+                while (mRunning && !skip.exists() && input.readLine() != null) total++;
+            }
+            long lastUpdate = 0;
+            try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(ready), StandardCharsets.UTF_8))) {
+                List<String> batch = new ArrayList<>(8);
+                String line;
+                while (mRunning && !skip.exists() && (line = input.readLine()) != null) {
+                    String text = TranslationMemory.unescape(line);
+                    if (text == null || text.isEmpty()) continue;
+                    batch.add(text);
+                    if (batch.size() < 8) continue;
+                    prepareBatch(batch, memory, responses);
+                    processed += batch.size();
+                    batch.clear();
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - lastUpdate >= 400) {
+                        reportPreparation(processed, total);
+                        lastUpdate = now;
+                    }
+                }
+                if (mRunning && !skip.exists() && !batch.isEmpty()) {
+                    prepareBatch(batch, memory, responses);
+                    processed += batch.size();
+                }
+            }
+            status((skip.exists() ? "Preparación parcial: " : "Preparación: ") + processed + " frases revisadas");
+        } catch (Exception | LinkageError failure) {
+            Log.w(TAG, "Could not prepare game translations", failure);
+            status("Preparación incompleta. " + friendly(failure));
+        } finally {
+            try {
+                preparationFile(".done").createNewFile();
+                ready.delete();
+            } catch (IOException failure) {
+                Log.w(TAG, "Could not close translation preparation", failure);
+            }
+            mProgress.show(null);
+        }
+    }
+
+    private void prepareBatch(List<String> batch, TranslationMemory memory, RandomAccessFile responses) throws Exception {
+        Map<String, String> answers = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String text : batch) {
+            String cached = memory.get(text);
+            if (cached == null) missing.add(text);
+            else answers.put(text, cached);
+        }
+        if (!missing.isEmpty()) {
+            Map<String, String> translated = TranslationBatch.translate(missing, this::neural);
+            memory.remember(translated);
+            for (Map.Entry<String, String> entry : translated.entrySet()) {
+                if (!entry.getKey().equals(entry.getValue())) answers.put(entry.getKey(), entry.getValue());
+            }
+        }
+        TranslationMemory.append(responses, answers, false);
+    }
+
+    private void reportPreparation(int processed, int total) throws IOException {
+        String message = "Preparando traducción: " + processed + " / " + total + " frases";
+        mProgress.show(message);
+        try (OutputStream out = new FileOutputStream(preparationFile(".progress"))) {
+            out.write(Integer.toString(processed).getBytes(StandardCharsets.UTF_8));
         }
     }
 

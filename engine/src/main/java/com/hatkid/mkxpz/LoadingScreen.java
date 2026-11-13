@@ -63,6 +63,8 @@ final class LoadingScreen extends FrameLayout
     private long waitFrom;
     private boolean finished;
     private State shown;
+    private String translationPreparation;
+    private Runnable skipPreparation;
 
     private final TextView clock;
     private final TextView badge;
@@ -200,6 +202,17 @@ final class LoadingScreen extends FrameLayout
         refresh();
     }
 
+    void setTranslationPreparation(String message, Runnable skip)
+    {
+        if (finished) return;
+        boolean changed = (translationPreparation == null) != (message == null);
+        translationPreparation = message;
+        skipPreparation = skip;
+        lastChange = SystemClock.elapsedRealtime();
+        if (changed) shown = null;
+        refresh();
+    }
+
     /** The first frame was drawn: record the times and go away. */
     /** The game's cover, blurred and tinted with the palette so the text stays readable; nothing if it has none. */
     private void addCoverBackground(Context c, String path)
@@ -280,9 +293,13 @@ final class LoadingScreen extends FrameLayout
             dots[i].setAlpha(on ? (float) (0.65 + 0.35 * Math.sin(now / 250.0)) : 1f);
         }
         long stall = now - Math.max(lastChange, waitFrom);
-        State s = stall >= STUCK_MS ? State.STUCK : stall >= SLOW_MS ? State.SLOW : State.LOAD;
+        State s = translationPreparation != null ? State.LOAD :
+            stall >= STUCK_MS ? State.STUCK : stall >= SLOW_MS ? State.SLOW : State.LOAD;
         String where = "«" + PHASES[phase] + "»";
-        if (s == State.LOAD) {
+        if (translationPreparation != null) {
+            badge(look.accent3, "Traducción");
+            message.setText(translationPreparation);
+        } else if (s == State.LOAD) {
             badge(look.accent3, "Cargando");
             message.setText(DOING[phase]);
         } else if (s == State.SLOW) {
@@ -308,6 +325,12 @@ final class LoadingScreen extends FrameLayout
     private void buildActions(State s)
     {
         actions.removeAllViews();
+        if (translationPreparation != null) {
+            addAction("Abrir con lo traducido", true, skipPreparation);
+            addAction("Salir", false, host::exit);
+            actions.getChildAt(0).requestFocus();
+            return;
+        }
         if (s == State.LOAD) return;
         if (s == State.STUCK) addAction("Seguir esperando", true, () -> { waitFrom = SystemClock.elapsedRealtime(); refresh(); });
         addAction("Salir", s == State.SLOW, host::exit);

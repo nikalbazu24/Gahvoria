@@ -20,6 +20,8 @@ module EssentiaTranslate
   @frame = 0
   MAX_BATCH = 8
   MAX_SESSION_ENTRIES = 4096
+  MAX_PREPARED_ENTRIES = 50_000
+  @session_limit = MAX_SESSION_ENTRIES
   MAX_REQUEST_FILES = 128
   RETRY_SECONDS = 18
   DIALOGUE_WAIT = 0.65
@@ -109,10 +111,19 @@ module EssentiaTranslate
         next if t.respond_to?(:valid_encoding?) && (!o.valid_encoding? || !t.valid_encoding?)
         @pending.delete(o)
         @map.delete(o)
-        @map.shift if @map.size >= MAX_SESSION_ENTRIES
+        @map.shift if @map.size >= @session_limit
         @map[o] = t
       end
     rescue StandardError
+    end
+
+    def load_prepared
+      @session_limit = MAX_PREPARED_ENTRIES + MAX_SESSION_ENTRIES
+      loop do
+        previous = @pos
+        load_new
+        break if @pos == previous
+      end
     end
 
     def request(text)
@@ -474,6 +485,9 @@ module EssentiaTranslate
           args[argument] = args[argument].map { |text| rendering_text(text) }
         end
       elsif args.length > argument && !@displaying.include?(args[argument])
+        if kind == :message_with_choices && args[1].is_a?(Array)
+          args[1] = args[1].map { |text| rendering_text(text) }
+        end
         args[argument] = lookup(args[argument], wait)
         @displaying << args[argument]
         begin
@@ -566,7 +580,7 @@ module EssentiaTranslate
       return if @installing
       @installing = true
       begin
-        wrap_top(:pbMessage, 0, DIALOGUE_WAIT, :message)
+        wrap_top(:pbMessage, 0, DIALOGUE_WAIT, :message_with_choices)
         wrap_top(:pbMessageDisplay, 1, DIALOGUE_WAIT, :message)
         wrap_top(:pbShowCommands, 1, 0, :commands)
         wrap_messages

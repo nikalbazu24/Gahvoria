@@ -365,8 +365,12 @@ try { exp } catch (...) {}
     // Essentia: automatic translation (only for games the user marked)
     {
         const char *tr = getenv("ESSENTIA_TR_FILE");
-        if (tr && *tr)
+        if (tr && *tr) {
             preloadScripts.push_back("essentia_preload/essentia_translate.rb");
+            const char *prepare = getenv("ESSENTIA_TR_PREPARE");
+            if (prepare && *prepare)
+                preloadScripts.push_back("essentia_preload/essentia_pretranslate.rb");
+        }
     }
 #endif
     fillStringVec(opts["RTP"], rtps);
