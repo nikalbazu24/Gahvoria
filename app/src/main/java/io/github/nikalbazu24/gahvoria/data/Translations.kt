@@ -23,6 +23,7 @@ object Translations {
             (data?.let { File(it, "Scripts").walkTopDown() } ?: emptySequence()) +
             root.listFiles().orEmpty().asSequence().filter { it.name.startsWith("Game.", true) }
         val revision = java.security.MessageDigest.getInstance("SHA-256")
+        revision.update("context-v1\n".toByteArray(Charsets.UTF_8))
         for (file in files.filter { it.isFile }.sortedBy { it.path }) {
             revision.update("${file.path}\t${file.length()}\t${file.lastModified()}\n".toByteArray(Charsets.UTF_8))
         }

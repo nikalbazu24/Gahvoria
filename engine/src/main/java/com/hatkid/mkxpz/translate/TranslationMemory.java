@@ -14,11 +14,18 @@ import java.util.Map;
 /** Per-game, per-target UTF-8 TSV. The :game process owns the single writer. */
 final class TranslationMemory implements Closeable {
     private static final int MAX_ROW_BYTES = 64 * 1024;
+    private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
     private final RandomAccessFile file;
+    private final boolean contextual;
     private final java.nio.channels.FileLock lock;
     private final Map<String, String> entries = new LinkedHashMap<>();
 
     TranslationMemory(File path) throws IOException {
+        this(path, false);
+    }
+
+    TranslationMemory(File path, boolean contextual) throws IOException {
+        this.contextual = contextual;
         file = new RandomAccessFile(path, "rw");
         try {
             lock = file.getChannel().tryLock();
@@ -30,17 +37,22 @@ final class TranslationMemory implements Closeable {
         }
     }
 
-    String get(String original) { return entries.get(original); }
+    String get(String original) {
+        String revised = entries.get(CONTEXT_PREFIX + original);
+        if (revised != null) return revised;
+        return contextual && TranslationBatch.needsContext(original) ? null : entries.get(original);
+    }
 
     void remember(Map<String, String> answers) throws IOException {
         Map<String, String> fresh = new LinkedHashMap<>();
         for (Map.Entry<String, String> answer : answers.entrySet()) {
             String original = answer.getKey();
             String translated = answer.getValue();
-            if (original.isEmpty() || original.equals(translated) || entries.containsKey(original)
+            if (original.isEmpty() || original.equals(translated) || get(original) != null
                 || !TranslationBatch.isSafe(original, translated)) continue;
-            if (row(original, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
-                fresh.put(original, translated);
+            String key = contextual && TranslationBatch.needsContext(original) ? CONTEXT_PREFIX + original : original;
+            if (row(key, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
+                fresh.put(key, translated);
             }
         }
         if (fresh.isEmpty()) return;
@@ -85,9 +97,9 @@ final class TranslationMemory implements Closeable {
         int end = line.endsWith("\r") ? line.length() - 1 : line.length();
         String original = unescape(line.substring(0, tab));
         String translated = unescape(line.substring(tab + 1, end));
-        if (original != null && !original.equals(translated) && TranslationBatch.isSafe(original, translated)) {
-            entries.put(original, translated);
-        }
+        if (original == null) return;
+        String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
+        if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
     }
 
     static void append(RandomAccessFile file, Map<String, String> answers, boolean durable) throws IOException {

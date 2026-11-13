@@ -144,7 +144,7 @@ public final class TranslatorService
 
     private void loop()
     {
-        try (TranslationMemory memory = new TranslationMemory(mFile);
+        try (TranslationMemory memory = new TranslationMemory(mFile, PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget));
              RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) {
             Map<File, Long> retryAfter = new LinkedHashMap<>();
             Map<File, Long> firstFailures = new LinkedHashMap<>();
@@ -359,7 +359,7 @@ public final class TranslatorService
                 throw new IOException("No pude cargar el motor Neural", failure);
             }
         }
-        return NeuralText.translate(protectedTexts, mBergamot::translate);
+        return NeuralText.translate(protectedTexts, mBergamot::translate, mBergamot::translateMarkup);
     }
 
     // ---------------------------------------------------------------- ML Kit

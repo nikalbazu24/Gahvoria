@@ -91,11 +91,11 @@ jobjectArray toJava(JNIEnv* env, const std::vector<Response>& responses) {
     return out;
 }
 
-std::vector<ResponseOptions> plainOptions(size_t count) {
+std::vector<ResponseOptions> translationOptions(size_t count, bool markup) {
     ResponseOptions options;
     options.qualityScores = false;
-    options.alignment = false;
-    options.HTML = false;
+    options.alignment = markup;
+    options.HTML = markup;
     return std::vector<ResponseOptions>(count, options);
 }
 
@@ -195,11 +195,11 @@ Java_com_hatkid_mkxpz_translate_BergamotNative_nativeFreeModel(JNIEnv*, jobject,
 
 JNIEXPORT jobjectArray JNICALL
 Java_com_hatkid_mkxpz_translate_BergamotNative_nativeTranslate(
-        JNIEnv* env, jobject, jlong serviceHandle, jlong modelHandle, jobjectArray texts) {
+        JNIEnv* env, jobject, jlong serviceHandle, jlong modelHandle, jobjectArray texts, jboolean markup) {
     try {
         std::vector<std::string> sources = utf8(env, texts);
         const size_t count = sources.size();
-        auto responses = service(serviceHandle)->translateMultiple(*model(modelHandle), std::move(sources), plainOptions(count));
+        auto responses = service(serviceHandle)->translateMultiple(*model(modelHandle), std::move(sources), translationOptions(count, markup == JNI_TRUE));
         return toJava(env, responses);
     } catch (const std::exception& e) {
         throwJava(env, e.what());

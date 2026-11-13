@@ -54,6 +54,14 @@ Dir.mktmpdir('gahvoria-pretranslation') do |dir|
     'Yes, please', 'Later', 'An event script!', 'A common event.', 'Another map.',
     'Original catalog entry', 'Visible catalog entry'
   ]
+  script_choices = []
+  GahvoriaPretranslate.scripts(<<'CHOICES') { |text| script_choices << text }
+pbMessage("Pick one", ["Go", 'Stay'])
+pbShowCommands(nil, ["Red", "Blue",])
+pbShowCommands(nil, ["Unsafe", dynamic()])
+  CHOICES
+  check(['Pick one', 'Go', 'Stay', 'Red', 'Blue'], script_choices)
+
   collected = []
   GahvoriaPretranslate.collect(dir, lambda { false }) { |text| collected << text }
   check(expected, collected)

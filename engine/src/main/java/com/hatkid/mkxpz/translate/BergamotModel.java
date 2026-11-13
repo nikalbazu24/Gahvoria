@@ -51,9 +51,17 @@ final class BergamotModel implements AutoCloseable {
     }
 
     List<String> translate(List<String> texts) throws IOException {
+        return translate(texts, false);
+    }
+
+    List<String> translateMarkup(List<String> texts) throws IOException {
+        return translate(texts, true);
+    }
+
+    private List<String> translate(List<String> texts, boolean markup) throws IOException {
         byte[][] inputs = new byte[texts.size()][];
         for (int i = 0; i < texts.size(); i++) inputs[i] = texts.get(i).getBytes(StandardCharsets.UTF_8);
-        byte[][] outputs = BergamotNative.nativeTranslate(service, model, inputs);
+        byte[][] outputs = BergamotNative.nativeTranslate(service, model, inputs, markup);
         if (outputs == null || outputs.length != inputs.length) throw new IOException("Respuesta incompleta del motor Neural");
         List<String> result = new ArrayList<>(outputs.length);
         for (byte[] output : outputs) result.add(output == null ? null : new String(output, StandardCharsets.UTF_8));

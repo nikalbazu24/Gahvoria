@@ -14,6 +14,83 @@ final class NeuralText {
         List<String> run(List<String> texts) throws IOException;
     }
 
+    private static final Pattern ALIGNED = Pattern.compile("<img data-gahvoria=\"([0-9]+)\"\\s*/?>");
+    private static final Pattern LEADING = Pattern.compile("\\A(?:\\s*⟦[0-9]+⟧)+");
+    private static final Pattern ENTITY = Pattern.compile("&(amp|lt|gt);");
+    private static final Pattern PAJAMAS = Pattern.compile("\\bjammies\\b", Pattern.CASE_INSENSITIVE);
+
+    static boolean normalizes(String text) {
+        return PAJAMAS.matcher(text).find();
+    }
+
+    /** Pass one complete utterance through the model even when RGSS inserts controls inside it. */
+    static List<String> translate(List<String> texts, Inference plain, Inference aligned) throws IOException {
+        List<String> result = new ArrayList<>(texts);
+        List<Integer> rows = new ArrayList<>();
+        List<String> markup = new ArrayList<>();
+        for (int i = 0; i < texts.size(); i++) {
+            String text = texts.get(i);
+            if (MARKER.matcher(text).find() && hasLetters(MARKER.matcher(text).replaceAll(""))) {
+                rows.add(i);
+                String escaped = PAJAMAS.matcher(text).replaceAll("pajamas")
+                    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                markup.add(MARKER.matcher(escaped).replaceAll("<img data-gahvoria=\"$1\">"));
+            }
+        }
+        boolean[] restored = new boolean[texts.size()];
+        for (int start = 0; start < markup.size(); start += 24) {
+            int end = Math.min(start + 24, markup.size());
+            List<String> outputs;
+            try {
+                outputs = aligned.run(markup.subList(start, end));
+            } catch (IOException | RuntimeException unsupported) {
+                continue;
+            }
+            if (outputs == null || outputs.size() != end - start) continue;
+            for (int i = start; i < end; i++) {
+                int row = rows.get(i);
+                String translation = restore(texts.get(row), outputs.get(i - start));
+                if (translation != null) {
+                    result.set(row, translation);
+                    restored[row] = true;
+                }
+            }
+        }
+        List<String> fallback = new ArrayList<>();
+        for (int i = 0; i < texts.size(); i++) {
+            if (!restored[i]) fallback.add(PAJAMAS.matcher(texts.get(i)).replaceAll("pajamas"));
+        }
+        List<String> translated = translate(fallback, plain);
+        int next = 0;
+        for (int i = 0; i < texts.size(); i++) {
+            if (!restored[i]) result.set(i, translated.get(next++));
+        }
+        return result;
+    }
+
+    private static String restore(String original, String markup) {
+        if (markup == null || markup.indexOf('⟦') >= 0 || markup.indexOf('⟧') >= 0) return null;
+        String restored = ALIGNED.matcher(markup).replaceAll("⟦$1⟧");
+        if (restored.indexOf('<') >= 0 || restored.indexOf('>') >= 0) return null;
+        // Leading controls configure the box before any glyph is printed.
+        Matcher leading = LEADING.matcher(original);
+        if (leading.find() && !restored.startsWith(leading.group())) return null;
+        if (restored.length() > original.length() * 5 + 120) return null;
+        Matcher expected = MARKER.matcher(original);
+        Matcher actual = MARKER.matcher(restored);
+        while (expected.find()) {
+            if (!actual.find() || !expected.group().equals(actual.group())) return null;
+        }
+        if (actual.find() || !hasLetters(MARKER.matcher(restored).replaceAll(""))) return null;
+        Matcher entities = ENTITY.matcher(restored);
+        StringBuffer decoded = new StringBuffer();
+        while (entities.find()) {
+            String entity = entities.group(1);
+            entities.appendReplacement(decoded, entity.equals("amp") ? "&" : entity.equals("lt") ? "<" : ">");
+        }
+        return entities.appendTail(decoded).toString();
+    }
+
     static List<String> translate(List<String> texts, Inference inference) throws IOException {
         List<String> result = new ArrayList<>(texts.size());
         List<List<String>> rows = new ArrayList<>(texts.size());

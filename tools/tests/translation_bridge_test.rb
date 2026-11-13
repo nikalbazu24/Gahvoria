@@ -227,6 +227,36 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   assert_equal(['Elige un desafío'], options.bitmap.drawn)
   assert_equal(2, options.selected)
   assert_equal('Elige la dificultad que prefieras', window.text)
+
+  # A menu label takes precedence over old, literal translations in the session.
+  File.open(answers, 'ab') do |f|
+    f.write("Save\t¡Salve!\nCLOSE BAG\tBOLSA CERRAR\n{99999}, do your best!\t{99999}, ¡da lo mejor de ti!\n")
+  end
+  EssentiaTranslate.load_new
+  menu.draw_text(0, 0, 100, 20, 'Save')
+  menu.draw_text(0, 0, 100, 20, 'CLOSE BAG')
+  assert_equal(['Guardar', 'Cerrar bolsa'], menu.drawn.last(2))
+  assert_equal('Save', EssentiaTranslate.message_catalog_text('Save'))
+  assert_equal('Proud', EssentiaTranslate.message_catalog_text('Proud'))
+  assert_equal(['Relajado', 'Serio', 'Orgulloso', 'El mejor'],
+               pbShowCommands(nil, ['Casual', 'Serious', 'Proud', 'The Best']))
+  assert_equal(['Aspecto', 'Nombre', 'Dificultad', 'Extras', '¡Vamos!'],
+               EssentiaTranslate.render_choices(['Appearance', 'Name', 'Difficulty', 'Additions', "Let’s go!!!"]))
+  assert_equal('¿Eres más bien relajado?', EssentiaTranslate.message_text("You're more casual and laidback?", 0))
+
+  $player = Struct.new(:name).new('Nico')
+  assert_equal('Nico', EssentiaTranslate.rendering_text('Nico'))
+  assert_equal('Nico, ¡da lo mejor de ti!', EssentiaTranslate.message_text('Nico, do your best!', 0))
+  $player.name = 'Save'
+  assert_equal('Save', EssentiaTranslate.rendering_text('Save'))
+  $player = nil
+  assert_equal('\\xn[Tía]...', EssentiaTranslate.message_text('\\xn[Aunt]...', 0))
+  assert_equal('\\xn[Uncleared]...', EssentiaTranslate.message_text('\\xn[Uncleared]...', 0))
+
+  def pbMessage(text, choices = nil)
+    choices ? pbShowCommands(nil, choices) : text
+  end
+  assert_equal(['Guardar', 'Cerrar bolsa'], pbMessage('Pick one', ['Save', 'Close Bag']))
 end
 
 puts 'Ruby translation bridge checks passed'

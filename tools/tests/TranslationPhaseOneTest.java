@@ -16,7 +16,9 @@ public final class TranslationPhaseOneTest {
         rejectsBadProviderOutput();
         persistsOnlyValidatedTranslations();
         neuralPreservesMarkupWithoutSendingItToInference();
-        System.out.println("4 JVM translation checks passed");
+        neuralKeepsOneUtteranceAcrossControls();
+        refreshesOnlyOldContextSensitiveEntries();
+        System.out.println("6 JVM translation checks passed");
     }
 
     private static void preservesControlTokens() throws Exception {
@@ -28,6 +30,7 @@ public final class TranslationPhaseOneTest {
             return Collections.singletonList("⟦0⟧¡Hola, ⟦1⟧!⟦2⟧Ve ⟦3⟧ahora⟦4⟧, ⟦5⟧ ⟦6⟧.");
         });
         equal(expected, translated.get(original));
+        equal(false, TranslationBatch.isSafe("Total {1:02d}", "Total {1:d}"));
     }
 
     private static void neuralPreservesMarkupWithoutSendingItToInference() throws Exception {
@@ -47,6 +50,54 @@ public final class TranslationPhaseOneTest {
             }));
         equal(Collections.singletonList("⟦0⟧!"),
             NeuralText.translate(Collections.singletonList("⟦0⟧!"), spans -> { throw new AssertionError("No text"); }));
+    }
+
+    private static void neuralKeepsOneUtteranceAcrossControls() throws Exception {
+        String source = "\\c[1]You're an \\c[2]E\\c[1]-rank Trainer, {1}!";
+        String expected = "\\c[1]Eres un entrenador de rango \\c[2]E\\c[1], {1}!";
+        Map<String, String> result = TranslationBatch.translate(Collections.singletonList(source),
+            (raw, inputs) -> NeuralText.translate(inputs, fragments -> {
+                throw new AssertionError("The whole utterance should fit in one input");
+            }, utterances -> {
+                equal(Collections.singletonList("<img data-gahvoria=\"0\">You're an <img data-gahvoria=\"1\">E"
+                    + "<img data-gahvoria=\"2\">-rank Trainer, <img data-gahvoria=\"3\">!"), utterances);
+                return Collections.singletonList("<img data-gahvoria=\"0\">Eres un entrenador de rango "
+                    + "<img data-gahvoria=\"1\">E<img data-gahvoria=\"2\">, <img data-gahvoria=\"3\">!");
+            }));
+        equal(expected, result.get(source));
+
+        equal(Collections.singletonList("⟦0⟧Adiós"), NeuralText.translate(
+            Collections.singletonList("⟦0⟧Bye"), inputs -> Collections.singletonList("Adiós"),
+            utterances -> Collections.singletonList("Adiós<img data-gahvoria=\"0\">")));
+        equal(Collections.singletonList("⟦0⟧Hola ⟦1⟧"), NeuralText.translate(
+            Collections.singletonList("⟦0⟧Hello ⟦1⟧"), inputs -> Collections.singletonList("Hola"),
+            utterances -> Collections.singletonList("<img data-gahvoria=\"1\">Hola<img data-gahvoria=\"0\">")));
+        equal(Collections.singletonList("Pijama"), NeuralText.translate(Collections.singletonList("Jammies"),
+            inputs -> {
+                equal(Collections.singletonList("pajamas"), inputs);
+                return Collections.singletonList("Pijama");
+            }, utterances -> { throw new AssertionError("Plain line"); }));
+    }
+
+    private static void refreshesOnlyOldContextSensitiveEntries() throws Exception {
+        File cache = File.createTempFile("gahvoria-context", ".tsv");
+        try {
+            try (TranslationMemory legacy = new TranslationMemory(cache)) {
+                legacy.remember(Collections.singletonMap("Hi {1}", "Hola {1}"));
+                legacy.remember(Collections.singletonMap("One", "Uno"));
+            }
+            try (TranslationMemory current = new TranslationMemory(cache, true)) {
+                equal("Uno", current.get("One"));
+                equal(null, current.get("Hi {1}"));
+                current.remember(Collections.singletonMap("Hi {1}", "Qué tal, {1}"));
+            }
+            try (TranslationMemory reopened = new TranslationMemory(cache)) {
+                equal("Qué tal, {1}", reopened.get("Hi {1}"));
+                equal("Uno", reopened.get("One"));
+            }
+        } finally {
+            Files.delete(cache.toPath());
+        }
     }
 
     private static void rejectsBadProviderOutput() throws Exception {

@@ -35,7 +35,7 @@ public final class TranslationPreparation {
         progress.update(reviewed, total, translated);
         BergamotModel model = null;
         try (BufferedReader input = open(catalog);
-             TranslationMemory memory = new TranslationMemory(new File(catalog.getParentFile(), "es.tsv"))) {
+             TranslationMemory memory = new TranslationMemory(new File(catalog.getParentFile(), "es.tsv"), true)) {
             List<String> pending = new ArrayList<>(24);
             while (!cancel.requested() && reviewed < total) {
                 pending.clear();
@@ -51,7 +51,7 @@ public final class TranslationPreparation {
                 if (!pending.isEmpty()) {
                     if (model == null) model = new BergamotModel(context);
                     BergamotModel current = model;
-                    memory.remember(TranslationBatch.translate(pending, (o, p) -> NeuralText.translate(p, current::translate)));
+                    memory.remember(TranslationBatch.translate(pending, (o, p) -> NeuralText.translate(p, current::translate, current::translateMarkup)));
                     for (String original : pending) if (memory.get(original) != null) translated++;
                 }
                 reviewed += read;

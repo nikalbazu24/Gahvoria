@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 final class TranslationBatch {
     private static final Pattern CODES = Pattern.compile(
         "\\\\[A-Za-z]+(?:\\[[^\\]\\r\\n]*\\])?|\\\\[.!|^<>{}$\\\\]|"
-        + "<[^>\\r\\n]{1,40}>|\\[[A-Za-z_]+\\]|\\{\\d+\\}|%\\d*\\$?[sdif%]|[\\r\\n\\t⟦⟧]");
+        + "<[^>\\r\\n]{1,40}>|\\[[A-Za-z_]+\\]|\\{\\d+(?::[A-Za-z0-9. +#-]+)?\\}|%\\d*\\$?[sdif%]|[\\r\\n\\t⟦⟧]");
 
     interface Provider {
         List<String> translate(List<String> originals, List<String> protectedTexts) throws Exception;
@@ -62,6 +62,10 @@ final class TranslationBatch {
         }
         if (output.indexOf('⟦', position) >= 0) return null;
         return result.append(output, position, output.length()).toString();
+    }
+
+    static boolean needsContext(String original) {
+        return CODES.matcher(original).find() || NeuralText.normalizes(original);
     }
 
     /** Check existing rows and restored results for added, dropped, or reordered game tokens. */

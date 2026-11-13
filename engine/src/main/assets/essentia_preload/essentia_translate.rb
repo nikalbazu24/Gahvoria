@@ -37,6 +37,18 @@ module EssentiaTranslate
       'Si pagaste por este juego, te estafaron.']]
   ]
   UI_SPANISH = {
+    'Save' => 'Guardar',
+    'Close Bag' => 'Cerrar bolsa',
+    'Trainer Card' => 'Ficha de entrenador',
+    "Trainer's Card" => 'Ficha de entrenador',
+    'ID No.' => 'N.º de ID',
+    'Phone' => 'Teléfono',
+    'Music' => 'Música',
+    'Tasks' => 'Tareas',
+    'TMs' => 'MT',
+    'Appearance' => 'Aspecto',
+    'Difficulty' => 'Dificultad',
+    'Info' => 'Info',
     'Press Start' => 'Pulsa START',
     'Press Enter' => 'Pulsa Enter',
     'A game by' => 'Un juego de',
@@ -63,6 +75,18 @@ module EssentiaTranslate
     'On' => 'Sí',
     'Off' => 'No'
   }
+  UI_SPANISH_FOLDED = {}
+  UI_SPANISH.each { |key, value| UI_SPANISH_FOLDED[key.downcase] = value }
+
+  TRAINER_STYLE_SPANISH = {
+    'casual' => 'Relajado', 'serious' => 'Serio', 'proud' => 'Orgulloso', 'the best' => 'El mejor'
+  }
+  SETUP_SPANISH = {
+    'appearance' => 'Aspecto', 'name' => 'Nombre', 'difficulty' => 'Dificultad',
+    'additions' => 'Extras', "let's go!!!" => '¡Vamos!'
+  }
+  SPEAKER_SPANISH = { 'aunt' => 'Tía', 'uncle' => 'Tío', 'mom' => 'Mamá', 'dad' => 'Papá' }
+  NAME_BOX = /\\xn\[([^\[\]\\\r\n]+)\]/i
   @paint_stack = []
   @paint_waiting = []
   @verbatim = 0
@@ -171,7 +195,7 @@ module EssentiaTranslate
 
     def lookup(text, wait = 0)
       return text unless text.is_a?(String) && !text.empty?
-      return text if text.instance_variable_get(:@gahvoria_translated)
+      return text if text.instance_variable_get(:@gahvoria_translated) || player_name?(text)
       return text unless text =~ /[A-Za-z]/ || (text.respond_to?(:ascii_only?) ? !text.ascii_only? : text.unpack('C*').any? { |byte| byte >= 128 })
       load_if_due
       return translated_copy(text) if @map.has_key?(text)
@@ -251,7 +275,7 @@ module EssentiaTranslate
         window = item[0]
         begin
           if item[2]
-            window.text = translated_copy(item[2])
+            window.text = message_text(item[2], 0)
           elsif window.respond_to?(:pbRefresh)
             window.pbRefresh
           else
@@ -263,15 +287,90 @@ module EssentiaTranslate
       end
     end
 
-    def rendering_text(text)
-      return text if @verbatim > 0 || !@displaying.empty?
-      if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
-        label = UI_SPANISH[text] || (text =~ /\Apress\s+(?:the\s+)?(?:enter|start)(?:\s+key)?[!.]?\z/i ? 'Pulsa para empezar' : nil)
-        if label
-          result = label.dup
-          result.instance_variable_set(:@gahvoria_translated, true)
-          return result
+    def marked(text)
+      result = text.dup
+      result.instance_variable_set(:@gahvoria_translated, true)
+      result
+    end
+
+    def ui_label(text)
+      label = UI_SPANISH[text]
+      return label if label
+      normalized = text.gsub("’", "'")
+      spanish = UI_SPANISH_FOLDED[normalized.downcase]
+      return spanish if spanish
+      return 'Pulsa para empezar' if text =~ /\Apress\s+(?:the\s+)?(?:enter|start)(?:\s+key)?[!.]?\z/i
+      nil
+    end
+
+    def player_name
+      player = defined?($player) && $player
+      player ||= defined?($Trainer) && $Trainer
+      player.name if player && player.respond_to?(:name)
+    end
+
+    def player_name?(text)
+      player_name == text
+    end
+
+    def render_choices(choices, question = nil)
+      return choices unless choices.is_a?(Array)
+      normalized = choices.map { |value| value.is_a?(String) ? value.gsub("’", "'").strip.downcase : nil }
+      glossary = nil
+      if SPANISH
+        if normalized.include?('casual') && normalized.include?('proud') && normalized.include?('the best')
+          glossary = TRAINER_STYLE_SPANISH
+        elsif normalized.include?('appearance') && normalized.include?('name') && normalized.include?('difficulty')
+          glossary = SETUP_SPANISH
+        elsif SOLAR_ECLIPSE && question.is_a?(String) && question =~ /how would you describe yourself as a trainer/i
+          glossary = TRAINER_STYLE_SPANISH
         end
+      end
+      choices.each_with_index.map do |text, index|
+        label = glossary && glossary[normalized[index]]
+        label ? marked(label) : rendering_text(text, true)
+      end
+    end
+
+    PLAYER_NAME_TOKEN = '{99999}'
+
+    def message_key(source)
+      name = player_name
+      token = PLAYER_NAME_TOKEN
+      if name.is_a?(String) && name.size >= 2 && name =~ /\A[A-Za-z0-9_\- ]+\z/ && !source.include?(token) &&
+         !source.include?('\\') && !source.include?('<')
+        return source.gsub(/(^|[^A-Za-z0-9_])#{Regexp.escape(name)}(?=$|[^A-Za-z0-9_])/) { $1 + token }
+      end
+      source
+    end
+
+    def message_text(source, wait)
+      return lookup(source, wait) unless SPANISH && source.is_a?(String)
+      return source if source.instance_variable_get(:@gahvoria_translated)
+      key = message_key(source)
+      token = PLAYER_NAME_TOKEN
+      if SOLAR_ECLIPSE && source.gsub("’", "'") =~ /\A(?:you're|are you) more casual and (?:laidback|laid.back)\?\z/i
+        return marked('¿Eres más bien relajado?')
+      end
+      translated = lookup(key, wait)
+      if key != source
+        translated = translated.equal?(key) ? source : marked(translated.gsub(token) { player_name.to_s })
+      end
+      # Translate roles on nameplates. The body and the exact speaker identifiers stay independent.
+      text = translated.gsub(NAME_BOX) do |code|
+        name = $1
+        role = SPEAKER_SPANISH[name.downcase]
+        role && !player_name?(name) ? code.sub('[' + name + ']', '[' + role + ']') : code
+      end
+      text != translated ? marked(text) : translated
+    end
+
+    def rendering_text(text, choice = false)
+      return text if @verbatim > 0 || (!choice && !@displaying.empty?)
+      if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
+        return text if player_name?(text)
+        label = ui_label(text)
+        return marked(label) if label
       end
       lookup(text)
     end
@@ -414,7 +513,7 @@ module EssentiaTranslate
         return paint(receiver) { original.bind(receiver).call(*args, &block) }
       elsif kind == :command_size
         if args[0].is_a?(Array)
-          args[0] = args[0].map { |text| rendering_text(text) }
+          args[0] = render_choices(args[0])
         end
       elsif kind == :verbatim
         return verbatim { original.bind(receiver).call(*args, &block) }
@@ -473,22 +572,23 @@ module EssentiaTranslate
         if @verbatim == 0 && @displaying.empty? && (!receiver.respond_to?(:text) || receiver.text != args[argument])
           slow = receiver.respond_to?(:letterbyletter) && receiver.letterbyletter
           source = args[argument]
-          args[argument] = lookup(source, slow ? wait : 0)
-          if !slow && source.is_a?(String) && args[argument].equal?(source) && @pending[source]
+          args[argument] = message_text(source, slow ? wait : 0)
+          key = SPANISH && source.is_a?(String) ? message_key(source) : source
+          if !slow && source.is_a?(String) && args[argument].equal?(source) && @pending[key]
             @paint_waiting.delete_if { |item| item[0].equal?(receiver) }
             @paint_waiting.shift if @paint_waiting.size >= 32
-            @paint_waiting << [receiver, {source.dup => true}, source.dup]
+            @paint_waiting << [receiver, {key.dup => true}, source.dup]
           end
         end
       elsif kind == :commands
         if args[argument].is_a?(Array)
-          args[argument] = args[argument].map { |text| rendering_text(text) }
+          args[argument] = render_choices(args[argument])
         end
       elsif args.length > argument && !@displaying.include?(args[argument])
         if kind == :message_with_choices && args[1].is_a?(Array)
-          args[1] = args[1].map { |text| rendering_text(text) }
+          args[1] = render_choices(args[1], args[argument])
         end
-        args[argument] = lookup(args[argument], wait)
+        args[argument] = message_text(args[argument], wait)
         @displaying << args[argument]
         begin
           return original.bind(receiver).call(*args, &block)
@@ -553,6 +653,13 @@ module EssentiaTranslate
       wrap_method(Window_PokemonOption, :refresh, 0, 0, :paint) if defined?(Window_PokemonOption)
     end
 
+    def message_catalog_text(text)
+      # Keep UI originals available for the selector or drawing hook to resolve in context.
+      return text if SPANISH && text.is_a?(String) && (ui_label(text) ||
+        TRAINER_STYLE_SPANISH.has_key?(text.downcase) || SETUP_SPANISH.has_key?(text.downcase))
+      lookup(text, 0)
+    end
+
     def wrap_messages
       return unless defined?(MessageTypes)
       meta = class << MessageTypes; self; end
@@ -563,12 +670,12 @@ module EssentiaTranslate
         next if @hooked[[meta, name]] == current
         if m == 'getFromMapHash'
           meta.send(:define_method, name) do |*args|
-            EssentiaTranslate.lookup(current.bind(self).call(*args), 0)
+            EssentiaTranslate.message_catalog_text(current.bind(self).call(*args))
           end
         else
           meta.send(:define_method, name) do |*args|
             r = current.bind(self).call(*args)
-            EssentiaTranslate.keep_type?(args[0]) ? r : EssentiaTranslate.lookup(r, 0)
+            EssentiaTranslate.keep_type?(args[0]) ? r : EssentiaTranslate.message_catalog_text(r)
           end
         end
         @hooked[[meta, name]] = meta.instance_method(name)

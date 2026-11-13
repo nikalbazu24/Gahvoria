@@ -2,6 +2,8 @@
 # GPL-2.0. Extract display text before the game scripts run. Never evaluate source literals.
 module GahvoriaPretranslate
   LITERAL = /(?:\b_INTL|\bpbMessage|\bpbMessageDisplay)\s*\(\s*(?:[A-Za-z_]\w*\s*,\s*)?(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
+  CHOICE_LIST = /(?:\bpbShowCommands\s*\(\s*(?:nil|[A-Za-z_]\w*)\s*,\s*|\bpbMessage\s*\(\s*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')\s*,\s*)\[([^\]\r\n]{1,2048})\]/
+  CHOICE_ITEM = /\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')\s*(,|\z)/
   EXTENSIONS = ['rxdata', 'rvdata', 'rvdata2']
   MAX_SCRIPT_BYTES = 2 * 1024 * 1024
   MAX_TEXTS = 50_000
@@ -14,16 +16,30 @@ module GahvoriaPretranslate
       source = EssentiaTranslate.utf8(source.dup)
       return if source.respond_to?(:valid_encoding?) && !source.valid_encoding?
       source.scan(LITERAL) do |double, single|
-        text = double || single
-        next if double && text =~ /#(?:\{|@|\$)/
-        text = if double
-                 text.gsub(/\\([\\'"nrt])/) do
-                   {'n' => "\n", 'r' => "\r", 't' => "\t"}[$1] || $1
-                 end
-               else
-                 text.gsub(/\\([\\'])/) { $1 }
-               end
-        yield text
+        text = literal_text(double, single)
+        yield text if text
+      end
+      source.scan(CHOICE_LIST) do |capture|
+        choices = capture[0]
+        labels = []
+        until choices.strip.empty?
+          item = CHOICE_ITEM.match(choices)
+          break unless item && item.begin(0) == 0
+          label = literal_text(item[1], item[2])
+          break unless label
+          labels << label
+          choices = choices[item.end(0)..-1]
+        end
+        labels.each { |label| yield label } if choices.strip.empty?
+      end
+    end
+
+    def literal_text(double, single)
+      return nil if double && double =~ /#(?:\{|@|\$)/
+      if double
+        double.gsub(/\\([\\'"nrt])/) { {'n' => "\n", 'r' => "\r", 't' => "\t"}[$1] || $1 }
+      else
+        single.gsub(/\\([\\'])/) { $1 }
       end
     end
 
