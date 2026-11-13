@@ -164,6 +164,7 @@ class AppState(private val activity: Activity) {
     /** Back from the game or from Android's settings. */
     fun onResume() {
         hasAccess = Storage.hasAccess(activity)
+        translationsVersion++
         settings.takeSession()?.let { (path, at) ->
             val played = System.currentTimeMillis() - at
             // Sessions longer than 12 h are not counted: the game was probably left in the background.

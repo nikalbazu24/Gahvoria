@@ -41,3 +41,7 @@ Para cualquier runtime integrado, revisar [MPL y licencias secundarias](https://
 - El flujo **Translation checks** verifica la capa Java con JDK 17 y destino Java 8. Incluye tokens, respuestas inválidas, filas antiguas, escritura fallida, recuperación de una cola incompleta, aislamiento y una partida centinela.
 - El mismo flujo prueba el buzón de Ruby 3.1 con diálogo, menús, una respuesta incompleta y el traductor apagado. El flujo habitual del APK conserva los dos motores.
 - Prueba manual pendiente en teléfono y Thor: Essentials clásico y moderno, memorizar un diálogo, relanzar sin red, cambiar idioma y alternar pantalla. Verificar que la misma partida abre antes y después. No se ha desplegado un modelo neuronal ni medido su rendimiento.
+
+## Corrección tras la prueba con Solar Eclipse
+
+Solar Eclipse (RPG Maker XP y Essentials 19.1) siguió mostrando el original en la Thor con el proveedor local. El proceso `:game` no ejecutaba el inicializador automático de ML Kit del proceso principal. El servicio lo inicializa una vez en ese proceso, antes de crear clientes de idioma o traducción. Se refresca el aviso al volver del juego y se distingue falta de texto, preparación de idioma, fallo y aciertos de memoria. La prueba en la Thor está pendiente de repetir con el APK nuevo.

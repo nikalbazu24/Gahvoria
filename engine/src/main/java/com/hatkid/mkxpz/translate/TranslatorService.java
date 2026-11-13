@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.common.MlKit;
 import com.google.mlkit.common.model.DownloadConditions;
 import com.google.mlkit.nl.languageid.LanguageIdentification;
 import com.google.mlkit.nl.languageid.LanguageIdentifier;
@@ -58,7 +59,11 @@ public final class TranslatorService
     private volatile boolean mRunning;
     private int mDone;
 
-    // ML Kit state (only used by the thread)
+    // ML Kit has a separate runtime in the game's Android process.
+    private static boolean sMlKitInitialized;
+
+    // ML Kit client state (only used by the thread)
+    private final Context mContext;
     private Translator mTranslator;
     private String mTranslatorSource = "";
     private Task<Void> mModelDownload;
@@ -69,6 +74,7 @@ public final class TranslatorService
 
     public TranslatorService(Context context, File dir, String provider, String target, String key)
     {
+        mContext = context.getApplicationContext();
         String tag = target == null ? "" : target.toLowerCase(Locale.ROOT);
         mTarget = tag.matches("[a-z]{2,3}(-[a-z0-9]{2,8}){0,3}") ? tag : "es";
         mFile = new File(dir, mTarget + ".tsv");
@@ -154,8 +160,11 @@ public final class TranslatorService
             Log.w(TAG, "Translation storage unavailable", failure);
             status(friendly(failure));
         } finally {
-            if (mTranslator != null) mTranslator.close();
-            if (mIdentifier != null) mIdentifier.close();
+            try {
+                if (mTranslator != null) mTranslator.close();
+            } finally {
+                if (mIdentifier != null) mIdentifier.close();
+            }
         }
     }
 
@@ -181,7 +190,10 @@ public final class TranslatorService
             else cached.put(original, translation);
         }
         TranslationMemory.append(responses, cached, false);
-        if (missing.isEmpty()) return;
+        if (missing.isEmpty()) {
+            if (!cached.isEmpty()) status("Usando la memoria de traducción del juego");
+            return;
+        }
         if (PROVIDER_DEEPL.equals(mProvider) && mKey.isEmpty()) {
             status("Falta la clave de DeepL. La memoria del juego sigue disponible.");
             return;
@@ -192,16 +204,37 @@ public final class TranslatorService
         Map<String, String> answers = TranslationBatch.translate(missing, provider);
         memory.remember(answers);
         TranslationMemory.append(responses, answers, false);
+        int translated = 0;
         for (Map.Entry<String, String> answer : answers.entrySet()) {
-            if (!answer.getKey().equals(answer.getValue())) mDone++;
+            if (!answer.getKey().equals(answer.getValue())) translated++;
         }
-        status("Traducidas " + mDone + " frases");
+        mDone += translated;
+        if (translated > 0) {
+            status("Traducidas " + mDone + " frases");
+        } else if (answers.isEmpty()) {
+            status("Recibí texto del juego, pero no salió una traducción válida");
+        } else {
+            status("Recibí texto del juego, pero quedó en el idioma original");
+        }
     }
 
     // ---------------------------------------------------------------- ML Kit
 
+    // ML Kit's default initializer only runs in the main process. GameActivity runs in :game.
+    private static synchronized void initializeMlKit(Context context)
+    {
+        if (sMlKitInitialized) return;
+        MlKit.initialize(context);
+        sMlKitInitialized = true;
+    }
+
     private List<String> mlkit(List<String> originals, List<String> texts) throws Exception
     {
+        try {
+            initializeMlKit(mContext);
+        } catch (RuntimeException failure) {
+            throw new IOException("No se pudo iniciar el traductor del teléfono", failure);
+        }
         String source = chooseSource(originals);
         List<String> out = new ArrayList<>();
         String sourceTag = TranslateLanguage.fromLanguageTag(source);
@@ -229,6 +262,7 @@ public final class TranslatorService
             mModelDownload = null;
             throw new IOException("No se pudo descargar el modelo de idioma", failure);
         }
+        int failures = 0;
         for (String t : texts) {
             try {
                 Task<String> task = mTranslator.translate(t);
@@ -236,9 +270,11 @@ public final class TranslatorService
             } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
                 Log.w(TAG, "ML Kit could not translate a phrase", failure);
                 out.add(null);
+                failures++;
                 mModelDownload = null;
             }
         }
+        if (failures == texts.size()) throw new IOException("El modelo de idioma no pudo traducir el texto. Reintentando.");
         return out;
     }
 
@@ -332,7 +368,11 @@ public final class TranslatorService
     {
         String all = e.getClass().getSimpleName() + " " + e.getMessage() + " " + (e.getCause() == null ? "" : e.getCause().getMessage());
         String low = all.toLowerCase(Locale.ROOT);
-        if (low.contains("preparando el idioma")) return e.getMessage();
+        if (low.contains("preparando el idioma")) return "Preparando el idioma. La primera descarga necesita conexión.";
+        if ("No se pudo iniciar el traductor del teléfono".equals(e.getMessage())) return e.getMessage();
+        if ("No se pudo descargar el modelo de idioma".equals(e.getMessage()))
+            return "No pude descargar el modelo de idioma. Revisa la conexión y vuelve a abrir el juego.";
+        if (low.contains("el modelo de idioma no pudo traducir")) return e.getMessage();
         if (low.contains("mlkitexception") || low.contains("google play") || low.contains("gms"))
             return "El traductor del teléfono falló. Revisa la conexión para descargar el modelo de idioma.";
         if (low.contains("timeout") || low.contains("unknownhost") || low.contains("unable to resolve"))
