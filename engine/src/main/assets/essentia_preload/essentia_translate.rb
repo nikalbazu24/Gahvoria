@@ -2,17 +2,15 @@
 #
 # Automatic translation of supported game dialogue (optional, per game).
 # The game's texts go through Pokémon Essentials' message system; here they
-# are looked up in a translations file kept by Essentia. Texts not translated
-# yet are asked for (Essentia translates them in the background: official
-# Pokémon names from a glossary, the rest with the translation service).
-# Dialogue waits a moment for its translation; menus show the original until
-# theirs arrives. Works with both Ruby engines (no newer Ruby syntax here).
+# are sent to Gahvoria's background worker, which checks the durable memory
+# before consulting a provider. Ruby reads validated answers for this session.
+# Dialogue has a short wait budget; menus always return immediately.
 
 module EssentiaTranslate
   FILE = ENV['ESSENTIA_TR_FILE'].to_s
   REQ = ENV['ESSENTIA_TR_REQ'].to_s
   @map = {}
-  @done = {}
+  @displaying = []
   @pending = {}
   @queue = []
   @sequence = 0
@@ -20,6 +18,10 @@ module EssentiaTranslate
   @last_load = 0
   @pos = 0
   @frame = 0
+  MAX_BATCH = 8
+  MAX_SESSION_ENTRIES = 4096
+  MAX_REQUEST_FILES = 128
+  RETRY_SECONDS = 18
   @hooked = {}
   @originals = []
 
@@ -43,54 +45,67 @@ module EssentiaTranslate
       s.gsub('\\') { '\\\\' }.gsub("\n", '\\n').gsub("\t", '\\t').gsub("\r", '\\r')
     end
 
-    # New lines of the translations file (Essentia appends to it)
+    # Read only complete replies. Java appends to this session file.
     def load_new
       return if FILE.empty? || !File.exist?(FILE)
       size = File.size(FILE)
-      @pos = 0 if size < @pos
+      if size < @pos
+        @pos = 0
+        @map.clear
+      end
       return if size == @pos
-      data = File.open(FILE, 'rb') { |f| f.seek(@pos); f.read }
+      data = File.open(FILE, 'rb') { |f| f.seek(@pos); f.read(512 * 1024) }
+      return if data.nil?
       last = data.rindex("\n")
       return unless last
       @pos += last + 1
       data[0, last].split("\n").each do |line|
         a, b = line.split("\t", 2)
-        next if b.nil? || a.nil? || a.empty?
+        next if b.nil? || a.nil? || a.empty? || b.empty?
         o = unesc(a)
         t = unesc(b)
+        next if t.respond_to?(:valid_encoding?) && (!o.valid_encoding? || !t.valid_encoding?)
         @pending.delete(o)
+        @map.delete(o)
+        @map.shift if @map.size >= MAX_SESSION_ENTRIES
         @map[o] = t
-        @done[t] = true
       end
-    rescue Exception
+    rescue StandardError
     end
 
     def request(text)
       return false if REQ.empty? || (text.respond_to?(:bytesize) ? text.bytesize : text.size) > 9000
       now = Time.now.to_f
-      return false if @pending[text] && now - @pending[text] < 18
-      @pending.delete_if { |_key, stamp| now - stamp >= 18 } if @pending.size >= 512
+      return false if @pending[text] && now - @pending[text] < RETRY_SECONDS
+      @pending.delete_if { |_key, stamp| now - stamp >= RETRY_SECONDS } if @pending.size >= 512
       return false if @pending.size >= 512
       @pending[text] = now
       @queue << text
-      flush if @queue.size >= 16 || now - @last_flush >= 0.25
+      return flush if @queue.size >= MAX_BATCH || now - @last_flush >= 0.25
       true
     rescue StandardError
       false
     end
 
     def flush
-      return if @queue.empty? || REQ.empty?
+      return true if @queue.empty?
+      return false if REQ.empty?
+      if Dir.glob(File.join(REQ, '*.req')).size >= MAX_REQUEST_FILES
+        @queue.each { |text| @pending.delete(text) }
+        @queue.clear
+        return false
+      end
       @sequence += 1
       name = "%s/%010d" % [REQ, @sequence]
       File.open(name + ".tmp", 'wb') { |f| @queue.each { |text| f.write(esc(text) + "\n") } }
       File.rename(name + ".tmp", name + ".req")
       @queue.clear
       @last_flush = Time.now.to_f
+      true
     rescue StandardError
-      # Allow a later lookup to retry if the mailbox is temporarily unavailable.
       @queue.each { |text| @pending.delete(text) }
       @queue.clear
+      false
     end
 
     def load_if_due
@@ -102,22 +117,30 @@ module EssentiaTranslate
 
     def lookup(text, wait = 0)
       return text unless text.is_a?(String) && !text.empty?
+      return text if text.instance_variable_get(:@gahvoria_translated)
       return text unless text =~ /[A-Za-z]/ || (text.respond_to?(:ascii_only?) ? !text.ascii_only? : text.unpack('C*').any? { |byte| byte >= 128 })
       load_if_due
-      return @map[text] if @map.has_key?(text)
-      return text if @done[text]
-      if request(text) && wait > 0
-        flush
+      return translated_copy(text) if @map.has_key?(text)
+      return text if REQ.empty? || FILE.empty?
+      request(text)
+      if @pending[text] && wait > 0 && flush
         deadline = Time.now + wait
         while Time.now < deadline
           sleep(0.04)
           load_new
-          return @map[text] if @map.has_key?(text)
+          return translated_copy(text) if @map.has_key?(text)
         end
       end
       text
     rescue StandardError
       text
+    end
+
+    # Preserve provenance when the same String flows through _INTL and a display hook.
+    def translated_copy(text)
+      result = @map[text].dup
+      result.instance_variable_set(:@gahvoria_translated, true)
+      result
     end
 
     # Kinds of names that stay as they are (Pokémon, trainers)
@@ -143,8 +166,14 @@ module EssentiaTranslate
         if args[argument].is_a?(Array)
           args[argument] = args[argument].map { |text| lookup(text) }
         end
-      elsif args.length > argument
+      elsif args.length > argument && !@displaying.include?(args[argument])
         args[argument] = lookup(args[argument], wait)
+        @displaying << args[argument]
+        begin
+          return original.bind(receiver).call(*args, &block)
+        ensure
+          @displaying.pop
+        end
       end
       original.bind(receiver).call(*args, &block)
     end
@@ -195,8 +224,8 @@ module EssentiaTranslate
       return if @installing
       @installing = true
       begin
-        wrap_top(:pbMessage, 0, 2.0, :message)
-        wrap_top(:pbMessageDisplay, 1, 2.0, :message)
+        wrap_top(:pbMessage, 0, 0.35, :message)
+        wrap_top(:pbMessageDisplay, 1, 0.35, :message)
         wrap_top(:pbShowCommands, 1, 0, :commands)
         wrap_messages
       ensure
@@ -215,26 +244,28 @@ module EssentiaTranslate
   end
 end
 
-EssentiaTranslate.load_new
-EssentiaTranslate.install
+unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
+  EssentiaTranslate.load_new
+  EssentiaTranslate.install
 
-class << Object
-  alias_method :essentia_translation_method_added, :method_added
-  def method_added(name)
-    essentia_translation_method_added(name)
-    case name.to_s
-    when 'pbMessage', 'pbMessageDisplay', 'pbShowCommands'
-      EssentiaTranslate.install
+  class << Object
+    alias_method :essentia_translation_method_added, :method_added
+    def method_added(name)
+      essentia_translation_method_added(name)
+      case name.to_s
+      when 'pbMessage', 'pbMessageDisplay', 'pbShowCommands'
+        EssentiaTranslate.install
+      end
     end
   end
-end
 
-module Graphics
-  class << self
-    alias_method :essentia_tr_original_update, :update
-    def update(*args)
-      essentia_tr_original_update(*args)
-      EssentiaTranslate.tick
+  module Graphics
+    class << self
+      alias_method :essentia_tr_original_update, :update
+      def update(*args)
+        essentia_tr_original_update(*args)
+        EssentiaTranslate.tick
+      end
     end
   end
 end

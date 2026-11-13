@@ -134,7 +134,7 @@ fun GameScreen(s: AppState, g: Game) {
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Traducir este juego",
                         if (!s.translateOn) "Primero activa «Traducir mientras juegas» en Ajustes → Traducción."
-                        else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "Falta tu clave de DeepL en Ajustes → Traducción."
+                        else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "La memoria del juego sigue disponible. Agrega tu clave de DeepL para traducir frases nuevas."
                         else "Traduce el texto del juego al idioma elegido. Las frases quedan guardadas para la próxima vez. No traduce texto dibujado en imágenes.",
                         role = Role.Switch, onClick = { s.setTranslateGame(g, !tr); rev++ }) { Toggle(tr) }
                 }
@@ -545,7 +545,7 @@ private fun SecContent(s: AppState, sec: Sec) {
                         RowItem("En el teléfono (gratis)", "Traductor de Google sin conexión. Baja un paquete de idioma la primera vez (necesita Internet). Calidad modesta.",
                             role = Role.RadioButton, onClick = { s.chooseTranslateProvider("mlkit") }) { Radio(s.translateProvider == "mlkit") }
                         Divider()
-                        RowItem("DeepL con tu propia clave", "Mejor calidad. La clave y el gasto son tuyos; Gahvoria no incluye ninguna.",
+                        RowItem("DeepL con tu propia clave", "Usa tu clave y la cuota de tu cuenta de DeepL.",
                             role = Role.RadioButton, onClick = { s.chooseTranslateProvider("deepl") }) { Radio(s.translateProvider == "deepl") }
                         if (s.translateProvider == "deepl") {
                             Divider()

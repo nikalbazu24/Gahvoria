@@ -208,25 +208,26 @@ public class GameActivity extends SDLActivity
     /** When this game is set to be translated, tells the Ruby side where the translations live and starts the translator. */
     private void startTranslator(Intent i) throws Exception
     {
+        setenv("ESSENTIA_TR_FILE", "");
+        setenv("ESSENTIA_TR_REQ", "");
         String dir = i.getStringExtra(EXTRA_TR_DIR);
-        if (dir == null || dir.isEmpty()) {
-            setenv("ESSENTIA_TR_FILE", "");
-            setenv("ESSENTIA_TR_REQ", "");
+        if (dir == null || dir.isEmpty()) return;
+        File folder = new File(dir);
+        if (!folder.mkdirs() && !folder.isDirectory()) {
+            Log.w(TAG, "Could not create the translation directory");
             return;
         }
-        File folder = new File(dir);
-        //noinspection ResultOfMethodCallIgnored
-        folder.mkdirs();
         mTranslator = new com.hatkid.mkxpz.translate.TranslatorService(this, folder,
             i.getStringExtra(EXTRA_TR_PROVIDER), i.getStringExtra(EXTRA_TR_TARGET), i.getStringExtra(EXTRA_TR_KEY));
-        setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
-        setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
-        mTranslator.start();
-        String p = i.getStringExtra(EXTRA_TR_PROVIDER);
-        if ((p == null || "mlkit".equals(p)) && !com.hatkid.mkxpz.translate.TranslatorService.mlkitAvailable(this)) {
-            // Handhelds without Google Play services: tell the player once the game is on screen.
-            new Handler(Looper.getMainLooper()).postDelayed(() ->
-                notice("El traductor del teléfono necesita servicios de Google, que este equipo no tiene. Usa DeepL en Ajustes → Traducción.", mLook.warn), 6000);
+        try {
+            mTranslator.start();
+            setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
+            setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
+        } catch (Exception failure) {
+            mTranslator.stop();
+            setenv("ESSENTIA_TR_FILE", "");
+            setenv("ESSENTIA_TR_REQ", "");
+            Log.w(TAG, "Could not start the optional translator", failure);
         }
     }
 
@@ -630,6 +631,7 @@ public class GameActivity extends SDLActivity
     protected void onDestroy()
     {
         if (mTrust != null) mTrust.cancel(true);
+        if (mTranslator != null) mTranslator.stop();
         super.onDestroy();
         // Ruby cannot start again in the same process: end it together with the game.
         System.exit(0);

@@ -72,3 +72,7 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - Error corregido: `essentia_games.rb` usaba `%i[]` y el motor clásico (Ruby 1.8.7) paraba con SyntaxError (Solar Eclipse, 0.1.30). Una prueba revisa que los scripts que carga el clásico no tengan sintaxis moderna.
 - Insurgence (motor moderno): `String can't be coerced into Integer` en `fgetdw` → `each_byte`. Hipótesis, sin confirmar: el juego lee bytes como texto UTF-8 y `essentia_single_byte` falla con un carácter de varios bytes. El error ahora dice cuántos bytes, qué codificación y los primeros bytes del texto, para decidirlo con el próximo informe.
 - Instalar un .zip/.7z/.rar: hilo propio (ya no el hilo compartido), servicio en primer plano con notificación de progreso (`InstallService`) y aviso de progreso en todas las pantallas. Se puede salir de la app. No hay botón de cancelar todavía.
+
+## Gahvoria Neural AI (experimental)
+
+La auditoría, la primera reparación del traductor y el plan del modelo local están en [Gahvoria Neural AI](NEURAL_AI.md).
