@@ -13,6 +13,20 @@ data class Diagnosis(val title: String, val detail: String, val fix: Fix, val ca
  */
 object ErrorDiagnosis {
 
+    /**
+     * True when the error is the classic clash between Ruby versions (a byte read as a number, text and numbers mixed, syntax or
+     * constants of the other Ruby), which the other engine usually avoids. [modernEngine] is the engine that failed.
+     */
+    fun engineClash(text: String, modernEngine: Boolean): Boolean {
+        val low = text.lowercase()
+        return if (modernEngine)
+            listOf("no implicit conversion of integer into string", "no implicit conversion of string into integer", "can't be coerced into",
+                "comparison of integer with string", "comparison of string with integer", "undefined method `ord'").any { low.contains(it) }
+        else
+            listOf("syntaxerror", "compile error", "uninitialized constant encoding", "undefined method `force_encoding'", "undefined method `each_char'",
+                "undefined method `unpack1'", "unknown type of %string").any { low.contains(it) }
+    }
+
     fun diagnose(text: String, modernEngine: Boolean, classicAvailable: Boolean): Diagnosis {
         val where = scriptAndLine(text)
         val low = text.lowercase()

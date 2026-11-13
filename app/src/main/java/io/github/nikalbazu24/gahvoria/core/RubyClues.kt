@@ -9,7 +9,7 @@ package io.github.nikalbazu24.gahvoria.core
  *
  * Each clue is a short phrase naming what was found and where, to show the player why an engine was chosen.
  */
-data class RubyClues(val modern: List<String>, val classic: List<String>) {
+data class RubyClues(val modern: List<String>, val classic: List<String>, val soft: List<String> = emptyList()) {
     companion object {
         val NONE = RubyClues(emptyList(), emptyList())
 
@@ -17,6 +17,10 @@ data class RubyClues(val modern: List<String>, val classic: List<String>) {
             "%i[ ]" to Regex("""(?<![\w%])%[iI][\[({<]"""),
             "-> (lambda)" to Regex("""(?:=|,|\()\s*->\s*[({|\w]"""),
             "&. (navegación segura)" to Regex("""\w&\.\w"""),
+        )
+
+        /** Only fail when that line runs, and games often guard them ("if defined?(Encoding)"): a hint, not proof. */
+        private val SOFT = listOf(
             "Encoding::" to Regex("""\bEncoding::\w+|\bEncoding\.default_"""),
             "require_relative" to Regex("""\brequire_relative\b"""),
             "each_with_object" to Regex("""\.each_with_object\b"""),
@@ -28,7 +32,7 @@ data class RubyClues(val modern: List<String>, val classic: List<String>) {
             "KCODE" to Regex("""[$]KCODE"""),
             "getc como número" to Regex("""\.getc\b"""),
             "each_byte propio" to Regex("""\bdef\s+each_byte\b"""),
-            "lectura de bytes (fgetdw)" to Regex("""\bdef\s+fgetdw\b"""),
+            "lectura de bytes (fgetb / fgetw / fgetdw)" to Regex("""\bdef\s+fget(?:b|w|dw)\b"""),
             "Fixnum / Bignum" to Regex("""\b(?:Fixnum|Bignum)\b"""),
         )
 
@@ -36,14 +40,16 @@ data class RubyClues(val modern: List<String>, val classic: List<String>) {
         fun scan(sections: List<Pair<String, String?>>): RubyClues {
             val modern = LinkedHashMap<String, String>()
             val classic = LinkedHashMap<String, String>()
+            val soft = LinkedHashMap<String, String>()
             for ((name, code) in sections) {
                 if (code == null) continue
                 val body = code.lineSequence().filter { !it.trimStart().startsWith("#") }.joinToString("\n")
                 for ((label, re) in MODERN) if (label !in modern && re.containsMatchIn(body)) modern[label] = name
+                for ((label, re) in SOFT) if (label !in soft && re.containsMatchIn(body)) soft[label] = name
                 for ((label, re) in CLASSIC) if (label !in classic && re.containsMatchIn(body)) classic[label] = name
             }
             fun show(m: Map<String, String>) = m.map { (label, where) -> "$label (en «${where.ifBlank { "sin nombre" }}»)" }
-            return RubyClues(show(modern), show(classic))
+            return RubyClues(show(modern), show(classic), show(soft))
         }
     }
 }

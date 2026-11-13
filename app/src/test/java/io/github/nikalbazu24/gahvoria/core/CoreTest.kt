@@ -522,6 +522,9 @@ class CoreTest {
             "Settings" to "ESSENTIALS_VERSION = \"17.2\"", "PScreen_Load" to null))
         assertTrue(withMkxp.modernOnly)
         assertEquals(Game.ENGINE_MODERN, withMkxp.recommendedEngine)
+        // an old game that also mentions modern Ruby (guarded) but reads bytes as numbers: classic
+        val both = GameProfile.parse(listOf("MKXP" to "Encoding.default_internal = Encoding::UTF_8", "PBStruct" to "def fgetb(file)\nend"))
+        assertEquals(Game.ENGINE_CLASSIC, both.recommendedEngine)
     }
 
     @Test fun theCheckNamesTheMissingDataFiles() {
@@ -633,5 +636,15 @@ class CoreTest {
         assertEquals(listOf("Animations", "Tilesets", "CommonEvents"), GameCheck.missingData(g))
         for (n in listOf("Animations", "Tilesets", "CommonEvents")) File(g, "Data/$n.rxdata").writeText("x")
         assertTrue(GameCheck.missingData(g).isEmpty())
+    }
+
+    @Test fun aClashBetweenRubyVersionsIsToldFromOtherErrors() {
+        val opalo = "Script 'PBExperience' line 119: TypeError occured.\nno implicit conversion of Integer into String"
+        assertTrue(ErrorDiagnosis.engineClash(opalo, modernEngine = true))
+        assertTrue(ErrorDiagnosis.engineClash("String can't be coerced into Integer (TypeError)", modernEngine = true))
+        assertTrue(!ErrorDiagnosis.engineClash(opalo, modernEngine = false))
+        assertTrue(ErrorDiagnosis.engineClash("compile error\n%i[a]: unknown type of %string", modernEngine = false))
+        assertTrue(!ErrorDiagnosis.engineClash("undefined method `foo' for nil:NilClass", modernEngine = true))
+        assertTrue(!ErrorDiagnosis.engineClash("No such file or directory - Data/Animations.rxdata", modernEngine = true))
     }
 }
