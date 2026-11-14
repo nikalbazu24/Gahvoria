@@ -45,6 +45,9 @@ object ErrorDiagnosis {
             modernEngine && classicAvailable && (low.contains("syntaxerror") || low.contains("marshal") || low.contains("dump format error") || low.contains("incompatible")) ->
                 Diagnosis("Este juego parece necesitar el motor clásico", "El juego usa algo de Ruby antiguo que el motor moderno no entiende" + (where?.let { " (" + it + ")" } ?: "") + ".",
                     Fix.CLASSIC_ENGINE, "Sí, probando otro motor", "Puedo reintentar con el motor clásico. Tus partidas no se tocan.")
+            low.contains("fallo nativo") || low.contains("fallo del código nativo del motor") ->
+                Diagnosis("El juego sufrió un fallo nativo", text.substringAfter("inesperada.").trim(), Fix.NONE,
+                    "Requiere diagnóstico", "Envía el informe si se repite. La traza de Android ayuda a localizar el componente que falló.")
             low.contains("terminó de forma inesperada") ->
                 Diagnosis("El juego se cerró de golpe", text.substringAfter("inesperada.").trim().ifEmpty { "Android cerró el proceso del juego sin que el juego dejara un error." },
                     Fix.TRY_AGAIN, "Puede ayudar", "Cierra otras apps y vuelve a abrirlo. Si se repite, envía el informe: dice por qué lo cerró Android.")

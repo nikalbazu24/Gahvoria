@@ -18,6 +18,7 @@ class Bitmap
   def initialize(*args)
     @source = args[0] if args.size == 1
     @width, @height = @source ? (@source.end_with?('start.png') ? [512, 44] : [512, 384]) : args
+    @width, @height = 260, 414 if @source == 'Graphics/Pictures/Battle/battleCommandButtons.png'
     @font = Font.new
     @drawn = []
   end
@@ -191,6 +192,40 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     assert_equal('{2} de {1}', MessageTypes.getFromHash(0, "{1}'s {2}"))
     assert_equal('Nv.35', EssentiaTranslate.lookup('Lv35'))
     assert_equal('Arraigo', EssentiaTranslate.lookup('Ingrain'))
+    assert_equal('¿Qué hará {1}?', MessageTypes.getFromHash(0, "What will\n{1} do?"))
+    assert_equal('¡{1} usó {2}!', MessageTypes.getFromHash(0, "{1} used\r\n{2}!"))
+    assert_equal('¡{1} ganó 2 por el combate!', MessageTypes.getFromHash(0, "{1} got 2\r\nfor winning!"))
+    assert_equal("PS máx.<r>+{1}\r\nAtaque<r>+{2}\r\nDef. Esp.<r>+{3}",
+                 MessageTypes.getFromHash(0, "Max. HP<r>+{1}\r\nAttack<r>+{2}\r\nSp. Def<r>+{3}"))
+    assert_equal("Bueno, Nico… ¿qué te parece un combate?\1",
+                 EssentiaTranslate.message_text("Sooo, Nico... whaddya say to a battle?\1", 0))
+    assert_equal('Litten', EssentiaTranslate.reborn_dialogue('AME: So, you want Litten, the Fire Cat Pokémon?')[/Litten/])
+    class PokeBattle_Move
+      attr_reader :name
+      def initialize(move, name); @move, @name = move, name; end
+      def getMoveUseName; @name; end
+    end
+    class PokemonDataBox
+      def initialize(name); @battler = Struct.new(:name).new(name); end
+      def refresh(bitmap)
+        pbDrawTextPositions(bitmap, [[@battler.name], ['Lv5']])
+      end
+    end
+    def pbGetMapNameFromId(id)
+      id == 29 ? 'Opal Ward' : 'Other map'
+    end
+    EssentiaTranslate.install
+    assert_equal('Burbuja', PokeBattle_Move.new(:BUBBLE, 'Bubble').getMoveUseName)
+    assert_equal('Destructor', PokeBattle_Move.new(:POUND, 'Pound').name)
+    assert_equal('Custom Pound', PokeBattle_Move.new(:POUND, 'Custom Pound').name)
+    assert_equal('Barrio Ópalo', pbGetMapNameFromId(29))
+    File.open(answers, 'ab') { |f| f.write("Froakie\t¿Froakie\n") }
+    EssentiaTranslate.load_new
+    battlebox = Bitmap.new(250, 96)
+    PokemonDataBox.new('Froakie').refresh(battlebox)
+    assert_equal(['Froakie', 'Nv.5'], battlebox.drawn)
+    buttons = Bitmap.new('Graphics/Pictures/Battle/battleCommandButtons.png')
+    assert_equal(['LUCHAR', 'LUCHAR', 'BOLSA', 'BOLSA', 'HUIR', 'HUIR'], buttons.drawn[0, 6])
     assert_equal('{1} - Pokémon {2}', MessageTypes.getFromHash(0, '{1} - {2} Pokémon'))
     {
       '{1:s} (M, Lv{2:d})' => 'Pikachu (M, Nv.12)',

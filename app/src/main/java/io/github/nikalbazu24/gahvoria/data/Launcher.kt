@@ -70,7 +70,7 @@ object Launcher {
             android.app.ApplicationExitInfo.REASON_SIGNALED -> "lo terminó una señal del sistema"
             android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "el sistema lo cerró por poca memoria"
             android.app.ApplicationExitInfo.REASON_CRASH -> "excepción de Java"
-            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo del código nativo del motor"
+            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo nativo en el proceso del juego"
             android.app.ApplicationExitInfo.REASON_ANR -> "dejó de responder"
             android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "usó demasiados recursos"
             android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "lo cerraste tú"
@@ -85,7 +85,19 @@ object Launcher {
             else -> false
         }
         if (!abnormal) return null
-        return "Android dice: $reason (estado ${i.status}). ${i.description.orEmpty()} Memoria al cerrar: ${i.pss / 1024} MB (RSS ${i.rss / 1024} MB)."
+        val trace = if (android.os.Build.VERSION.SDK_INT >= 31 && i.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            runCatching { i.traceInputStream?.use(NativeCrashTrace::read) }.getOrNull()
+        } else null
+        val memory = listOfNotNull(
+            "PSS ${i.pss / 1024} MB".takeIf { i.pss > 0 },
+            "RSS ${i.rss / 1024} MB".takeIf { i.rss > 0 }
+        ).joinToString(", ")
+        return buildString {
+            append("Android dice: $reason (estado ${i.status}).")
+            i.description?.takeIf { it.isNotBlank() }?.let { append(" $it") }
+            if (memory.isNotEmpty()) append("\nÚltima medición de memoria: $memory.")
+            if (trace != null) append("\n$trace")
+        }
     }
 
     /** The other engine, or null when it is not in this APK. */

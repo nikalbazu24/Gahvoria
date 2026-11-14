@@ -75,8 +75,21 @@ module EssentiaTranslate
     '{1:s} (F, Lv{2:d})' => '{1:s} (F, Nv.{2:d})',
     '{1:s} (Lv{2:d})' => '{1:s} (Nv.{2:d})',
     'Occa Berries' => 'Bayas Caoca',
-    'Maranga Berries' => 'Bayas Maranga'
+    'Maranga Berries' => 'Bayas Maranga',
+    'What will {1} do?' => '¿Qué hará {1}?',
+    '{1} used {2}!' => '¡{1} usó {2}!',
+    '{1} grew to Level {2}!' => '¡{1} subió al nivel {2}!',
+    '{1} got 2 for winning!' => '¡{1} ganó 2 por el combate!',
+    '{1} would like to battle!' => '¡{1} quiere combatir!',
+    '{1:s}PP: ---<br>TYPE/{2:s}' => '{1:s}PP: ---<br>TIPO/{2:s}',
+    '{1:s}PP: {2: 2d}/{3: 2d}<br>TYPE/{4:s}' => '{1:s}PP: {2: 2d}/{3: 2d}<br>TIPO/{4:s}'
   }
+  REBORN_MOVES = { :POUND => 'Destructor', :GROWL => 'Gruñido', :BUBBLE => 'Burbuja' }
+  REBORN_MOVE_NAMES = { :POUND => 'Pound', :GROWL => 'Growl', :BUBBLE => 'Bubble' }
+  REBORN_MAP_NAMES = { 'Lower Peridot Ward' => 'Barrio Peridoto Bajo', 'Opal Ward' => 'Barrio Ópalo' }
+  REBORN_COMMAND_LABELS = ['LUCHAR', 'PKMN', 'BOLSA', 'HUIR', 'LLAMAR', 'BOLA', 'ROCA', 'CEBO', 'BOLA']
+  REBORN_STATS = { 'Max. HP' => 'PS máx.', 'Attack' => 'Ataque', 'Defense' => 'Defensa',
+                   'Sp. Atk' => 'At. Esp.', 'Sp. Def' => 'Def. Esp.', 'Speed' => 'Velocidad' }
   # Some catalog entries are display formats, with no words to translate.
   QUANTITY_FORMAT = /\Ax?\{\d+:[ 0-9]*d\}(?:\/\{\d+:[ 0-9]*d\})?\z/
   FORMATTED_NUMBER = /\Ax? *\d+(?:\/ *\d+)?\z/
@@ -125,6 +138,9 @@ module EssentiaTranslate
     'A game by' => 'Un juego de',
     'Press any key' => 'Pulsa cualquier tecla',
     'Continue' => 'Continuar',
+    'Fight' => 'Luchar',
+    'Bag' => 'Bolsa',
+    'Run' => 'Huir',
     'New Game' => 'Nueva partida',
     'Options' => 'Opciones',
     'Settings' => 'Ajustes',
@@ -142,7 +158,9 @@ module EssentiaTranslate
     'Yes' => 'Sí',
     'No' => 'No',
     'Badges:' => 'Medallas:',
+    'Badges' => 'Insignias',
     'Time:' => 'Tiempo:',
+    'Time' => 'Tiempo',
     'Text Speed' => 'Velocidad de texto',
     'Battle Effects' => 'Efectos de combate',
     'Battle Style' => 'Estilo de combate',
@@ -465,8 +483,30 @@ module EssentiaTranslate
     def gameplay_label(text)
       return nil unless SPANISH
       label = SPANISH_GAMEPLAY_TEXT[text]
+      label ||= SPANISH_GAMEPLAY_TEXT[text.gsub(/\s+/, ' ')] if text.index('{')
       label ||= 'Nv.' + $1 if LEVEL_NUMBER.match(text)
+      if !label && REBORN && text.start_with?('Max. HP<r>') && text.include?('Sp. Def<r>')
+        label = text.gsub(/(?:Max\. HP|Attack|Defense|Sp\. Atk|Sp\. Def|Speed)(?=<r>)/) { |stat| REBORN_STATS.fetch(stat) }
+      end
       label
+    end
+
+    def reborn_dialogue(source)
+      return nil unless REBORN && source.size <= 512
+      case source
+      when /\AWhat will\s+(.+?) do\?\z/
+        "¿Qué hará #{$1}?"
+      when /\A(?:Pretty Boy Cain\s+would like to battle!|¡Pretty Boy Cain quiere combatir!)\z/
+        '¡El chico guapo Cain quiere combatir!'
+      when /\AAME: So, you want Litten, the Fire Cat Pokémon\?\z/i
+        'AMÉ: Entonces, ¿quieres a Litten, el Pokémon Gato Fuego?'
+      when /\AVICTORIA: (.+?) can go ahead of me; I don't mind\.\z/i
+        "VICTORIA: #{$1} puede pasar antes que yo. No me importa."
+      when /\ASooo, (.+?)\.\.\. whaddya say to a battle\?\z/i
+        "Bueno, #{$1}… ¿qué te parece un combate?"
+      when /\ACAIN: Sorry~ I kinda stole (.+?)\.\z/i
+        "CAIN: Perdón~ Te quité a #{$1} un ratito."
+      end
     end
 
     def ui_label(text)
@@ -498,7 +538,7 @@ module EssentiaTranslate
     end
 
     def player_name?(text)
-      player_name == text
+      @protected_display_name == text || player_name == text
     end
 
     def reborn_intro_map?
@@ -598,6 +638,8 @@ module EssentiaTranslate
       return label if label
       pause = source.end_with?("\1")
       dialogue = pause ? source[0...-1] : source
+      contextual = reborn_dialogue(dialogue.strip)
+      return marked(contextual + (pause ? "\1" : '')) if contextual
       key = message_key(dialogue)
       token = PLAYER_NAME_TOKEN
       translated = lookup(key, wait)
@@ -738,6 +780,10 @@ module EssentiaTranslate
         localize_reborn_ticket(bitmap)
         return
       end
+      if REBORN && normalized =~ /\AGraphics\/Pictures\/Battle\/battleCommandButtons(?:\.png)?\z/i
+        localize_reborn_commands(bitmap)
+        return
+      end
       title_folder = normalized =~ /\AGraphics\/(?:Titles|Title|UI\/(?:Titles|Title|Title Screen))\//i
       filename = normalized.split('/').last.to_s.sub(/\.(?:png|bmp|gif|webp)\z/i, '').downcase.gsub(/[ _-]/, '')
       solar_intro = SOLAR_ECLIPSE && normalized =~ /\AGraphics\/(?:Pictures|UI|Titles?)\//i &&
@@ -785,11 +831,48 @@ module EssentiaTranslate
       end
     end
 
+    def localize_reborn_commands(bitmap)
+      return unless bitmap.width == 260 && bitmap.height == 414
+      font = bitmap.font
+      font.size = 22
+      font.bold = true
+      font.color = Color.new(248, 248, 248)
+      verbatim do
+        REBORN_COMMAND_LABELS.each_with_index do |label, row|
+          next if row == 1 # The existing Pokémon abbreviation fits both languages.
+          [0, 130].each do |column|
+            14.upto(32) do |line|
+              y = row * 46 + line
+              bitmap.fill_rect(column + 17, y, 96, 1, bitmap.get_pixel(column + 16, y))
+            end
+            bitmap.draw_text(column + 12, row * 46 + 3, 106, 40, label, 1)
+          end
+        end
+      end
+    end
+
     # ------------------------------------------------------------ hooks
 
     def invoke(index, receiver, args, block)
       original, argument, wait, kind = @originals[index]
-      if kind == :paint
+      if kind == :move_name
+        name = original.bind(receiver).call(*args, &block)
+        move = receiver.instance_variable_get(:@move)
+        return REBORN_MOVES.has_key?(move) && name == REBORN_MOVE_NAMES[move] ? marked(REBORN_MOVES[move]) : name
+      elsif kind == :map_name
+        name = original.bind(receiver).call(*args, &block)
+        label = REBORN_MAP_NAMES[name]
+        return label ? marked(label) : name
+      elsif kind == :pokemon_box || kind == :load_panel
+        previous = @protected_display_name
+        subject = receiver.instance_variable_get(kind == :pokemon_box ? :@battler : :@trainer)
+        @protected_display_name = subject.name if subject && subject.respond_to?(:name)
+        begin
+          return paint(receiver) { original.bind(receiver).call(*args, &block) }
+        ensure
+          @protected_display_name = previous
+        end
+      elsif kind == :paint
         return paint(receiver) { original.bind(receiver).call(*args, &block) }
       elsif kind == :pause_menu
         previous_menu = @pause_menu
@@ -824,7 +907,7 @@ module EssentiaTranslate
       elsif kind == :help_text
         if args[argument].is_a?(String)
           source = args[argument]
-          args[argument] = visible_label(source) || lookup(source)
+          args[argument] = message_text(source, 0)
           record_display('help', source, args[argument])
         end
       elsif kind == :layout
@@ -1000,13 +1083,29 @@ module EssentiaTranslate
       if defined?(Window_UnformattedTextPokemon)
         wrap_method(Window_UnformattedTextPokemon, :initialize, 0, 0, :help_text)
       end
-      wrap_method(PokemonLoadPanel, :refresh, 0, 0, :paint) if defined?(PokemonLoadPanel)
+      if defined?(PokemonLoadPanel)
+        wrap_method(PokemonLoadPanel, :refresh, 0, 0, :load_panel)
+      end
+      if SPANISH && REBORN
+        wrap_top(:pbGetMapNameFromId, 0, 0, :map_name)
+        wrap_method(LocationWindow, :initialize, 0, 0, :help_text) if defined?(LocationWindow)
+        wrap_method(PokemonDataBox, :refresh, 0, 0, :pokemon_box) if defined?(PokemonDataBox)
+        if defined?(PokeBattle_Move)
+          [:name, :getMoveUseName].each { |method| wrap_method(PokeBattle_Move, method, 0, 0, :move_name) }
+        end
+      end
       wrap_method(Window_PokemonOption, :refresh, 0, 0, :paint) if defined?(Window_PokemonOption)
     end
 
     def message_catalog_text(text)
       if text.is_a?(String) && !player_name?(text)
         label = gameplay_label(text)
+        if SPANISH && !label
+          pause = text.end_with?("\1")
+          body = pause ? text[0...-1] : text
+          label = reborn_dialogue(body.strip)
+          label += "\1" if label && pause
+        end
         return marked(label) if label
       end
       # Keep UI originals available for the selector or drawing hook to resolve in context.
@@ -1076,7 +1175,7 @@ unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
     alias_method :essentia_translation_method_added, :method_added
     def method_added(name)
       essentia_translation_method_added(name)
-      if name.to_s =~ /\A(?:_INTL|pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
+      if name.to_s =~ /\A(?:_INTL|pbGetMapNameFromId|pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
         EssentiaTranslate.install
       end
     end
