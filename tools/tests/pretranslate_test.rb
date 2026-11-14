@@ -43,7 +43,8 @@ $test_data = {
     Command.new(101, ['Another map.'])
   ])])}),
   'Data/CommonEvents.rxdata' => [nil, CommonEvent.new([Command.new(101, ['A common event.'])])],
-  'Data/messages.dat' => [nil, {'Original catalog entry' => 'Visible catalog entry'}]
+    'Data/messages.dat' => [nil, {'Original catalog entry' => 'Visible catalog entry',
+      ', (numbattle.to_s + ' => ', (numbattle.to_s + '}]
 }
 
 Dir.mktmpdir('gahvoria-pretranslation') do |dir|

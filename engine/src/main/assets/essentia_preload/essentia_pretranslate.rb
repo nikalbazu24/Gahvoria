@@ -1,8 +1,7 @@
 # encoding: UTF-8
 # GPL-2.0. Extract display text before the game scripts run. Never evaluate source literals.
 module GahvoriaPretranslate
-  # A quote immediately before the name can be a script searching for the call itself.
-  LITERAL = /(?<!["'])(?:\b_INTL|\b_I|\b_ISPRINTF|\bpbMessage|\bpbConfirmMessage(?:Serious)?|\bpbMessageChooseNumber|\bpbEnterPlayerName)\s*\(\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
+  LITERAL = /(?:\b_INTL|\b_I|\b_ISPRINTF|\bpbMessage|\bpbConfirmMessage(?:Serious)?|\bpbMessageChooseNumber|\bpbEnterPlayerName)\s*\(\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   SECOND_LITERAL = /(?:\b_MAPINTL|\b_MAPISPRINTF|\bpbMessageDisplay)\s*\(\s*(?:nil|[0-9]+|[A-Za-z_]\w*|\$game_map\.map_id)\s*,\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   CHOICE_LIST = /(?:\bpbShowCommands\s*\(\s*(?:nil|[A-Za-z_]\w*)\s*,\s*|\bpbMessage\s*\(\s*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')\s*,\s*)\[([^\]\r\n]{1,2048})\]/
   CHOICE_ITEM = /\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')\s*(,|\z)/
@@ -16,7 +15,7 @@ module GahvoriaPretranslate
   COMPILE_PROGRESS = /\ACompiling (?:.+ data|metadata|messages|field notes)\z/i
 
   class << self
-    def scripts(source)
+    def scripts(source, developer_labels = nil)
       return unless source.is_a?(String) && source.size <= MAX_SCRIPT_BYTES
       source = EssentiaTranslate.utf8(source.dup)
       return if source.respond_to?(:valid_encoding?) && !source.valid_encoding?
@@ -25,7 +24,13 @@ module GahvoriaPretranslate
         source.scan(pattern) do |double, single|
           offset = $~.begin(0)
           text = literal_text(double, single)
-          literals << [offset, text] if text
+          next unless text
+          # Essentials' message compiler can also mistake a quoted call name for a literal.
+          if pattern == LITERAL && offset > 0 && ['"', "'"].include?(source[offset - 1, 1])
+            developer_labels[text] = true if developer_labels
+          else
+            literals << [offset, text]
+          end
         end
       end
       literals.sort_by { |offset, _text| offset }.each { |_offset, text| yield text }
@@ -135,7 +140,7 @@ module GahvoriaPretranslate
     def script_texts(name, source, developer_labels)
       developer_script = DEVELOPER_SCRIPT.match(name)
       compiler = name.casecmp('Compiler') == 0
-      scripts(source) do |text|
+      scripts(source, developer_labels) do |text|
         if developer_script || (compiler && COMPILE_PROGRESS.match(text))
           developer_labels[text] = true
         else
