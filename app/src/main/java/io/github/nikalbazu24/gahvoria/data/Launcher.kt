@@ -122,7 +122,8 @@ object Launcher {
     }
 
     /** Opens the game; [override] forces one engine (the automatic retry). Returns the engine it started with. */
-    fun play(a: Activity, game: Game, override: String? = null, launchAt: Long = 0, skipTranslationPreparation: Boolean = false): String {
+    fun play(a: Activity, game: Game, override: String? = null, launchAt: Long = 0,
+             skipTranslationPreparation: Boolean = false, translationDiagnostics: Boolean = false): String {
         val dir = File(game.path)
         val saves = saveDir(game)
         val engine = override ?: engineFor(a, game)
@@ -138,6 +139,7 @@ object Launcher {
             Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
             .putExtra(GameActivity.EXTRA_LAUNCH_AT, launchAt)
             .putExtra(GameActivity.EXTRA_SKIP_TR_PREPARATION, skipTranslationPreparation)
+            .putExtra(GameActivity.EXTRA_TR_DIAGNOSTICS, translationDiagnostics)
             .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
             .putExtra(GameActivity.EXTRA_COVER, cover)
             .putExtra(GameActivity.EXTRA_FILTER, if (st.retro(game.path)) "crt" else "")

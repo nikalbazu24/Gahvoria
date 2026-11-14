@@ -44,6 +44,7 @@ jobs:
         run: |
           ruby tools/tests/translation_bridge_test.rb
           ruby tools/tests/translation_bridge_test.rb --disabled
+          ruby tools/tests/translation_bridge_test.rb --diagnostics
           ruby tools/tests/translation_bridge_test.rb --reborn
           timeout 15 ruby tools/tests/pretranslate_test.rb
           ruby tools/tests/reborn_discord_test.rb

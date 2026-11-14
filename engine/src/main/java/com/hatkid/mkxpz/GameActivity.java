@@ -83,6 +83,8 @@ public class GameActivity extends SDLActivity
     public static final String EXTRA_TR_PROVIDER = "gahvoria.TR_PROVIDER";
     public static final String EXTRA_TR_TARGET = "gahvoria.TR_TARGET";
     public static final String EXTRA_TR_KEY = "gahvoria.TR_KEY";
+    public static final String EXTRA_TR_DIAGNOSTICS = "gahvoria.TR_DIAGNOSTICS";
+    public static final String TRANSLATION_DIAGNOSTICS_FILE = "gameplay-translation.tsv";
     /** Picture style ("crt" = old TV lines) and the wide-screen mode value. */
     public static final String EXTRA_FILTER = "gahvoria.FILTER";
     /** Lean-back angle in degrees (0 to 60) of the experimental 2.5D / 3D effect; 0 = flat. */
@@ -242,6 +244,7 @@ public class GameActivity extends SDLActivity
         setenv("ESSENTIA_TR_FILE", "");
         setenv("ESSENTIA_TR_REQ", "");
         setenv("ESSENTIA_TR_OPENING", "");
+        setenv("ESSENTIA_TR_DIAGNOSTICS", "");
         setenv("ESSENTIA_TR_TARGET", "");
         setenv("ESSENTIA_TR_GAME", "");
         setenv("ESSENTIA_TR_PREPARE", "");
@@ -266,6 +269,15 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_TR_OPENING", mTranslator.openingPath());
             String target = i.getStringExtra(EXTRA_TR_TARGET);
             setenv("ESSENTIA_TR_TARGET", target == null ? "es" : target);
+            if (i.getBooleanExtra(EXTRA_TR_DIAGNOSTICS, false)) {
+                File report = new File(folder, TRANSLATION_DIAGNOSTICS_FILE);
+                // Truncate the previous test only after the game and translator can start.
+                try (java.io.FileOutputStream ignored = new java.io.FileOutputStream(report)) {
+                    setenv("ESSENTIA_TR_DIAGNOSTICS", report.getAbsolutePath());
+                } catch (Exception failure) {
+                    Log.w(TAG, "Could not start gameplay translation diagnostics", failure);
+                }
+            }
             setenv("ESSENTIA_TR_GAME", mTitle);
             String preparation = i.getBooleanExtra(EXTRA_SKIP_TR_PREPARATION, false) ? "" : mTranslator.preparationPath();
             if (!preparation.isEmpty()) {

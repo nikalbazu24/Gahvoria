@@ -10,6 +10,9 @@ module EssentiaTranslate
   FILE = ENV['ESSENTIA_TR_FILE'].to_s
   REQ = ENV['ESSENTIA_TR_REQ'].to_s
   OPENING = ENV['ESSENTIA_TR_OPENING'].to_s
+  DIAGNOSTICS = ENV['ESSENTIA_TR_DIAGNOSTICS'].to_s
+  DIAGNOSTIC_LIMIT = 2500
+  ENGLISH_IN_DISPLAY = /\b(?:we['’](?:ve|ll)|you['’](?:re|ll)|they['’]re|jammies|gonna|cuz)\b/i
   @map = {}
   @displaying = []
   @pending = {}
@@ -185,6 +188,8 @@ module EssentiaTranslate
   @reborn_ticket = false
   @hooked = {}
   @originals = []
+  @diagnostic_seen = {}
+  @diagnostic_rows = []
 
   class << self
     def utf8(s)
@@ -204,6 +209,53 @@ module EssentiaTranslate
 
     def esc(s)
       s.gsub('\\') { '\\\\' }.gsub("\n", '\\n').gsub("\t", '\\t').gsub("\r", '\\r')
+    end
+
+    def diagnostic_text(text)
+      value = utf8(text.dup)
+      return nil if value.respond_to?(:valid_encoding?) && !value.valid_encoding?
+      name = player_name
+      if name.is_a?(String) && !name.empty? && (!name.respond_to?(:valid_encoding?) || name.valid_encoding?)
+        value = value.gsub(/(^|[^[:alnum:]_])#{Regexp.escape(name)}(?=$|[^[:alnum:]_])/) { $1 + '{jugador}' }
+      end
+      value.gsub(/[[:cntrl:]]/, ' ').gsub(/\s+/, ' ').strip[0, 320]
+    end
+
+    def record_display(kind, source, displayed)
+      return if DIAGNOSTICS.empty? || @diagnostic_seen.size >= DIAGNOSTIC_LIMIT || @verbatim > 0
+      return unless source.is_a?(String) && displayed.is_a?(String) && source.size <= 2000 &&
+                    source =~ /[A-Za-z]{2}/ && !player_name?(source) && !display_format?(source)
+      return if kind == 'draw' && (!@displaying.empty? ||
+        (@paint_stack.empty? && source !~ /[A-Za-z]{2}.*\s+[A-Za-z]{2}/))
+      map = defined?($game_map) && $game_map
+      map_id = map.map_id if map && map.respond_to?(:map_id)
+      scene = defined?($scene) && $scene
+      scene_name = scene ? scene.class.to_s : ''
+      status = if ENGLISH_IN_DISPLAY.match(displayed)
+                 'english'
+               elsif source == displayed && !displayed.instance_variable_get(:@gahvoria_translated)
+                 'unchanged'
+               else
+                 'handled'
+               end
+      key = [kind, map_id, scene_name, source.dup, status]
+      return if @diagnostic_seen[key]
+      visible = status == 'handled' ? '' : diagnostic_text(displayed)
+      return unless visible
+      @diagnostic_seen[key] = true
+      @diagnostic_rows << [status, kind, map_id || 0, scene_name, visible].map { |field| esc(field.to_s) }.join("\t") + "\n"
+      flush_diagnostics if @diagnostic_rows.size >= 64
+    rescue StandardError
+      # Diagnostics must never interfere with rendering.
+    end
+
+    def flush_diagnostics
+      return if @diagnostic_rows.empty?
+      File.open(DIAGNOSTICS, 'ab') { |file| file.write(@diagnostic_rows.join) }
+    rescue StandardError
+      # Keep the game playable if the diagnostics directory becomes unavailable.
+    ensure
+      @diagnostic_rows.clear
     end
 
     # Read only complete replies. Java appends to this session file.
@@ -521,7 +573,9 @@ module EssentiaTranslate
       end
       choices.each_with_index.map do |text, index|
         label = glossary && glossary[normalized[index]]
-        label ? marked(label) : scene_label(text, question) || rendering_text(text, true)
+        rendered = label ? marked(label) : scene_label(text, question) || rendering_text(text, true)
+        record_display('choice', text, rendered) if @displaying.empty?
+        rendered
       end
     end
 
@@ -769,7 +823,9 @@ module EssentiaTranslate
         end
       elsif kind == :help_text
         if args[argument].is_a?(String)
-          args[argument] = visible_label(args[argument]) || lookup(args[argument])
+          source = args[argument]
+          args[argument] = visible_label(source) || lookup(source)
+          record_display('help', source, args[argument])
         end
       elsif kind == :layout
         if @verbatim == 0 && @displaying.empty?
@@ -793,6 +849,7 @@ module EssentiaTranslate
         text = args[slot]
         if text.is_a?(String) && text =~ /[A-Za-z]{2}/
           args[slot] = rendering_text(text)
+          record_display('draw', text, args[slot])
           widths = @paint_stack.empty? ? nil : @paint_stack.last[3]
           if slot == 4 && widths && text != args[slot] && widths[text] && widths[text] > 0 && args[2].is_a?(Integer)
             args[2] = args[2] > 0 ? [args[2], widths[text]].min : widths[text]
@@ -814,6 +871,7 @@ module EssentiaTranslate
             if row.is_a?(Array) && row[0].is_a?(String)
               copy = row.dup
               copy[0] = rendering_text(copy[0])
+              record_display('draw', row[0], copy[0])
               copy
             else
               row
@@ -824,6 +882,7 @@ module EssentiaTranslate
       elsif kind == :draw
         source = args[argument]
         args[argument] = rendering_text(source)
+        record_display('draw', source, args[argument])
         widths = @paint_stack.empty? ? nil : @paint_stack.last[3]
         # Option rows often advance x using a separate measurement of each value.
         # Keep that slot fixed and let RGSS fit the translated glyphs inside it.
@@ -839,6 +898,7 @@ module EssentiaTranslate
           slow = receiver.respond_to?(:letterbyletter) && receiver.letterbyletter
           source = args[argument]
           args[argument] = message_text(source, slow ? wait : 0)
+          record_display('window', source, args[argument])
           key = SPANISH && source.is_a?(String) ? message_key(source) : source
           if !slow && source.is_a?(String) && args[argument].equal?(source) && @pending[key]
             @paint_waiting.delete_if { |item| item[0].equal?(receiver) }
@@ -857,6 +917,7 @@ module EssentiaTranslate
         source = args[argument]
         outer = @displaying.empty?
         args[argument] = message_text(source, wait, outer ? scene_hint(source) : nil)
+        record_display('dialogue', source, args[argument]) if outer
         remember_scene_message(source) if outer
         previous_question = @choice_question
         @choice_question = source if outer
@@ -1000,6 +1061,7 @@ module EssentiaTranslate
       if (@frame % 15).zero?
         load_if_due
         flush
+        flush_diagnostics unless DIAGNOSTICS.empty?
       end
     end
   end

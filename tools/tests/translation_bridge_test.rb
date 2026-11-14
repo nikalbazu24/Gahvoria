@@ -83,7 +83,33 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   opening = File.join(directory, 'opening-es.txt')
   File.open(opening, 'wb') { |file| file.write("Opening greeting\tSaludo inicial\nUnfinished\tIncompleto") }
   ENV['ESSENTIA_TR_OPENING'] = opening
+  diagnostics = File.join(directory, 'gameplay-translation.tsv')
+  ENV['ESSENTIA_TR_DIAGNOSTICS'] = diagnostics if ARGV.include?('--diagnostics')
   load script
+
+  if ARGV.include?('--diagnostics')
+    $game_map = Struct.new(:map_id).new(51)
+    $scene = Object.new
+    $Trainer = Struct.new(:name).new('Nico')
+    $shown = []
+    def pbMessage(text, choices = [])
+      $shown << [text, choices]
+    end
+    pbMessage('Opening greeting', ['Save'])
+    2.times { pbMessage("We've got your passes, Nico.") }
+    pbMessage('A quiet afternoon.')
+    15.times { Graphics.update }
+    rows = File.readlines(diagnostics).map { |line| line.chomp.split("\t", -1) }
+    assert_equal([
+      ['handled', 'choice', '51', 'Object', ''],
+      ['handled', 'dialogue', '51', 'Object', ''],
+      ['english', 'dialogue', '51', 'Object', "We've got your passes, {jugador}."],
+      ['unchanged', 'dialogue', '51', 'Object', 'A quiet afternoon.']
+    ], rows)
+    assert_equal(['Saludo inicial', ['Guardar']], $shown.first)
+    puts 'Gameplay translation diagnostics checks passed'
+    exit
+  end
 
   if reborn
     module MessageTypes

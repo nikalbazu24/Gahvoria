@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hatkid.mkxpz.translate.TranslationCoverage
 import com.hatkid.mkxpz.translate.TranslationOpening
+import com.hatkid.mkxpz.GameActivity
+import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameInspector
 import io.github.nikalbazu24.gahvoria.core.Inspection
@@ -229,7 +231,8 @@ class AppState(private val activity: Activity) {
 
     // ---------------------------------------------------------------- library
 
-    fun play(game: Game, engine: String? = null, force: Boolean = false, skipTranslationPreparation: Boolean = false) {
+    fun play(game: Game, engine: String? = null, force: Boolean = false,
+             skipTranslationPreparation: Boolean = false, translationDiagnostics: Boolean = false) {
         val dir = File(game.path)
         if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
@@ -239,7 +242,8 @@ class AppState(private val activity: Activity) {
             val missing = io.github.nikalbazu24.gahvoria.core.GameCheck.missingData(dir)
             if (missing.isNotEmpty()) {
                 say("${game.title} no se abrirá: le faltan ${missing.joinToString(", ") { "$it.rxdata" }} en Data. Suele pasar si se descomprimió a medias; vuelve a instalarlo desde su archivo original.",
-                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true, skipTranslationPreparation = skipTranslationPreparation) }
+                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true,
+                        skipTranslationPreparation = skipTranslationPreparation, translationDiagnostics = translationDiagnostics) }
                 return
             }
         }
@@ -258,7 +262,7 @@ class AppState(private val activity: Activity) {
                 if (engine == null) settings.setRetried(game.path, false)
                 val status = preparationStatus(game)
                 val prepared = translateTarget == "es" && status != null && status.total > 0 && status.reviewed == status.total
-                Launcher.play(activity, game, engine, now, skipTranslationPreparation || preparing || prepared)
+                Launcher.play(activity, game, engine, now, skipTranslationPreparation || preparing || prepared, translationDiagnostics)
             }
         }, "GahvoriaPlay").start()
         selected = 0
@@ -353,6 +357,19 @@ class AppState(private val activity: Activity) {
     fun hasTranslationCatalog(g: Game) =
         File(Translations.catalog(activity, g).path + ".ready").isFile
 
+    fun testGameplayTranslation(g: Game) {
+        if (!translateOn || !translateGame(g) || translateTarget != "es") {
+            say("Activa la traducción para este juego y elige español como destino.", NoticeKind.WARN)
+            return
+        }
+        optionsFor = null
+        play(g, skipTranslationPreparation = true, translationDiagnostics = true)
+    }
+
+    fun gameplayTranslationReport(g: Game) = GameplayTranslationReport.read(
+        File(Translations.dirFor(activity, g), GameActivity.TRANSLATION_DIAGNOSTICS_FILE)
+    )
+
     fun translationCoverage(g: Game): Pair<TranslationCoverage, Boolean> {
         val base = Translations.catalog(activity, g)
         val result = TranslationCoverage.read(base)
@@ -364,6 +381,18 @@ class AppState(private val activity: Activity) {
         val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText("Frases pendientes", examples.joinToString("\n")))
         say("Ejemplos copiados.", NoticeKind.OK)
+    }
+
+    fun copyGameplayTranslationReport(report: GameplayTranslationReport) {
+        val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
+        val text = buildString {
+            appendLine("Traducción en partida")
+            appendLine(report.summary)
+            append(report.export.take(100_000))
+            if (report.export.length > 100_000) appendLine("\nInforme recortado para copiar.")
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Traducción en partida", text))
+        say("Informe copiado.", NoticeKind.OK)
     }
 
     fun prepareTranslation(g: Game) {

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.data.GameReport
+import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
 import io.github.nikalbazu24.gahvoria.core.LoadTimes
 import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
@@ -87,9 +88,20 @@ fun GameScreen(s: AppState, g: Game) {
     val c = LocalColors.current
     var tab by remember(g.path) { mutableIntStateOf(0) }
     var showCoverage by remember(g.path) { mutableStateOf(false) }
-    BackHandler { if (showCoverage) showCoverage = false else s.optionsFor = null }
+    var showGameplayReport by remember(g.path) { mutableStateOf(false) }
+    BackHandler {
+        when {
+            showCoverage -> showCoverage = false
+            showGameplayReport -> showGameplayReport = false
+            else -> s.optionsFor = null
+        }
+    }
     if (showCoverage) {
         TranslationCoveragePage(s, g) { showCoverage = false }
+        return
+    }
+    if (showGameplayReport) {
+        GameplayTranslationPage(s, g) { showGameplayReport = false }
         return
     }
     Page(g.title, onBack = { s.optionsFor = null }) {
@@ -167,6 +179,9 @@ fun GameScreen(s: AppState, g: Game) {
                             RowItem("Cobertura del catálogo", "Revisa toda la memoria de traducción y los pendientes por causa.",
                                 onClick = { showCoverage = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
                         }
+                        Divider()
+                        RowItem("Traducción en partida", "Registra el texto que pasa por el traductor en una sesión de prueba.",
+                            onClick = { showGameplayReport = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
                     }
                 }
                 Glass(Modifier.fillMaxWidth()) {
@@ -339,6 +354,41 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
             SecondaryButton("Copiar ejemplos", Modifier.fillMaxWidth()) { s.copyTranslationExamples(examples) }
         }
         if (state != null) SecondaryButton("Volver a medir", Modifier.fillMaxWidth()) { revision++ }
+    }
+}
+
+@Composable
+private fun GameplayTranslationPage(s: AppState, g: Game, onBack: () -> Unit) {
+    var result by remember(g.path) { mutableStateOf<Result<GameplayTranslationReport>?>(null) }
+    LaunchedEffect(g.path) {
+        result = withContext(Dispatchers.IO) { runCatching { s.gameplayTranslationReport(g) } }
+    }
+    Page("Traducción en partida", onBack) {
+        val state = result
+        val report = state?.getOrNull()
+        Glass(Modifier.fillMaxWidth()) {
+            val summary = when {
+                state == null -> "Leyendo la última prueba…"
+                report == null -> "No se pudo leer la última prueba."
+                report.handled + report.unchanged + report.english == 0 -> "Aún no hay texto registrado."
+                else -> report.summary
+            }
+            RowItem(g.title, summary)
+            Divider()
+            RowItem("Probar en partida", "Inicia un nuevo registro local para este juego.",
+                onClick = { s.testGameplayTranslation(g) })
+        }
+        if (report != null && report.handled + report.unchanged + report.english > 0) {
+            if (report.examples.isNotEmpty()) {
+                Glass(Modifier.fillMaxWidth()) {
+                    report.examples.forEachIndexed { index, example ->
+                        if (index > 0) Divider()
+                        RowItem(example)
+                    }
+                }
+            }
+            SecondaryButton("Copiar informe", Modifier.fillMaxWidth()) { s.copyGameplayTranslationReport(report) }
+        }
     }
 }
 
