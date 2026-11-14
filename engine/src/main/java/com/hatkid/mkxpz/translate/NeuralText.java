@@ -18,9 +18,20 @@ final class NeuralText {
     private static final Pattern LEADING = Pattern.compile("\\A(?:\\s*⟦[0-9]+⟧)+");
     private static final Pattern ENTITY = Pattern.compile("&(amp|lt|gt);");
     private static final Pattern PAJAMAS = Pattern.compile("\\bjammies\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CAUSAL_CONNECTOR = Pattern.compile(
+        "(^|[.!?]\\s+)(?:cuz|'cause|’cause)(?=[,\\s])", Pattern.CASE_INSENSITIVE);
+
+    static boolean hasColloquialConnector(String text) {
+        return CAUSAL_CONNECTOR.matcher(text).find();
+    }
 
     static boolean normalizes(String text) {
-        return PAJAMAS.matcher(text).find();
+        return PAJAMAS.matcher(text).find() || hasColloquialConnector(text);
+    }
+
+    private static String normalize(String text) {
+        String normalized = PAJAMAS.matcher(text).replaceAll("pajamas");
+        return CAUSAL_CONNECTOR.matcher(normalized).replaceAll("$1Because");
     }
 
     /** Pass one complete utterance through the model even when RGSS inserts controls inside it. */
@@ -32,7 +43,7 @@ final class NeuralText {
             String text = texts.get(i);
             if (MARKER.matcher(text).find() && hasLetters(MARKER.matcher(text).replaceAll(""))) {
                 rows.add(i);
-                String escaped = PAJAMAS.matcher(text).replaceAll("pajamas")
+                String escaped = normalize(text)
                     .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
                 markup.add(MARKER.matcher(escaped).replaceAll("<img data-gahvoria=\"$1\">"));
             }
@@ -58,7 +69,7 @@ final class NeuralText {
         }
         List<String> fallback = new ArrayList<>();
         for (int i = 0; i < texts.size(); i++) {
-            if (!restored[i]) fallback.add(PAJAMAS.matcher(texts.get(i)).replaceAll("pajamas"));
+            if (!restored[i]) fallback.add(normalize(texts.get(i)));
         }
         List<String> translated = translate(fallback, plain);
         int next = 0;

@@ -78,6 +78,12 @@ public final class TranslationPhaseOneTest {
                 equal(Collections.singletonList("pajamas"), inputs);
                 return Collections.singletonList("Pijama");
             }, utterances -> { throw new AssertionError("Plain line"); }));
+
+        equal(Arrays.asList("Porque, ya sabes", "Cos Island"), NeuralText.translate(
+            Arrays.asList("Cuz, you know", "Cos Island"), inputs -> {
+                equal(Arrays.asList("Because, you know", "Cos Island"), inputs);
+                return Arrays.asList("Porque, ya sabes", "Cos Island");
+            }, utterances -> { throw new AssertionError("Plain lines"); }));
     }
 
     private static void refreshesOnlyOldContextSensitiveEntries() throws Exception {
@@ -86,15 +92,19 @@ public final class TranslationPhaseOneTest {
             try (TranslationMemory legacy = new TranslationMemory(cache)) {
                 legacy.remember(Collections.singletonMap("Hi {1}", "Hola {1}"));
                 legacy.remember(Collections.singletonMap("One", "Uno"));
+                legacy.remember(Collections.singletonMap("Cuz, look.", "Cuz, mira."));
             }
             try (TranslationMemory current = new TranslationMemory(cache, true)) {
                 equal("Uno", current.get("One"));
                 equal(null, current.get("Hi {1}"));
+                equal(null, current.get("Cuz, look."));
                 current.remember(Collections.singletonMap("Hi {1}", "Qué tal, {1}"));
+                current.remember(Collections.singletonMap("Cuz, look.", "Porque, mira."));
             }
             try (TranslationMemory reopened = new TranslationMemory(cache)) {
                 equal("Qué tal, {1}", reopened.get("Hi {1}"));
                 equal("Uno", reopened.get("One"));
+                equal("Porque, mira.", reopened.get("Cuz, look."));
             }
         } finally {
             Files.delete(cache.toPath());

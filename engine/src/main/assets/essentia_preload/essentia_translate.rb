@@ -44,7 +44,13 @@ module EssentiaTranslate
       "Soy Ame.\\nDirijo la Liga de Reborn.",
     'could i see your boarding ticket, please?' => '¿Me enseñas tu billete, por favor?',
     "shouldn't we be decelerating already?" => '¿No deberíamos estar frenando ya?',
-    'oh no-- move!' => '¡Oh, no! ¡Apártate!'
+    'oh no-- move!' => '¡Oh, no! ¡Apártate!',
+    'oh, pop quiz! are you going to take on the reborn league?' =>
+      "¡Pregunta sorpresa!\\n¿Vas a desafiar a la Liga de Reborn?",
+    "cuz, you know, if things are exploding, i gotta be there to see it!!!" =>
+      '¡Es que, si algo está explotando, tengo que ir a verlo!',
+    "then i'll be seeing you very soon, because i'm also the electric gym leader!" =>
+      'Entonces nos veremos muy pronto. ¡También soy la líder del Gimnasio de tipo Eléctrico!'
   }
   REBORN_GENDER_SPANISH = {
     'male' => 'Masculino', 'female' => 'Femenino', 'non-binary' => 'No binario'
@@ -52,7 +58,7 @@ module EssentiaTranslate
   REBORN_TICKET_TEXT = {
     'grandview station' => 'Estación Grandview', 'one' => 'UNO'
   }
-  REBORN_INTRO_MAPS = [51, 667]
+  REBORN_INTRO_MAPS = [37, 51, 667]
   REBORN_TICKET_REGIONS = [
     [108, 28, 294, 24, '¡RUMBO A CIUDAD REBORN!'],
     [110, 179, 75, 20, 'Nombre'], [280, 179, 108, 20, 'Género'],
@@ -99,6 +105,10 @@ module EssentiaTranslate
     'New Game' => 'Nueva partida',
     'Options' => 'Opciones',
     'Settings' => 'Ajustes',
+    'Configure (F1)' => 'Configurar (F1)',
+    'Keyboard Defaults' => 'Teclas predeterminadas',
+    'Gamepad Defaults' => 'Controles del mando',
+    'What controls do you want to see?' => '¿Qué controles quieres ver?',
     'Quit Game' => 'Salir del juego',
     'Exit Game' => 'Salir del juego',
     'Save Game' => 'Guardar partida',
@@ -688,6 +698,22 @@ module EssentiaTranslate
       original, argument, wait, kind = @originals[index]
       if kind == :paint
         return paint(receiver) { original.bind(receiver).call(*args, &block) }
+      elsif kind == :pause_menu
+        previous_menu = @pause_menu
+        begin
+          @pause_menu = receiver.instance_variable_get(:@scene)
+          return original.bind(receiver).call(*args, &block)
+        ensure
+          @pause_menu = previous_menu
+        end
+      elsif kind == :controls_dialogue && @pause_menu
+        menu = @pause_menu
+        menu.pbHideMenu
+        begin
+          return original.bind(receiver).call(*args, &block)
+        ensure
+          menu.pbShowMenu
+        end
       elsif kind == :command_size
         if args[0].is_a?(Array)
           args[0] = render_choices(args[0], @choice_question)
@@ -855,6 +881,10 @@ module EssentiaTranslate
       wrap_top(:drawTextEx, 5, 0, :draw)
       wrap_top(:pbEnterPlayerName, 0, 0, :help_text)
       wrap_top(:pbTicketText, 0, 0, :reborn_ticket) if SPANISH && REBORN
+      if REBORN && defined?(PokemonMenu)
+        wrap_method(PokemonMenu, :pbStartPokemonMenu, 0, 0, :pause_menu)
+        wrap_top(:controlsDialogue, 0, 0, :controls_dialogue)
+      end
       [:drawFormattedChars, :drawSingleFormattedChar, :renderLineBrokenChunks,
        :renderLineBrokenChunksWithShadow].each { |name| wrap_top(name, 0, 0, :verbatim) }
       if defined?(Window_DrawableCommand)

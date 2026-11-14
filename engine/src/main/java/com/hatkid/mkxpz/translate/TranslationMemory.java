@@ -15,6 +15,7 @@ import java.util.Map;
 final class TranslationMemory implements Closeable {
     private static final int MAX_ROW_BYTES = 64 * 1024;
     private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
+    private static final String CONNECTOR_PREFIX = "\u001Fconnector-v1:";
     private final RandomAccessFile file;
     private final boolean contextual;
     private final java.nio.channels.FileLock lock;
@@ -38,6 +39,8 @@ final class TranslationMemory implements Closeable {
     }
 
     String get(String original) {
+        String connector = entries.get(CONNECTOR_PREFIX + original);
+        if (connector != null || (contextual && NeuralText.hasColloquialConnector(original))) return connector;
         String revised = entries.get(CONTEXT_PREFIX + original);
         if (revised != null) return revised;
         return contextual && TranslationBatch.needsContext(original) ? null : entries.get(original);
@@ -50,7 +53,9 @@ final class TranslationMemory implements Closeable {
             String translated = answer.getValue();
             if (original.isEmpty() || original.equals(translated) || get(original) != null
                 || !TranslationBatch.isSafe(original, translated)) continue;
-            String key = contextual && TranslationBatch.needsContext(original) ? CONTEXT_PREFIX + original : original;
+            String key = original;
+            if (contextual && NeuralText.hasColloquialConnector(original)) key = CONNECTOR_PREFIX + original;
+            else if (contextual && TranslationBatch.needsContext(original)) key = CONTEXT_PREFIX + original;
             if (row(key, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
                 fresh.put(key, translated);
             }
@@ -99,6 +104,7 @@ final class TranslationMemory implements Closeable {
         String translated = unescape(line.substring(tab + 1, end));
         if (original == null) return;
         String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
+        if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
         if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
     }
 

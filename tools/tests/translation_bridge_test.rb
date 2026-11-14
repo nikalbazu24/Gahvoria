@@ -131,6 +131,27 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     $game_map.map_id = 2
     assert_equal('Texto mezclado', EssentiaTranslate.message_text(original, 0))
     assert_equal("Texto mezclado\1", EssentiaTranslate.message_text(original + "\1", 0))
+    $game_map.map_id = 37
+    question = "Oh, pop quiz!\\nAre you going to take on the Reborn League?"
+    assert_equal("¡Pregunta sorpresa!\\n¿Vas a desafiar a la Liga de Reborn?",
+                 EssentiaTranslate.message_text(question, 0))
+    assert_equal('Teclas predeterminadas', EssentiaTranslate.render_choices(['Keyboard Defaults']).first)
+    assert_equal('Controles del mando', EssentiaTranslate.render_choices(['Gamepad Defaults']).first)
+
+    def controlsDialogue
+      raise 'Pause menu still visible' if $pause_test_scene.visible
+      :controls
+    end
+    class PokemonMenu
+      def initialize(scene); @scene = scene; end
+      def pbStartPokemonMenu; controlsDialogue; end
+    end
+    $pause_test_scene = Struct.new(:visible).new(true)
+    def $pause_test_scene.pbHideMenu; self.visible = false; end
+    def $pause_test_scene.pbShowMenu; self.visible = true; end
+    EssentiaTranslate.install
+    assert_equal(:controls, PokemonMenu.new($pause_test_scene).pbStartPokemonMenu)
+    assert_equal(true, $pause_test_scene.visible)
     puts 'Reborn intro translation checks passed'
     exit
   end
