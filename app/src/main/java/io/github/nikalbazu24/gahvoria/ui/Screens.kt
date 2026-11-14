@@ -321,14 +321,20 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                     else "No pude leer el catálogo. Puedes volver a prepararlo desde Traducción.")
             } else {
                 val (coverage, stale) = report
-                val pending = coverage.total - coverage.translated
-                val total = coverage.total
+                val pending = coverage.pending
+                val total = coverage.total - coverage.preserved - coverage.internal
                 val translated = coverage.translated
-                val summary = if (total == 0) "Sin frases detectadas." else {
+                val summary = if (total == 0) "Sin textos que necesiten traducción." else {
                     val percent = 100L * translated / total
-                    "$translated de $total pasan la auditoría ($percent%) · $pending pendientes"
+                    "$translated de $total textos traducibles comprobados ($percent%) · $pending pendientes"
                 }
                 RowItem(g.title, summary)
+                Divider()
+                RowItem("Se conservan", "${coverage.preserved} nombres, silencios y formatos que no necesitan traducción")
+                if (coverage.internal > 0) {
+                    Divider()
+                    RowItem("Referencias internas", "${coverage.internal} rutas y marcadores del catálogo")
+                }
                 for ((issue, count) in coverage.issues) {
                     Divider()
                     val label = when (issue) {
@@ -337,7 +343,9 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                         TranslationAudit.Issue.FORMAT -> "Variables o formato alterados"
                         TranslationAudit.Issue.UNCHANGED -> "Mismo texto que el original"
                         TranslationAudit.Issue.ENGLISH -> "Restos de inglés detectados"
-                        TranslationAudit.Issue.TERMINOLOGY -> "Terminología Pokémon"
+                        TranslationAudit.Issue.TERMINOLOGY -> "Etiquetas o terminología"
+                        TranslationAudit.Issue.NAMES -> "Nombres que necesitan revisión"
+                        TranslationAudit.Issue.REVIEW -> "Texto distorsionado o respuesta dudosa"
                     }
                     RowItem(label, "$count")
                 }
@@ -350,7 +358,7 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                     RowItem("Catálogo parcial", "El porcentaje corresponde a las frases que se pudieron leer.")
                 }
                 Divider()
-                RowItem("Español", "Vuelve a preparar el juego para intentar corregir los pendientes. Las imágenes y los textos generados al jugar se revisan en el juego.")
+                RowItem("Qué mide", "Comprobaciones de las traducciones guardadas, no la fluidez del español. Vuelve a preparar para corregir pendientes. Las imágenes y los textos generados al jugar se revisan en partida.")
             }
         }
         val examples = report?.first?.examples.orEmpty()

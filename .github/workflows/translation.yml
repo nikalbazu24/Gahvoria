@@ -42,10 +42,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/translation-test"
           javac --release 8 -encoding UTF-8 -d "$RUNNER_TEMP/translation-test" \
             "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/TranslationOpening.java" \
-            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" "$src/NeuralTerms.java" tools/tests/TranslationPhaseOneTest.java tools/tests/NeuralInferenceProbe.java tools/tests/TranslationCatalogProbe.java
+            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" "$src/NeuralTerms.java" "$src/NeuralLabels.java" "$src/TranslationDialogue.java" "$src/TranslationLabels.java" "$src/TranslationProfile.java" tools/tests/TranslationPhaseOneTest.java tools/tests/NeuralInferenceProbe.java tools/tests/TranslationCatalogProbe.java tools/tests/TranslationPendingProbe.java
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationPhaseOneTest
           python3 tools/build_neural_lexicon.py
-          git diff --exit-code -- engine/src/main/java/com/hatkid/mkxpz/translate/NeuralTerms.java
+          git diff --exit-code -- engine/src/main/java/com/hatkid/mkxpz/translate/NeuralTerms.java engine/src/main/java/com/hatkid/mkxpz/translate/NeuralLabels.java
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.1'

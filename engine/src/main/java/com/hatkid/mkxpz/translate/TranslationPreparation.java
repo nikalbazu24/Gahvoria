@@ -52,7 +52,7 @@ public final class TranslationPreparation {
                     read++;
                 }
                 if (!pending.isEmpty()) {
-                    memory.remember(TranslationAudit.translate(pending, (o, p) -> model.translate(o, p)));
+                    memory.remember(TranslationAudit.translate(pending, (o, p) -> model.translate(o, p), memory.profile));
                     for (String original : pending) if (memory.get(original) != null) translated++;
                 }
                 reviewed += read;

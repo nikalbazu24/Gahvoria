@@ -34,7 +34,7 @@ final class NeuralText {
     }
 
     private static String normalize(String text) {
-        String normalized = PAJAMAS.matcher(text).replaceAll("pajamas");
+        String normalized = PAJAMAS.matcher(TranslationDialogue.normalize(text)).replaceAll("pajamas");
         normalized = CAUSAL_CONNECTOR.matcher(normalized).replaceAll("$1Because");
         Matcher contraction = CONTRACTION.matcher(normalized);
         StringBuffer expanded = new StringBuffer();
@@ -79,7 +79,7 @@ final class NeuralText {
     private static final Pattern ORDINARY_NOUN = Pattern.compile(
         "(?i)(?:special attack and special defense|special attack|special defense|"
         + "health|dreams|friends|family|parents|mother|father|brother|sister|"
-        + "bag|book|house|team|score|name|attack|defense|speed|accuracy|evasion)"
+        + "bag|book|house|team|score|name|attack|defense|speed|accuracy|evasion|moves|PP|HP)"
         + "(?![\\p{L}\\p{N}_'’-])");
 
     private static boolean nounBoundary(String text, int end) {
@@ -88,7 +88,7 @@ final class NeuralText {
     }
 
     private static String[] abilityAt(String text, int start) {
-        for (String[] term : NeuralTerms.ABILITIES) {
+        for (String[] term : NeuralLabels.POSSESSED) {
             if (text.startsWith(term[0], start) && nounBoundary(text, start + term[0].length())) return term;
         }
         for (String[] term : new String[][]{{"Z-Power", "poder Z"}, {"Crest", "emblema"}}) {
@@ -182,6 +182,7 @@ final class NeuralText {
                                   Inference plain, Inference aligned) throws IOException {
         List<String> prepared = new ArrayList<>(texts);
         List<Map<String, String>> slots = new ArrayList<>();
+        List<String> speakers = new ArrayList<>();
         for (int row = 0; row < texts.size(); row++) {
             Map<String, String> values = new LinkedHashMap<>();
             String text = texts.get(row);
@@ -207,11 +208,14 @@ final class NeuralText {
                 }
                 text = input.append(text, cursor, text.length()).toString();
             }
-            prepared.set(row, text);
+            String speaker = TranslationDialogue.speaker(text);
+            speakers.add(TranslationDialogue.localizedSpeaker(text));
+            prepared.set(row, text.substring(speaker.length()));
             slots.add(values);
         }
         List<String> result = translate(prepared, plain, aligned);
         for (int row = 0; row < result.size(); row++) {
+            if (result.get(row) != null) result.set(row, speakers.get(row) + result.get(row));
             if (slots.get(row).isEmpty() || result.get(row) == null) continue;
             String output = result.get(row);
             boolean valid = true;

@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 /** Shared boundary for the current providers and a future on-device model. */
 final class TranslationBatch {
     private static final Pattern CODES = Pattern.compile(
-        "\\\\[A-Za-z]+(?:\\[[^\\]\\r\\n]*\\])?|\\\\[.!|^<>{}$\\\\]|"
+        "\\\\[A-Za-z]+\\[[^\\]\\r\\n]*\\]|\\\\(?:n|G)(?=[A-Z])|\\\\[A-Za-z]+|\\\\[.!|^<>{}$\\\\]|"
         + "<[^>\\r\\n]{1,40}>|\\[[A-Za-z_]+\\]|\\{\\d+(?::[A-Za-z0-9. +#-]+)?\\}|%\\d*\\$?[sdif%]|[\\x01-\\x1F⟦⟧]");
 
     private static final Pattern VALUES = Pattern.compile(

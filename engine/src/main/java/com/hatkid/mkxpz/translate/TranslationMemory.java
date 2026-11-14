@@ -20,6 +20,8 @@ final class TranslationMemory implements Closeable {
     private static final String GROUP_PREFIX = "\u001Fgroups-v1:";
     private static final String NOUN_PREFIX = "\u001Fnouns-v1:";
     private static final String SLOT_PREFIX = "\u001Fslots-v1:";
+    private static final String DIALOGUE_PREFIX = "\u001Fdialogue-v1:";
+    TranslationProfile profile;
     private final RandomAccessFile file;
     private final boolean contextual;
     private final java.nio.channels.FileLock lock;
@@ -41,6 +43,7 @@ final class TranslationMemory implements Closeable {
 
     private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
         this.contextual = contextual;
+        profile = contextual ? TranslationProfile.read(new File(path.getParentFile(), "catalog.ready")) : TranslationProfile.EMPTY;
         rejected = writable ? null : new HashMap<>();
         rejectedAnswers = writable ? null : new HashMap<>();
         file = new RandomAccessFile(path, writable ? "rw" : "r");
@@ -55,10 +58,18 @@ final class TranslationMemory implements Closeable {
     }
 
     String get(String original) {
+        if (contextual && (profile.preserve(original) || TranslationProfile.internal(original))) return original;
         return entries.get(key(original));
     }
 
+    void refreshProfile(File catalog) throws IOException {
+        if (contextual) profile = TranslationProfile.read(catalog);
+    }
+
     private String key(String original) {
+        String dialogue = DIALOGUE_PREFIX + original;
+        if (entries.containsKey(dialogue) || (contextual && (TranslationLabels.fixed(original, profile) != null
+                || TranslationDialogue.normalizes(original) || original.matches("(?s).*\\\\(?:n|G)[A-Z].*")))) return dialogue;
         String noun = NOUN_PREFIX + original;
         if (entries.containsKey(noun) || (contextual && NeuralText.needsNounRepair(original))) return noun;
         String group = GROUP_PREFIX + original;
@@ -73,6 +84,7 @@ final class TranslationMemory implements Closeable {
     }
 
     TranslationAudit.Issue audit(String original) {
+        if (contextual && (profile.preserve(original) || TranslationProfile.internal(original))) return null;
         String key = key(original);
         if (entries.containsKey(key)) return null;
         TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
@@ -88,7 +100,7 @@ final class TranslationMemory implements Closeable {
     }
 
     private static String[] previousKeys(String original) {
-        return new String[]{NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
+        return new String[]{DIALOGUE_PREFIX + original, NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
             CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original};
     }
 
@@ -109,7 +121,7 @@ final class TranslationMemory implements Closeable {
             String original = answer.getKey();
             String translated = answer.getValue();
             if (original.isEmpty() || get(original) != null) continue;
-            if (contextual ? TranslationAudit.check(original, translated) != null
+            if (contextual ? TranslationAudit.check(original, translated, profile) != null
                            : original.equals(translated) || !TranslationBatch.isSafe(original, translated)) continue;
             String key = key(original);
             if (row(key, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
@@ -164,11 +176,12 @@ final class TranslationMemory implements Closeable {
         if (original.startsWith(SLOT_PREFIX)) source = original.substring(SLOT_PREFIX.length());
         if (original.startsWith(GROUP_PREFIX)) source = original.substring(GROUP_PREFIX.length());
         if (original.startsWith(NOUN_PREFIX)) source = original.substring(NOUN_PREFIX.length());
+        if (original.startsWith(DIALOGUE_PREFIX)) source = original.substring(DIALOGUE_PREFIX.length());
         if (!contextual) {
             if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
             return;
         }
-        TranslationAudit.Issue issue = TranslationAudit.check(source, translated);
+        TranslationAudit.Issue issue = TranslationAudit.check(source, translated, profile);
         if (issue == null) {
             entries.put(original, translated);
         } else if (rejected != null && !entries.containsKey(original)) {

@@ -252,6 +252,7 @@ public final class TranslatorService
         int processed = 0;
         try {
             if (skip.exists()) return;
+            memory.refreshProfile(ready);
             mProgress.show("Preparando traducción del juego…");
             int total = 0;
             try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(ready), StandardCharsets.UTF_8))) {
@@ -304,7 +305,7 @@ public final class TranslatorService
             else answers.put(text, cached);
         }
         if (!missing.isEmpty()) {
-            Map<String, String> translated = TranslationAudit.translate(missing, this::neural);
+            Map<String, String> translated = TranslationAudit.translate(missing, this::neural, memory.profile);
             memory.remember(translated);
             for (String source : missing) {
                 String answer = memory.get(source);
@@ -364,7 +365,7 @@ public final class TranslatorService
             provider = this::mlkit;
         }
         boolean neural = PROVIDER_NEURAL.equals(mProvider);
-        Map<String, String> answers = neural ? TranslationAudit.translate(missing, provider)
+        Map<String, String> answers = neural ? TranslationAudit.translate(missing, provider, memory.profile)
                                             : TranslationBatch.translate(missing, provider);
         memory.remember(answers);
         if (neural) {

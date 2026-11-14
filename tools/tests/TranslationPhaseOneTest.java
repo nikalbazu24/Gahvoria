@@ -27,7 +27,88 @@ public final class TranslationPhaseOneTest {
         migratesOnlyDamagedSlotStructures();
         literalPossessivesKeepTermsAndContractions();
         migratesLiteralNounsAndExportsEveryPendingRow();
-        System.out.println("15 JVM translation checks passed");
+        separatesAdjacentEscapeCodesFromDialogue();
+        preservesSpeakersAndLocalizesWholeLabels();
+        countsPreservedEntriesSeparately();
+        rejectsSuperficialAndDamagedReplies();
+        System.out.println("19 JVM translation checks passed");
+    }
+
+    private static void separatesAdjacentEscapeCodesFromDialogue() throws Exception {
+        String source = "GUIDE: Thank you!\\nI'll wait here.\\GPlay?";
+        java.util.List<String> tokens = new java.util.ArrayList<>();
+        equal("GUIDE: Thank you!⟦0⟧I'll wait here.⟦1⟧Play?", TranslationBatch.shield(source, tokens));
+        equal(Arrays.asList("\\n", "\\G"), tokens);
+        equal(Arrays.asList("\\n[1]", "\\Custom[2]", "\\name"), TranslationBatch.tokens("\\n[1]\\Custom[2]\\name"));
+        equal(true, TranslationBatch.isSafe(source, "GUIDE: ¡Gracias!\\nEsperaré aquí.\\G¿Jugar?"));
+        equal(false, TranslationBatch.isSafe(source, "GUIDE: ¡Gracias! Esperaré aquí. ¿Jugar?"));
+    }
+
+    private static void preservesSpeakersAndLocalizesWholeLabels() throws Exception {
+        java.util.List<String> sources = Arrays.asList("ELENA: Um...", "GRUNT: ...", "Pound", "Sp. Atk: {1}", "HP {1}/{2}");
+        Map<String, String> fixed = TranslationAudit.translate(sources, (raw, input) -> { throw new AssertionError("Unnecessary inference"); });
+        equal("ELENA: Eh...", fixed.get(sources.get(0)));
+        equal("RECLUTA: ...", fixed.get(sources.get(1)));
+        equal("Destructor", fixed.get("Pound"));
+        equal("At. Esp.: {1}", fixed.get("Sp. Atk: {1}"));
+        equal("PS {1}/{2}", fixed.get("HP {1}/{2}"));
+        equal(null, TranslationLabels.fixed("I found a Pound coin.", TranslationProfile.EMPTY));
+        String text = "ELENA: Wait here.";
+        Map<String, String> answers = TranslationAudit.translate(Collections.singletonList(text),
+            (raw, input) -> NeuralText.translate(raw, input, plain -> {
+                equal(Collections.singletonList("Wait here."), plain);
+                return Collections.singletonList("Espera aquí.");
+            }, html -> null));
+        equal("ELENA: Espera aquí.", answers.get(text));
+        equal(TranslationAudit.Issue.NAMES, TranslationAudit.check(text, "HELENA: Espera aquí."));
+        equal("please wait", TranslationDialogue.normalize("plz wait"));
+        equal("T3RR4: there are no forfeits in MY domain", TranslationDialogue.normalize("T3RR4: TH3R3 4R3 N0 F0RF3ITS 1N MY D0M41N"));
+        equal("The password is 31337", TranslationDialogue.normalize("The password is 31337"));
+        equal(false, TranslationProfile.EMPTY.preserve("\\ch[1,Yes,No]"));
+        equal(false, TranslationProfile.EMPTY.preserve("<user's cry>"));
+        equal(false, TranslationProfile.EMPTY.preserve("[English]"));
+        equal(true, TranslationProfile.EMPTY.preserve("<ac>{1:03d}</ac>"));
+    }
+
+    private static void countsPreservedEntriesSeparately() throws Exception {
+        Path dir = Files.createTempDirectory("gahvoria-classification");
+        Path catalog = dir.resolve("catalog.ready"), cache = dir.resolve("es.tsv");
+        try {
+            java.util.List<String> sources = Arrays.asList("ELENA: ...", "ELENA: Hm.", "Elena", "{1:03d} / {2:03d}",
+                "Pokedex/pokedexbg", "HP: {1}", "Please wait", "Mystery English", "Unknown Person");
+            Files.write(catalog, sources, StandardCharsets.UTF_8);
+            Files.write(cache, Arrays.asList("Please wait\tEspera", "HP: {1}\tPV: {1}"), StandardCharsets.UTF_8);
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                equal("Elena", memory.get("Elena"));
+                equal(null, memory.get("Unknown Person"));
+                equal(null, memory.get("HP: {1}"));
+                equal("Espera", memory.get("Please wait"));
+                memory.remember(TranslationAudit.translate(Collections.singletonList("HP: {1}"), (a,b) -> null, memory.profile));
+            }
+            TranslationCoverage report = TranslationCoverage.read(dir.resolve("catalog").toFile());
+            equal(9, report.total); equal(4, report.preserved); equal(1, report.internal);
+            equal(2, report.translated); equal(2, report.pending);
+            java.io.StringWriter export = new java.io.StringWriter();
+            equal(2, TranslationCoverage.writePending(dir.resolve("catalog").toFile(), export));
+            equal(false, export.toString().contains("\tElena\t"));
+            equal(true, export.toString().contains("\tUnknown Person\t"));
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal("PS: {1}", memory.get("HP: {1}"));
+            }
+        } finally { for (Path path : Arrays.asList(cache, catalog, dir)) Files.deleteIfExists(path); }
+    }
+
+    private static void rejectsSuperficialAndDamagedReplies() {
+        equal(TranslationAudit.Issue.UNCHANGED, TranslationAudit.check("Unknown", "¡Unknown!"));
+        equal(TranslationAudit.Issue.UNCHANGED, TranslationAudit.check("Unknown", "UNKNOWN"));
+        equal(TranslationAudit.Issue.REVIEW, TranslationAudit.check("Garrr!", "¡¡¡!!!"));
+        equal(TranslationAudit.Issue.REVIEW, TranslationAudit.check("N.x. d.m..g.d t.xt.", "¡N.x. d.m..g.d text!"));
+        equal(TranslationAudit.Issue.REVIEW, TranslationAudit.check("Z9C0RRUPT arrived", "Z9C0RRUPT llegó"));
+        equal(null, TranslationAudit.check("PP: {1}/{2}", "PP: {1}/{2}"));
+        equal(null, TranslationAudit.check("GRUNT: ...", "RECLUTA: ..."));
+        equal(TranslationAudit.Issue.NAMES, TranslationAudit.check("Anna, Brian Smith, Carla, David, Elena, Frank",
+            "Ana, Brian Smith, Carla, David, Elena, Frank"));
+        equal(false, TranslationDialogue.possibleCreditList("bread, milk, cheese, water, rice, eggs"));
     }
 
     private static void literalPossessivesKeepTermsAndContractions() throws Exception {

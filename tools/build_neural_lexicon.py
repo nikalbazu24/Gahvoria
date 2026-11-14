@@ -26,3 +26,38 @@ for a, b in sorted(pairs, key=lambda p: (-len(p[0]), p[0])):
 lines += ['    };', '    private NeuralTerms() {}', '}', '']
 (root / 'engine/src/main/java/com/hatkid/mkxpz/translate/NeuralTerms.java').write_text('\n'.join(lines), encoding='utf-8')
 print(f'{len(pairs)} scoped ability names shared with Neural')
+
+# Bare UI labels are exact matches; duplicate names with conflicting meanings stay out.
+all_terms = {}
+ambiguous = set()
+possessed = {}
+for category in ('move', 'item', 'ability', 'type', 'nature'):
+    section = asset.split('    :' + category + ' => {', 1)[1].split('    },', 1)[0]
+    for a, b in re.findall(r'^      (".*") => (".*"),$', section, re.M):
+        a, b = json.loads(a), json.loads(b)
+        if a in all_terms and all_terms[a] != b: ambiguous.add(a)
+        all_terms[a] = b
+        if category in ('move', 'ability'): possessed[a] = b
+for term in ambiguous:
+    all_terms.pop(term, None)
+    possessed.pop(term, None)
+lines = ['package com.hatkid.mkxpz.translate;', '',
+    '// Generated from the pinned PokéAPI names by tools/build_neural_lexicon.py.',
+    '// BSD-3-Clause: engine/src/main/assets/licenses/pokeapi.txt.',
+    'final class NeuralLabels {',
+    '    static final java.util.Map<String,String> LABELS = new java.util.HashMap<>();',
+    '    static final java.util.List<String[]> POSSESSED = new java.util.ArrayList<>();',
+    '    static {']
+chunks = [sorted(all_terms.items())[i:i+90] for i in range(0,len(all_terms),90)]
+for i in range(len(chunks)): lines.append('        labels' + str(i) + '();')
+lines += ['        for (String source : new String[]{']
+for a in sorted(possessed, key=lambda a:(-len(a),a)):
+    lines.append('            ' + json.dumps(a,ensure_ascii=False) + ',')
+lines += ['        }) POSSESSED.add(new String[]{source, LABELS.get(source)});', '    }']
+for i,chunk in enumerate(chunks):
+    lines.append('    private static void labels' + str(i) + '() {')
+    for a,b in chunk: lines.append('        LABELS.put(' + json.dumps(a,ensure_ascii=False) + ', ' + json.dumps(b,ensure_ascii=False) + ');')
+    lines.append('    }')
+lines += ['    private NeuralLabels() {}', '}', '']
+(root / 'engine/src/main/java/com/hatkid/mkxpz/translate/NeuralLabels.java').write_text('\n'.join(lines),encoding='utf-8')
+print(str(len(all_terms)) + ' exact labels; ' + str(len(possessed)) + ' possessed names')
