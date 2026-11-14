@@ -7,7 +7,7 @@ import java.io.File
 
 /** Where each game's translations are kept (inside Gahvoria's own files, so they survive restarts and never touch the game). */
 object Translations {
-    private const val CATALOG_FORMAT = "opening-v4"
+    private const val CATALOG_FORMAT = "opening-v5"
 
     private fun root(c: Context) = File(c.filesDir, "translations")
 

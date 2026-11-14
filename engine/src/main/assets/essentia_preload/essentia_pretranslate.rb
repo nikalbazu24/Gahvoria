@@ -11,6 +11,7 @@ module GahvoriaPretranslate
   MAX_TEXTS = 50_000
   MAX_SPOOL_BYTES = 24 * 1024 * 1024
   STARTUP_BUDGET_SECONDS = 12
+  ANIMATION_EDITOR = /\A(?:anim|animation)[ _-]*editor\z/i
 
   class << self
     def scripts(source)
@@ -129,21 +130,32 @@ module GahvoriaPretranslate
       end
     end
 
-    def collect_scripts(root, data, cancelled)
+    def collect_scripts(root, data, cancelled, editor_labels)
       ($RGSS_SCRIPTS || []).each do |entry|
         return if cancelled.call
-        scripts(entry[3]) { |text| yield text } if entry.is_a?(Array)
+        next unless entry.is_a?(Array)
+        if ANIMATION_EDITOR.match(entry[1].to_s.strip)
+          scripts(entry[3]) { |text| editor_labels[text] = true }
+        else
+          scripts(entry[3]) { |text| yield text }
+        end
       end
       [root, data].compact.each do |folder|
         Dir.glob(File.join(folder, '[Ss][Cc][Rr][Ii][Pp][Tt][Ss]', '**', '*.rb')).sort.each do |path|
           return if cancelled.call
           next unless File.file?(path) && File.size(path) <= MAX_SCRIPT_BYTES
-          File.open(path, 'rb') { |file| scripts(file.read(MAX_SCRIPT_BYTES)) { |text| yield text } }
+          source = File.open(path, 'rb') { |file| file.read(MAX_SCRIPT_BYTES) }
+          if ANIMATION_EDITOR.match(File.basename(path, '.rb'))
+            scripts(source) { |text| editor_labels[text] = true }
+          else
+            scripts(source) { |text| yield text }
+          end
         end
       end
     end
 
     def collect(root, cancelled)
+      editor_labels = {}
       data = Dir.glob(File.join(root, '[Dd][Aa][Tt][Aa]')).find { |path| File.directory?(path) }
       folder = data ? File.basename(data) : 'Data'
       return if cancelled.call
@@ -161,7 +173,7 @@ module GahvoriaPretranslate
             map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
           end
         end
-        collect_scripts(root, data, cancelled) { |text| yield text }
+        collect_scripts(root, data, cancelled, editor_labels) { |text| yield text }
         return if cancelled.call
         plugins = read_data("#{folder}/PluginScripts.#{ext}")
         if plugins.is_a?(Array) && defined?(Zlib::Inflate)
@@ -197,14 +209,16 @@ module GahvoriaPretranslate
           map_commands("#{folder}/#{name}", cancelled) { |text| yield text }
         end
       end
-      collect_scripts(root, data, cancelled) { |text| yield text } unless ext
+      collect_scripts(root, data, cancelled, editor_labels) { |text| yield text } unless ext
       names = ['messages.dat', 'messages_core.dat', 'messages_game.dat']
       if data
         names |= Dir.glob(File.join(data, 'messages*.dat')).map { |path| File.basename(path) }
       end
       names.sort.each do |name|
         return if cancelled.call
-        messages(read_data("#{folder}/#{name}")) { |text| yield text }
+        # The compiled catalog also contains copies of the editor's labels.
+        # If an event or another script uses the same text, it already yielded it above.
+        messages(read_data("#{folder}/#{name}")) { |text| yield text unless editor_labels[text] }
       end
     end
 

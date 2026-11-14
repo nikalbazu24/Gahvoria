@@ -118,6 +118,21 @@ EXTRA
   check(opening_first, lines)
   check(false, File.exist?(catalog + '.tmp'))
 
+  # Editor labels can also come from the game's compiled message catalog.
+  File.write(File.join(dir, 'Scripts', 'Game', 'AnimEditor.rb'), <<'EDITOR')
+_INTL("Zoom X:")
+_INTL("<user's cry>")
+_INTL("Yes, please")
+EDITOR
+  $RGSS_SCRIPTS << [2, 'Animation Editor', nil, '_INTL("Flip Horizontal")']
+  $test_data['Data/messages.dat'] << {
+    'Zoom X:' => 'Zoom X:', "<user's cry>" => "<user's cry>", 'Flip Horizontal' => 'Flip Horizontal',
+    'Only in the player catalog' => 'Only in the player catalog', 'Yes, please' => 'Yes, please'
+  }
+  GahvoriaPretranslate.export_catalog(dir, catalog)
+  lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
+  check(opening_first + ['Only in the player catalog'], lines)
+
   aborted = File.join(dir, 'aborted')
   File.write(aborted + '.skip', '')
   GahvoriaPretranslate.export_catalog(dir, aborted)
