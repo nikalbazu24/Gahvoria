@@ -374,6 +374,7 @@ try { exp } catch (...) {}
     }
 #endif
     fillStringVec(opts["RTP"], rtps);
+    fillStringVec(opts["patches"], patches);
 #ifdef MKXPZ_BUILD_ANDROID
     // Essentia: RPG Maker RTP folders found by the app (Essentia/RTP/...)
     {

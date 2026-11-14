@@ -26,14 +26,18 @@ module Essentia
   # Reborn 19.5 loads the desktop Discord extension unconditionally in its presence script.
   REBORN_DISCORD_FEATURE = %r{\A(?:\./)?(?:gems/)?discord(?:\.(?:so|bundle|dll))?\z}
 
-  def self.reborn_discord_feature?(name)
-    return false unless name.is_a?(String)
-    name = name.tr('\\', '/')
+  def self.reborn_game?
     root = ENV['GAHVORIA_GAME_ROOT'].to_s
     return false if root.empty?
-    @reborn_disc = File.file?(File.join(root, 'Scripts/Reborn/Bootstrap.rb')) &&
-      File.file?(File.join(root, 'Scripts/Online/DiscordRichPresence.rb')) if @reborn_disc.nil?
-    return false unless @reborn_disc
+    return @reborn_game unless @reborn_game.nil?
+    @reborn_game = File.file?(File.join(root, 'Scripts/Reborn/Bootstrap.rb')) &&
+      File.file?(File.join(root, 'Scripts/Online/DiscordRichPresence.rb'))
+  end
+
+  def self.reborn_discord_feature?(name)
+    return false unless name.is_a?(String) && reborn_game?
+    name = name.tr('\\', '/')
+    root = ENV['GAHVORIA_GAME_ROOT']
     name = name[(root.length + 1)..-1] if name.start_with?(root + '/')
     !!REBORN_DISCORD_FEATURE.match(name)
   end
@@ -115,6 +119,58 @@ module Essentia
       end
     end
     lines.join("\n")
+  end
+end
+
+if Essentia.reborn_game? && defined?(Input)
+  module Input
+    # Logical buttons from Reborn's mkxp-z fork, backed by the existing raw keyboard input.
+    D = 50 unless const_defined?(:D, false)
+    E = 51 unless const_defined?(:E, false)
+    F = 52 unless const_defined?(:F, false)
+
+    class << self
+      alias_method :essentia_reborn_press?, :press?
+      alias_method :essentia_reborn_trigger?, :trigger?
+      alias_method :essentia_reborn_time?, :time?
+
+      def press?(button)
+        return pressex?(:LSHIFT) || pressex?(:RSHIFT) if button == D
+        essentia_reborn_press?(button)
+      end
+
+      def trigger?(button)
+        case button
+        when E
+          triggerex?(:TAB) || triggerex?(:LALT) || triggerex?(:M)
+        when F
+          triggerex?(:F7)
+        else
+          essentia_reborn_trigger?(button)
+        end
+      end
+
+      # Reborn compares hold times against thresholds in seconds.
+      def time?(button)
+        essentia_reborn_time?(button) / 1_000_000.0
+      end
+    end
+  end
+
+  module Graphics
+    @start_playing = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    @time_passed = 0
+
+    class << self
+      attr_accessor :start_playing, :time_passed
+    end
+  end
+
+  module Audio
+    # Gahvoria's SE player accepts the same volume and pitch in stereo.
+    def self.se_play_position(name, volume, pitch, _x, _y, _z)
+      se_play(name, volume, pitch)
+    end unless respond_to?(:se_play_position)
   end
 end
 
