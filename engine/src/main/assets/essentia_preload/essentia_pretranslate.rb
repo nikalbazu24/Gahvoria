@@ -1,7 +1,8 @@
 # encoding: UTF-8
 # GPL-2.0. Extract display text before the game scripts run. Never evaluate source literals.
 module GahvoriaPretranslate
-  LITERAL = /(?:\b_INTL|\b_I|\b_ISPRINTF|\bpbMessage|\bpbConfirmMessage(?:Serious)?|\bpbMessageChooseNumber|\bpbEnterPlayerName)\s*\(\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
+  # A quote immediately before the name can be a script searching for the call itself.
+  LITERAL = /(?<!["'])(?:\b_INTL|\b_I|\b_ISPRINTF|\bpbMessage|\bpbConfirmMessage(?:Serious)?|\bpbMessageChooseNumber|\bpbEnterPlayerName)\s*\(\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   SECOND_LITERAL = /(?:\b_MAPINTL|\b_MAPISPRINTF|\bpbMessageDisplay)\s*\(\s*(?:nil|[0-9]+|[A-Za-z_]\w*|\$game_map\.map_id)\s*,\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')/
   CHOICE_LIST = /(?:\bpbShowCommands\s*\(\s*(?:nil|[A-Za-z_]\w*)\s*,\s*|\bpbMessage\s*\(\s*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')\s*,\s*)\[([^\]\r\n]{1,2048})\]/
   CHOICE_ITEM = /\s*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)')\s*(,|\z)/
@@ -11,7 +12,8 @@ module GahvoriaPretranslate
   MAX_TEXTS = 50_000
   MAX_SPOOL_BYTES = 24 * 1024 * 1024
   STARTUP_BUDGET_SECONDS = 12
-  ANIMATION_EDITOR = /\A(?:anim|animation)[ _-]*editor\z/i
+  DEVELOPER_SCRIPT = /\A(?:(?:anim|animation)[ _-]*editor|debug)\z/i
+  COMPILE_PROGRESS = /\ACompiling (?:.+ data|metadata|messages|field notes)\z/i
 
   class << self
     def scripts(source)
@@ -130,32 +132,36 @@ module GahvoriaPretranslate
       end
     end
 
-    def collect_scripts(root, data, cancelled, editor_labels)
+    def script_texts(name, source, developer_labels)
+      developer_script = DEVELOPER_SCRIPT.match(name)
+      compiler = name.casecmp('Compiler') == 0
+      scripts(source) do |text|
+        if developer_script || (compiler && COMPILE_PROGRESS.match(text))
+          developer_labels[text] = true
+        else
+          yield text
+        end
+      end
+    end
+
+    def collect_scripts(root, data, cancelled, developer_labels)
       ($RGSS_SCRIPTS || []).each do |entry|
         return if cancelled.call
         next unless entry.is_a?(Array)
-        if ANIMATION_EDITOR.match(entry[1].to_s.strip)
-          scripts(entry[3]) { |text| editor_labels[text] = true }
-        else
-          scripts(entry[3]) { |text| yield text }
-        end
+        script_texts(entry[1].to_s.strip, entry[3], developer_labels) { |text| yield text }
       end
       [root, data].compact.each do |folder|
         Dir.glob(File.join(folder, '[Ss][Cc][Rr][Ii][Pp][Tt][Ss]', '**', '*.rb')).sort.each do |path|
           return if cancelled.call
           next unless File.file?(path) && File.size(path) <= MAX_SCRIPT_BYTES
           source = File.open(path, 'rb') { |file| file.read(MAX_SCRIPT_BYTES) }
-          if ANIMATION_EDITOR.match(File.basename(path, '.rb'))
-            scripts(source) { |text| editor_labels[text] = true }
-          else
-            scripts(source) { |text| yield text }
-          end
+          script_texts(File.basename(path, '.rb'), source, developer_labels) { |text| yield text }
         end
       end
     end
 
     def collect(root, cancelled)
-      editor_labels = {}
+      developer_labels = {}
       data = Dir.glob(File.join(root, '[Dd][Aa][Tt][Aa]')).find { |path| File.directory?(path) }
       folder = data ? File.basename(data) : 'Data'
       return if cancelled.call
@@ -173,7 +179,7 @@ module GahvoriaPretranslate
             map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
           end
         end
-        collect_scripts(root, data, cancelled, editor_labels) { |text| yield text }
+        collect_scripts(root, data, cancelled, developer_labels) { |text| yield text }
         return if cancelled.call
         plugins = read_data("#{folder}/PluginScripts.#{ext}")
         if plugins.is_a?(Array) && defined?(Zlib::Inflate)
@@ -209,16 +215,16 @@ module GahvoriaPretranslate
           map_commands("#{folder}/#{name}", cancelled) { |text| yield text }
         end
       end
-      collect_scripts(root, data, cancelled, editor_labels) { |text| yield text } unless ext
+      collect_scripts(root, data, cancelled, developer_labels) { |text| yield text } unless ext
       names = ['messages.dat', 'messages_core.dat', 'messages_game.dat']
       if data
         names |= Dir.glob(File.join(data, 'messages*.dat')).map { |path| File.basename(path) }
       end
       names.sort.each do |name|
         return if cancelled.call
-        # The compiled catalog also contains copies of the editor's labels.
+        # The compiled catalog also contains copies of developer tool labels.
         # If an event or another script uses the same text, it already yielded it above.
-        messages(read_data("#{folder}/#{name}")) { |text| yield text unless editor_labels[text] }
+        messages(read_data("#{folder}/#{name}")) { |text| yield text unless developer_labels[text] }
       end
     end
 
@@ -261,7 +267,7 @@ module GahvoriaPretranslate
     def resolved_text?(text)
       EssentiaTranslate.display_format?(text) ||
         (EssentiaTranslate::SPANISH && (EssentiaTranslate::UI_SPANISH.has_key?(text) ||
-          EssentiaTranslate.battle_label(text)))
+          EssentiaTranslate.gameplay_label(text)))
     end
 
     def run(root, base, marker = '', budget = STARTUP_BUDGET_SECONDS)

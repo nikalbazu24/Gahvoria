@@ -86,6 +86,16 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   load script
 
   if reborn
+    module MessageTypes
+      def self.getFromHash(_type, key); key; end
+    end
+    # Reborn defines _INTL before loading the table of berry names, before Graphics.update.
+    def _INTL(key)
+      MessageTypes.getFromHash(0, key)
+    end
+    assert_equal('Bayas Caoca', _INTL('Occa Berries'))
+    assert_equal('Bayas Maranga', _INTL('Maranga Berries'))
+
     $game_map = Struct.new(:map_id).new(51)
     $Trainer = Struct.new(:name).new('nico')
     original = "Station master here.\\nWe've got your boarding passes."
@@ -152,14 +162,19 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     EssentiaTranslate.install
     assert_equal(:controls, PokemonMenu.new($pause_test_scene).pbStartPokemonMenu)
     assert_equal(true, $pause_test_scene.visible)
-    module MessageTypes
-      def self.getFromHash(_type, key); key; end
-    end
-    EssentiaTranslate.install
     assert_equal('{2} de {1}', MessageTypes.getFromHash(0, "{1}'s {2}"))
     assert_equal('Nv.35', EssentiaTranslate.lookup('Lv35'))
     assert_equal('Arraigo', EssentiaTranslate.lookup('Ingrain'))
     assert_equal('{1} - Pokémon {2}', MessageTypes.getFromHash(0, '{1} - {2} Pokémon'))
+    {
+      '{1:s} (M, Lv{2:d})' => 'Pikachu (M, Nv.12)',
+      '{1:s} (F, Lv{2:d})' => 'Pikachu (F, Nv.12)',
+      '{1:s} (Lv{2:d})' => 'Pikachu (Nv.12)'
+    }.each do |source, expected|
+      values = ['Pikachu', 12]
+      template = MessageTypes.getFromHash(0, source)
+      assert_equal(expected, template.gsub(/\{(\d+):(\w+)\}/) { sprintf('%' + $2, values[$1.to_i - 1]) })
+    end
     formats = ['x{1: 2d}', 'x{1:03d}', 'PP: {1}/{2}', 'PP: 3/15', '{1: 2d}/{2: 2d}',
                "{1:s}\1", '{1:s}\1', ' ({1}) PP: {2}/{3}', 'Pokémon',
                'TH~ R0GUE DAa/ta cor$upt?@####']

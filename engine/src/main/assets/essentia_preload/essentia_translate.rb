@@ -64,10 +64,15 @@ module EssentiaTranslate
   }
   REBORN_INTRO_MAPS = [37, 51, 667]
   REBORN_GLITCH_TEXT = 'TH~ R0GUE DAa/ta cor$upt?@####'
-  SPANISH_BATTLE_TEXT = {
+  SPANISH_GAMEPLAY_TEXT = {
     'Ingrain' => 'Arraigo', 'Lv{1}' => 'Nv.{1}',
     '{1} - {2} Pokémon' => '{1} - Pokémon {2}',
-    "{1}'s {2}" => '{2} de {1}'
+    "{1}'s {2}" => '{2} de {1}',
+    '{1:s} (M, Lv{2:d})' => '{1:s} (M, Nv.{2:d})',
+    '{1:s} (F, Lv{2:d})' => '{1:s} (F, Nv.{2:d})',
+    '{1:s} (Lv{2:d})' => '{1:s} (Nv.{2:d})',
+    'Occa Berries' => 'Bayas Caoca',
+    'Maranga Berries' => 'Bayas Maranga'
   }
   # Some catalog entries are display formats, with no words to translate.
   QUANTITY_FORMAT = /\Ax?\{\d+:[ 0-9]*d\}(?:\/\{\d+:[ 0-9]*d\})?\z/
@@ -298,7 +303,7 @@ module EssentiaTranslate
       return text unless text.is_a?(String) && !text.empty?
       return text if text.instance_variable_get(:@gahvoria_translated) || player_name?(text)
       return text if display_format?(text)
-      label = battle_label(text)
+      label = gameplay_label(text)
       return marked(label) if label
       return text unless text =~ /[A-Za-z]/ || (text.respond_to?(:ascii_only?) ? !text.ascii_only? : text.unpack('C*').any? { |byte| byte >= 128 })
       load_if_due
@@ -405,9 +410,9 @@ module EssentiaTranslate
         FORMATTED_NUMBER.match(text) || /\ANv\. ?\d+\z/.match(text)
     end
 
-    def battle_label(text)
+    def gameplay_label(text)
       return nil unless SPANISH
-      label = SPANISH_BATTLE_TEXT[text]
+      label = SPANISH_GAMEPLAY_TEXT[text]
       label ||= 'Nv.' + $1 if LEVEL_NUMBER.match(text)
       label
     end
@@ -429,7 +434,7 @@ module EssentiaTranslate
       return nil unless match
       body = match[2].gsub("’", "'").gsub("…", "...").gsub(/\s+/, ' ').strip
       label = ui_label(body)
-      label ||= battle_label(body)
+      label ||= gameplay_label(body)
       label ||= SOLAR_TEXT_SPANISH[body.downcase] if SOLAR_ECLIPSE
       marked(match[1] + label + match[3]) if label
     end
@@ -940,7 +945,7 @@ module EssentiaTranslate
 
     def message_catalog_text(text)
       if text.is_a?(String) && !player_name?(text)
-        label = battle_label(text)
+        label = gameplay_label(text)
         return marked(label) if label
       end
       # Keep UI originals available for the selector or drawing hook to resolve in context.
@@ -1009,7 +1014,7 @@ unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
     alias_method :essentia_translation_method_added, :method_added
     def method_added(name)
       essentia_translation_method_added(name)
-      if name.to_s =~ /\A(?:pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
+      if name.to_s =~ /\A(?:_INTL|pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
         EssentiaTranslate.install
       end
     end

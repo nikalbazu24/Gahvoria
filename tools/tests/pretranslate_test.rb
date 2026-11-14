@@ -28,6 +28,7 @@ source = <<'RUBY'
   pbMessageDisplay(msg, "Watch \\PN!\nGo!")
   pbMessage("Double #{dynamic}")
   _INTL('New adventure')
+  line = line.gsub! "_I(", (numbattle.to_s + ",")
 RUBY
 $RGSS_SCRIPTS = [[0, 'Introduction', nil, source]]
 $test_data = {
@@ -118,20 +119,32 @@ EXTRA
   check(opening_first, lines)
   check(false, File.exist?(catalog + '.tmp'))
 
-  # Editor labels can also come from the game's compiled message catalog.
+  # Developer tool labels can also come from the game's compiled message catalog.
   File.write(File.join(dir, 'Scripts', 'Game', 'AnimEditor.rb'), <<'EDITOR')
 _INTL("Zoom X:")
 _INTL("<user's cry>")
 _INTL("Yes, please")
 EDITOR
   $RGSS_SCRIPTS << [2, 'Animation Editor', nil, '_INTL("Flip Horizontal")']
+  File.write(File.join(dir, 'Scripts', 'Game', 'Debug.rb'), <<'DEBUG')
+_INTL("Toggle Battle Logging")
+_INTL("HP/Status")
+_INTL("EV/IV/pID")
+_INTL("Switches")
+_INTL("Variables")
+DEBUG
+  $RGSS_SCRIPTS << [4, 'Compiler', nil, 'yield(_INTL("Compiling move data"))']
+  $RGSS_SCRIPTS << [5, 'Puzzle', nil, '_INTL("Switches")']
   $test_data['Data/messages.dat'] << {
     'Zoom X:' => 'Zoom X:', "<user's cry>" => "<user's cry>", 'Flip Horizontal' => 'Flip Horizontal',
     'Only in the player catalog' => 'Only in the player catalog', 'Yes, please' => 'Yes, please'
   }
+  %w[Switches Variables HP/Status EV/IV/pID].concat(['Toggle Battle Logging', 'Compiling move data']).each do |label|
+    $test_data['Data/messages.dat'].last[label] = label
+  end
   GahvoriaPretranslate.export_catalog(dir, catalog)
   lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
-  check(opening_first + ['Only in the player catalog'], lines)
+  check(opening_first[0...8] + ['Switches'] + opening_first[8..-1] + ['Only in the player catalog'], lines)
 
   $RGSS_SCRIPTS << [3, 'Combat', nil, <<'FORMATS']
 _ISPRINTF("x{1: 2d}", qty)
@@ -142,7 +155,7 @@ _INTL("Pokémon restored its power!")
 FORMATS
   GahvoriaPretranslate.export_catalog(dir, catalog)
   lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
-  check(opening_first[0...8] + ['Pokémon restored its power!'] +
+  check(opening_first[0...8] + ['Switches', 'Pokémon restored its power!'] +
         opening_first[8..-1] + ['Only in the player catalog'], lines)
 
   aborted = File.join(dir, 'aborted')
