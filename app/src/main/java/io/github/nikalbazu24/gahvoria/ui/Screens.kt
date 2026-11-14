@@ -305,6 +305,9 @@ fun GameScreen(s: AppState, g: Game) {
 @Composable
 private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
     var revision by remember(g.path) { mutableIntStateOf(0) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/tab-separated-values")) { uri ->
+        if (uri != null) s.exportTranslationPending(g, uri)
+    }
     var result by remember(g.path, revision) { mutableStateOf<Result<Pair<TranslationCoverage, Boolean>>?>(null) }
     LaunchedEffect(g.path, revision) {
         result = withContext(Dispatchers.IO) { runCatching { s.translationCoverage(g) } }
@@ -360,6 +363,9 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                 }
             }
             SecondaryButton("Copiar ejemplos", Modifier.fillMaxWidth()) { s.copyTranslationExamples(examples) }
+            SecondaryButton("Exportar pendientes (.tsv)", Modifier.fillMaxWidth()) {
+                exporter.launch("Gahvoria-pendientes-${Saves.safeName(g.title)}.tsv")
+            }
         }
         if (state != null) SecondaryButton("Volver a medir", Modifier.fillMaxWidth()) { revision++ }
     }

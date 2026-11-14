@@ -49,7 +49,7 @@ public final class NeuralInferenceProbe {
     private static String encode(String s) {
         return s == null ? "-" : Base64.getEncoder().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
-    private static List<String> infer(String[] args, boolean html, List<String> texts) throws IOException {
+    static List<String> infer(String[] args, boolean html, List<String> texts) throws IOException {
         if (texts.isEmpty()) return Collections.emptyList();
         Process p = new ProcessBuilder(args[0], args[1], args[2], args[3], html ? "html" : "plain")
             .redirectError(ProcessBuilder.Redirect.INHERIT).start();

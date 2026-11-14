@@ -18,12 +18,14 @@ final class TranslationMemory implements Closeable {
     private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
     private static final String CONNECTOR_PREFIX = "\u001Fconnector-v1:";
     private static final String GROUP_PREFIX = "\u001Fgroups-v1:";
+    private static final String NOUN_PREFIX = "\u001Fnouns-v1:";
     private static final String SLOT_PREFIX = "\u001Fslots-v1:";
     private final RandomAccessFile file;
     private final boolean contextual;
     private final java.nio.channels.FileLock lock;
     private final Map<String, String> entries = new LinkedHashMap<>();
     private final Map<String, TranslationAudit.Issue> rejected;
+    private final Map<String, String> rejectedAnswers;
 
     TranslationMemory(File path) throws IOException {
         this(path, false);
@@ -40,6 +42,7 @@ final class TranslationMemory implements Closeable {
     private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
         this.contextual = contextual;
         rejected = writable ? null : new HashMap<>();
+        rejectedAnswers = writable ? null : new HashMap<>();
         file = new RandomAccessFile(path, writable ? "rw" : "r");
         try {
             lock = writable ? file.getChannel().tryLock() : null;
@@ -56,6 +59,8 @@ final class TranslationMemory implements Closeable {
     }
 
     private String key(String original) {
+        String noun = NOUN_PREFIX + original;
+        if (entries.containsKey(noun) || (contextual && NeuralText.needsNounRepair(original))) return noun;
         String group = GROUP_PREFIX + original;
         if (entries.containsKey(group) || (contextual && NeuralText.needsSlotRepair(original))) return group;
         String slots = SLOT_PREFIX + original;
@@ -72,7 +77,7 @@ final class TranslationMemory implements Closeable {
         if (entries.containsKey(key)) return null;
         TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
         if (issue == null && !key.equals(original)) {
-            for (String previous : new String[]{SLOT_PREFIX + original, CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original}) {
+            for (String previous : previousKeys(original)) {
                 if (previous.equals(key)) continue;
                 issue = rejected == null ? null : rejected.get(previous);
                 if (issue != null) break;
@@ -80,6 +85,22 @@ final class TranslationMemory implements Closeable {
             }
         }
         return issue == null ? TranslationAudit.Issue.MISSING : issue;
+    }
+
+    private static String[] previousKeys(String original) {
+        return new String[]{NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
+            CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original};
+    }
+
+    // For local diagnostics only. Do not expose the game's filesystem path or
+    // synthesize an answer when the model never produced a storable row.
+    String storedCandidate(String original) {
+        for (String key : previousKeys(original)) {
+            String answer = entries.get(key);
+            if (answer == null && rejectedAnswers != null) answer = rejectedAnswers.get(key);
+            if (answer != null) return answer;
+        }
+        return "";
     }
 
     void remember(Map<String, String> answers) throws IOException {
@@ -142,6 +163,7 @@ final class TranslationMemory implements Closeable {
         if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
         if (original.startsWith(SLOT_PREFIX)) source = original.substring(SLOT_PREFIX.length());
         if (original.startsWith(GROUP_PREFIX)) source = original.substring(GROUP_PREFIX.length());
+        if (original.startsWith(NOUN_PREFIX)) source = original.substring(NOUN_PREFIX.length());
         if (!contextual) {
             if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
             return;
@@ -151,6 +173,7 @@ final class TranslationMemory implements Closeable {
             entries.put(original, translated);
         } else if (rejected != null && !entries.containsKey(original)) {
             rejected.put(original, issue);
+            rejectedAnswers.put(original, translated == null ? "" : translated);
         }
     }
 
@@ -179,7 +202,7 @@ final class TranslationMemory implements Closeable {
         return escape(original) + '\t' + escape(translated) + '\n';
     }
 
-    private static String escape(String value) {
+    static String escape(String value) {
         return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r");
     }
 

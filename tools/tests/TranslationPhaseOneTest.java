@@ -25,7 +25,82 @@ public final class TranslationPhaseOneTest {
         migratesOnlyOldValueTemplates();
         groupsPossessivesAndAdjacentValues();
         migratesOnlyDamagedSlotStructures();
-        System.out.println("13 JVM translation checks passed");
+        literalPossessivesKeepTermsAndContractions();
+        migratesLiteralNounsAndExportsEveryPendingRow();
+        System.out.println("15 JVM translation checks passed");
+    }
+
+    private static void literalPossessivesKeepTermsAndContractions() throws Exception {
+        String source = "{1}’s Rain Dish restored its HP a little!";
+        Map<String, String> answers = TranslationAudit.translate(Collections.singletonList(source),
+            (raw, text) -> NeuralText.translate(raw, text, input -> {
+                equal(Collections.singletonList("ZXQVA restored its HP a little!"), input);
+                return Collections.singletonList("ZXQVA recuperó algunos PS.");
+            }, input -> null));
+        equal("Cura Lluvia de {1} recuperó algunos PS.", answers.get(source));
+        String dreams = "{1}'s dreams jolted them right back up!";
+        answers = TranslationBatch.translate(Collections.singletonList(dreams),
+            (raw, text) -> NeuralText.translate(raw, text, input -> {
+                equal(Collections.singletonList("the dreams of ZXQVA jolted them right back up!"), input);
+                return Collections.singletonList("¡Los sueños de ZXQVA lo despertaron!");
+            }, input -> null));
+        equal("¡Los sueños de {1} lo despertaron!", answers.get(dreams));
+        for (String untouched : Arrays.asList("{1}'s been waiting.", "{1}'s going home.", "{1}'s {2:03d} years old.",
+            "{1}'s healthiness improved.", "{1}'s family’s house.", "{1}'s Rain Dishware broke.", "{1}'s \\c[2]Rain Dish activated.",
+            "Run Away from {1}.", "Tell {1} about Cloud Nine.")) equal(false, NeuralText.needsNounRepair(untouched));
+        String controls = "\\c[1]{1}'s Rain Dish\\c[0] activated!";
+        answers = TranslationBatch.translate(Collections.singletonList(controls),
+            (raw, text) -> NeuralText.translate(raw, text, input -> null, input -> {
+                equal(Collections.singletonList("<img data-gahvoria=\"0\">ZXQVB<img data-gahvoria=\"2\"> activated!"), input);
+                return Collections.singletonList("<img data-gahvoria=\"0\">ZXQVB<img data-gahvoria=\"2\"> se activó!");
+            }));
+        equal("\\c[1]Cura Lluvia de {1}\\c[0] se activó!", answers.get(controls));
+        for (String output : Arrays.asList("ZXQVA ZXQVA", "ZXQVAó", "Sin valor")) {
+            equal(0, TranslationBatch.translate(Collections.singletonList(source),
+                (raw, text) -> NeuralText.translate(raw, text, input -> Collections.singletonList(output), input -> null)).size());
+        }
+    }
+
+    private static void migratesLiteralNounsAndExportsEveryPendingRow() throws Exception {
+        Path folder = Files.createTempDirectory("gahvoria-noun-report");
+        Path cache = folder.resolve("es.tsv"), ready = folder.resolve("catalog.ready");
+        String source = "{1}'s Rain Dish restored its HP a little!";
+        String bad = "{1}'s Rain Dish restaura sus PS.";
+        String dreams = "{1}'s dreams jolted them right back up!";
+        try {
+            Files.write(cache, Arrays.asList("Hello\tHola", "\u001Fslots-v1:" + source + "\t" + bad,
+                "\u001Fgroups-v1:" + dreams + "\tLos sueños de {1} los sacudieron.",
+                "\u001Fgroups-v1:{1}'s {2} blocks {3}!\t¡{2} de {1} bloquea {3}!"), StandardCharsets.UTF_8);
+            java.util.List<String> rows = new java.util.ArrayList<>(Arrays.asList("Hello", source, dreams, source));
+            for (int i = 0; i < 30; i++) rows.add("Pending " + i + "\\nline\\tvalue");
+            Files.write(ready, rows, StandardCharsets.UTF_8);
+            long size = Files.size(cache);
+            TranslationCoverage before = TranslationCoverage.read(folder.resolve("catalog").toFile());
+            equal(33, before.total);
+            equal(1, before.translated);
+            equal(12, before.examples.size());
+            java.io.StringWriter export = new java.io.StringWriter();
+            equal(32, TranslationCoverage.writePending(folder.resolve("catalog").toFile(), export));
+            equal(true, export.toString().contains("ENGLISH\t" + source + "\t" + bad));
+            equal(true, export.toString().contains("OUTDATED\t" + dreams));
+            equal(true, export.toString().contains("Pending 29\\nline\\tvalue"));
+            equal(size, Files.size(cache));
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                equal(null, memory.get(dreams));
+                equal("¡{2} de {1} bloquea {3}!", memory.get("{1}'s {2} blocks {3}!"));
+                memory.remember(Collections.singletonMap(source, "Cura Lluvia de {1} recuperó algunos PS."));
+                memory.remember(Collections.singletonMap(dreams, "Los sueños de {1} lo despertaron."));
+            }
+            try (TranslationMemory reader = new TranslationMemory(cache.toFile())) {
+                equal("Cura Lluvia de {1} recuperó algunos PS.", reader.get(source));
+                equal("Hola", reader.get("Hello"));
+            }
+            TranslationCoverage after = TranslationCoverage.read(folder.resolve("catalog").toFile());
+            equal(3, after.translated);
+            equal(30, TranslationCoverage.writePending(folder.resolve("catalog").toFile(), new java.io.StringWriter()));
+        } finally {
+            for (Path path : Arrays.asList(cache, ready, folder)) Files.deleteIfExists(path);
+        }
     }
 
     private static void groupsPossessivesAndAdjacentValues() throws Exception {

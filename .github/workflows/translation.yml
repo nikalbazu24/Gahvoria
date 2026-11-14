@@ -17,6 +17,7 @@ on:
       - 'tools/tests/translation*'
       - 'tools/tests/NeuralInferenceProbe.java'
       - 'tools/tests/neural-possessives.txt'
+      - 'tools/build_neural_lexicon.py'
       - 'tools/neural_probe.mjs'
       - 'tools/stage_neural_probe.py'
       - 'engine/neural/model-en-es.json'
@@ -41,8 +42,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/translation-test"
           javac --release 8 -encoding UTF-8 -d "$RUNNER_TEMP/translation-test" \
             "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/TranslationOpening.java" \
-            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java tools/tests/NeuralInferenceProbe.java
+            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" "$src/NeuralTerms.java" tools/tests/TranslationPhaseOneTest.java tools/tests/NeuralInferenceProbe.java tools/tests/TranslationCatalogProbe.java
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationPhaseOneTest
+          python3 tools/build_neural_lexicon.py
+          git diff --exit-code -- engine/src/main/java/com/hatkid/mkxpz/translate/NeuralTerms.java
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.1'
@@ -68,7 +71,12 @@ jobs:
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.NeuralInferenceProbe \
             "$(command -v node)" tools/neural_probe.mjs "$RUNNER_TEMP/neural-probe/package" \
             "$RUNNER_TEMP/neural-probe" tools/tests/neural-possessives.txt > "$RUNNER_TEMP/neural-probe-results.tsv"
+          java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationCatalogProbe \
+            "$(command -v node)" tools/neural_probe.mjs "$RUNNER_TEMP/neural-probe/package" \
+            "$RUNNER_TEMP/neural-probe" tools/tests/neural-possessives.txt > "$RUNNER_TEMP/neural-catalog-results.tsv"
       - uses: actions/upload-artifact@v4
         with:
           name: neural-sentence-comparison
-          path: ${{ runner.temp }}/neural-probe-results.tsv
+          path: |
+            ${{ runner.temp }}/neural-probe-results.tsv
+            ${{ runner.temp }}/neural-catalog-results.tsv

@@ -388,6 +388,26 @@ class AppState(private val activity: Activity) {
         say("Ejemplos copiados.", NoticeKind.OK)
     }
 
+    fun exportTranslationPending(g: Game, uri: Uri) {
+        worker.execute {
+            val result = runCatching {
+                val output = activity.contentResolver.openOutputStream(uri)
+                    ?: error("No se pudo abrir el archivo elegido")
+                output.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writer.write("# Gahvoria ${BuildConfig.VERSION_NAME}\n")
+                    writer.write("# Juego: ${g.title.replace('\n', ' ').replace('\r', ' ')}\n")
+                    TranslationCoverage.writePending(Translations.catalog(activity, g), writer)
+                }
+            }
+            activity.runOnUiThread {
+                result.fold(
+                    onSuccess = { say("Informe guardado con $it pendientes.", NoticeKind.OK) },
+                    onFailure = { say("No pude completar el informe. Vuelve a intentarlo.", NoticeKind.WARN) }
+                )
+            }
+        }
+    }
+
     fun copyGameplayTranslationReport(report: GameplayTranslationReport) {
         val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
         val text = buildString {

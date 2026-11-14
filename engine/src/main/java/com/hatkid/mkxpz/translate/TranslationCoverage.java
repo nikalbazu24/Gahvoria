@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -70,5 +71,40 @@ public final class TranslationCoverage {
             }
         }
         return new TranslationCoverage(originals.size(), translated, partial, examples, issues);
+    }
+
+    /** Export every pending row, not just the twelve UI examples. Stream the
+     * report so large catalogs are not copied into the Android clipboard. */
+    public static int writePending(File catalogBase, Writer output) throws IOException {
+        File catalog = new File(catalogBase.getPath() + ".ready");
+        File memoryFile = new File(catalogBase.getParentFile(), "es.tsv");
+        Set<String> seen = new HashSet<>();
+        int count = 0;
+        output.write("# Gahvoria: pendientes de traducción\n");
+        output.write("# Campos TSV escapados: \\n, \\r, \\t y \\\\. Una fila por original.\n");
+        output.write("# Sin traducción guardada no permite distinguir rechazo del modelo de una frase aún no procesada.\n");
+        output.write("motivo\toriginal\ttraduccion_guardada\n");
+        try (BufferedReader rows = new BufferedReader(new InputStreamReader(
+                 new FileInputStream(catalog), StandardCharsets.UTF_8.newDecoder()));
+             TranslationMemory memory = memoryFile.isFile() ? TranslationMemory.snapshot(memoryFile) : null) {
+            String row;
+            while ((row = rows.readLine()) != null) {
+                if (Thread.currentThread().isInterrupted()) throw new IOException("Exportación interrumpida");
+                String original = TranslationMemory.unescape(row);
+                if (original == null || original.trim().isEmpty() || !seen.add(original)) continue;
+                TranslationAudit.Issue issue = memory == null ? TranslationAudit.Issue.MISSING : memory.audit(original);
+                if (issue == null) continue;
+                output.write(issue.name());
+                output.write('\t');
+                output.write(TranslationMemory.escape(original));
+                output.write('\t');
+                output.write(TranslationMemory.escape(memory == null ? "" : memory.storedCandidate(original)));
+                output.write('\n');
+                count++;
+            }
+        }
+        output.write("# Pendientes exportados: " + count + "\n");
+        output.flush();
+        return count;
     }
 }

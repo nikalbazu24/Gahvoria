@@ -22,3 +22,14 @@ The password is {1}{2}.
 Welcome,{1}!
 {1}boosted the team's morale.
 The reward is ${1}.
+{1}'s Quark Drive heightened its {2}!
+{1}'s Rain Dish restored its HP a little!
+{1}'s Crest restored its HP a little!
+{1}'s Shed Skin cured its {2} problem!
+{1}'s health was sapped by {2}'s Crest!
+{1}'s Cloud Nine raised its {2}!
+{1}'s Rattled raised its Speed!
+{1}'s Z-Power restored its health!
+{1}'s Rattled raised its speed!
+{1}'s Illuminate raised its Special Attack and Special Defense!
+{1}'s Sand Stream whipped up a sandstorm!

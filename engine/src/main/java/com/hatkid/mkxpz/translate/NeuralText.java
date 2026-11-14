@@ -74,12 +74,35 @@ final class NeuralText {
     }
 
     private static final Pattern POSSESSIVE = Pattern.compile("['’]s\\s+", Pattern.CASE_INSENSITIVE);
+    // These ordinary nouns remain visible to the model. Rephrase the English
+    // possessive as "the dreams of VALUE", avoiding the ambiguous VALUE's token.
+    private static final Pattern ORDINARY_NOUN = Pattern.compile(
+        "(?i)(?:special attack and special defense|special attack|special defense|"
+        + "health|dreams|friends|family|parents|mother|father|brother|sister|"
+        + "bag|book|house|team|score|name|attack|defense|speed|accuracy|evasion)"
+        + "(?![\\p{L}\\p{N}_'’-])");
+
+    private static boolean nounBoundary(String text, int end) {
+        return end == text.length() || (!Character.isLetterOrDigit(text.charAt(end))
+            && "_'-’".indexOf(text.charAt(end)) < 0);
+    }
+
+    private static String[] abilityAt(String text, int start) {
+        for (String[] term : NeuralTerms.ABILITIES) {
+            if (text.startsWith(term[0], start) && nounBoundary(text, start + term[0].length())) return term;
+        }
+        for (String[] term : new String[][]{{"Z-Power", "poder Z"}, {"Crest", "emblema"}}) {
+            if (text.startsWith(term[0], start) && nounBoundary(text, start + term[0].length())) return term;
+        }
+        return null;
+    }
 
     private static final class ValueGroup {
         final int index, start;
         int end;
         String expansion;
-        boolean combined;
+        String nounPrefix = "";
+        boolean combined, literalNoun;
         ValueGroup(int index, int start, int end, String expansion) {
             this.index = index; this.start = start; this.end = end; this.expansion = expansion;
         }
@@ -113,6 +136,24 @@ final class NeuralText {
                 groups.add(previous);
             }
         }
+        for (ValueGroup group : groups) {
+            Matcher possessive = POSSESSIVE.matcher(text).region(group.end, text.length());
+            if (!possessive.lookingAt()) continue;
+            int start = possessive.end();
+            String[] term = abilityAt(text, start);
+            if (term != null) {
+                group.expansion = term[1] + " de " + group.expansion;
+                group.end = start + term[0].length();
+                group.combined = true;
+                group.literalNoun = true;
+            } else {
+                Matcher noun = ORDINARY_NOUN.matcher(text).region(start, text.length());
+                if (!noun.lookingAt()) continue;
+                group.nounPrefix = "the " + noun.group() + " of ";
+                group.end = noun.end();
+                group.literalNoun = true;
+            }
+        }
         return groups;
     }
 
@@ -125,6 +166,13 @@ final class NeuralText {
         for (ValueGroup group : groups(original, protectedText)) {
             if (group.combined || letterAt(protectedText, group.start - 1) || letterAt(protectedText, group.end)) return true;
         }
+        return false;
+    }
+
+    static boolean needsNounRepair(String original) {
+        if (original.indexOf('\'') < 0 && original.indexOf('’') < 0) return false;
+        String protectedText = TranslationBatch.shield(original, new ArrayList<>());
+        for (ValueGroup group : groups(original, protectedText)) if (group.literalNoun) return true;
         return false;
     }
 
@@ -153,7 +201,7 @@ final class NeuralText {
                     input.append(text, cursor, group.start);
                     // A variable next to a verb is not part of the verb's spelling.
                     if (letterAt(text, group.start - 1)) input.append(' ');
-                    input.append(value);
+                    input.append(group.nounPrefix).append(value);
                     if (letterAt(text, group.end)) input.append(' ');
                     cursor = group.end;
                 }
