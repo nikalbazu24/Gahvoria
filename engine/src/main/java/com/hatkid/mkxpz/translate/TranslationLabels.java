@@ -7,6 +7,12 @@ import java.util.regex.*;
 final class TranslationLabels {
     private static final Map<String, String> LABELS = new LinkedHashMap<>();
     private static final Map<String, String> FIELDS = new LinkedHashMap<>();
+    // These move names also occur in ordinary menus. The Ruby bridge has typed
+    // move context; a bare catalog string does not. Let the sentence model decide.
+    private static final Set<String> CONTEXT_REQUIRED = new HashSet<>(Arrays.asList(
+        "Return", "Round", "Pound", "Present", "Charge", "Rest", "Counter", "Conversion",
+        "Substitute", "Recycle", "Protect", "Follow Me", "After You", "Helping Hand", "Order Up",
+        "Stockpile", "Transform", "Refresh"));
     private static final Pattern WORDS = Pattern.compile("[\\p{L}]+(?:['’][\\p{L}]+)?");
     private static final Pattern EDGE = Pattern.compile("^([^\\p{L}]*)(.*?)([^\\p{L}]*$)", Pattern.DOTALL);
     private static final Pattern FIELD;
@@ -49,7 +55,7 @@ final class TranslationLabels {
         if (original.contains("\\ch[") || original.contains("\\choice[")) return null;
         String trimmed = original.trim();
         String label = LABELS.get(trimmed);
-        if (label == null) label = NeuralLabels.LABELS.get(trimmed);
+        if (label == null && !CONTEXT_REQUIRED.contains(trimmed)) label = NeuralLabels.LABELS.get(trimmed);
         if (label != null) return original.substring(0, original.indexOf(trimmed)) + label
             + original.substring(original.indexOf(trimmed) + trimmed.length());
 

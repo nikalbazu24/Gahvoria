@@ -45,14 +45,17 @@ public final class TranslationPhaseOneTest {
     }
 
     private static void preservesSpeakersAndLocalizesWholeLabels() throws Exception {
-        java.util.List<String> sources = Arrays.asList("ELENA: Um...", "GRUNT: ...", "Pound", "Sp. Atk: {1}", "HP {1}/{2}");
+        java.util.List<String> sources = Arrays.asList("ELENA: Um...", "GRUNT: ...", "Bubble", "Sp. Atk: {1}", "HP {1}/{2}");
         Map<String, String> fixed = TranslationAudit.translate(sources, (raw, input) -> { throw new AssertionError("Unnecessary inference"); });
         equal("ELENA: Eh...", fixed.get(sources.get(0)));
         equal("RECLUTA: ...", fixed.get(sources.get(1)));
-        equal("Destructor", fixed.get("Pound"));
+        equal("Burbuja", fixed.get("Bubble"));
         equal("At. Esp.: {1}", fixed.get("Sp. Atk: {1}"));
         equal("PS {1}/{2}", fixed.get("HP {1}/{2}"));
         equal(null, TranslationLabels.fixed("I found a Pound coin.", TranslationProfile.EMPTY));
+        equal(null, TranslationLabels.fixed("Pound", TranslationProfile.EMPTY));
+        equal(null, TranslationLabels.fixed("Return", TranslationProfile.EMPTY));
+        equal(true, NeuralText.needsNounRepair("{1}'s Return missed!"));
         String text = "ELENA: Wait here.";
         Map<String, String> answers = TranslationAudit.translate(Collections.singletonList(text),
             (raw, input) -> NeuralText.translate(raw, input, plain -> {
