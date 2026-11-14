@@ -22,6 +22,18 @@ module Audio
   def self.se_play(*args); args; end
 end
 
+class Tilemap
+  attr_reader :updates
+
+  def initialize
+    @updates = 0
+  end
+
+  def update
+    @updates += 1
+  end
+end
+
 def check(condition, message)
   raise message unless condition
 end
@@ -36,6 +48,11 @@ Dir.mktmpdir('gahvoria-reborn-engine') do |game|
     File.write(File.join(game, 'Scripts/Online/DiscordRichPresence.rb'), '# layout fixture')
   end
   ENV['GAHVORIA_GAME_ROOT'] = game
+  if ARGV.include?('--native-tilemap')
+    module TilemapUtils
+      def self.updateAutoTiles; :native; end
+    end
+  end
   load preload
 
   if other_game
@@ -43,6 +60,7 @@ Dir.mktmpdir('gahvoria-reborn-engine') do |game|
     check(Input.time?(Input::A) == 250_000, 'Unrelated game changed input units')
     check(!Graphics.respond_to?(:start_playing), 'Unrelated game got a Reborn clock')
     check(!Audio.respond_to?(:se_play_position), 'Unrelated game got a Reborn sound adapter')
+    check(!defined?(TilemapUtils), 'Unrelated game got a Reborn tilemap adapter')
     next
   end
 
@@ -73,5 +91,16 @@ Dir.mktmpdir('gahvoria-reborn-engine') do |game|
   Graphics.start_playing = now - 3
   check(Graphics.time_passed / 40 + (now - Graphics.start_playing).to_i == 63, 'Loaded playtime lost')
   check(Audio.se_play_position('cursor', 80, 90, -1, 0, 0) == ['cursor', 80, 90], 'Sound effect lost')
+
+  if ARGV.include?('--native-tilemap')
+    check(TilemapUtils.updateAutoTiles == :native, 'Native tilemap API was replaced')
+  else
+    maps = [Tilemap.new, Tilemap.new]
+    3.times do
+      TilemapUtils.updateAutoTiles
+      maps.each(&:update)
+    end
+    check(maps.all? { |map| map.updates == 3 }, 'Each map must keep its regular tilemap updates')
+  end
 end
 puts 'Reborn engine compatibility check passed'

@@ -172,6 +172,16 @@ if Essentia.reborn_game? && defined?(Input)
       se_play(name, volume, pitch)
     end unless respond_to?(:se_play_position)
   end
+
+  if defined?(Tilemap) && !defined?(TilemapUtils)
+    module TilemapUtils
+      # Reborn's desktop fork advances a shared animation clock here.
+      # Gahvoria advances each tilemap in Tilemap#update, called by Spriteset_Map.
+      def self.updateAutoTiles
+        nil
+      end
+    end
+  end
 end
 
 class << IO
