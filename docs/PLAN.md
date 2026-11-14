@@ -84,3 +84,5 @@ La auditoría, la primera reparación del traductor y el plan del modelo local e
 - Si el motor clásico devuelve el error de sintaxis correspondiente, el informe ofrece reabrir con el motor moderno. La corrección se comprueba con scripts de prueba y queda pendiente de verificar con Reborn en el teléfono.
 
 - Reborn 19.5 avanzó al motor moderno y RubyGems pidió `rbconfig`. El APK incorpora la configuración generada por el mismo Ruby ARM64 que ejecuta el juego. Gahvoria la carga antes de que el juego agregue la biblioteca de escritorio. El verificador del APK comprueba el archivo. Queda por probar el arranque de Reborn en el teléfono.
+
+- Tras cargar RubyGems, el actualizador de Reborn pide OpenSSL desde `Net::HTTP`. Se habilita la extensión nativa en Ruby para Android y se empaquetan sus archivos Ruby correspondientes. La compilación comprueba que la extensión esté enlazada y que los archivos lleguen al APK. Se conserva la verificación TLS.

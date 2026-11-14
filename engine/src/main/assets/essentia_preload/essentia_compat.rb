@@ -194,6 +194,13 @@ module Kernel
   alias_method :essentia_original_require, :require
   def require(name)
     return true if ESSENTIA_GONE_LIBS.include?(name.to_s.sub(/\.(rb|so)\z/, ''))
+    if name == 'openssl' || name == 'openssl.rb'
+      archdir = ENV['GAHVORIA_RUBY_ARCHDIR'].to_s
+      unless archdir.empty?
+        wrapper = File.expand_path('../openssl.rb', archdir)
+        return essentia_original_require(wrapper) if File.file?(wrapper)
+      end
+    end
     essentia_original_require(name)
   end
 end

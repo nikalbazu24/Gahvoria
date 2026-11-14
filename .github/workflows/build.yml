@@ -100,7 +100,7 @@ jobs:
         working-directory: engine/jni
         run: ARCH=linux-x86_64 make -j"$(nproc)"
 
-      - name: Empaquetar la configuración del Ruby de Android
+      - name: Empaquetar la configuración y OpenSSL del Ruby de Android
         run: |
           shopt -s nullglob
           prefix="engine/jni/build-$ABI"
@@ -109,6 +109,18 @@ jobs:
           ruby -c "${files[0]}"
           relative="${files[0]#"$prefix"/}"
           install -D -m 644 "${files[0]}" "engine/src/main/assets/ruby-runtime/$relative"
+          lib="$prefix/lib/ruby/3.1.0"
+          runtime="engine/src/main/assets/ruby-runtime/lib/ruby/3.1.0"
+          test -s "$lib/openssl.rb"
+          test -s "$lib/openssl/ssl.rb"
+          cp "$lib/openssl.rb" "$runtime/"
+          cp -R "$lib/openssl" "$runtime/"
+          # The wrapper alone may be installed even when extconf skipped the native extension.
+          readelf -Ws "$prefix/lib/libruby.so" > "$RUNNER_TEMP/ruby-symbols.txt"
+          if ! grep -Eq '[[:space:]]Init_openssl$' "$RUNNER_TEMP/ruby-symbols.txt"; then
+            find engine/jni/ruby -path '*/openssl/mkmf.log' -exec tail -80 {} \;
+            exit 1
+          fi
 
       - name: Incrustar ícono, fuentes y shaders en el motor
         working-directory: engine/jni/mkxp-z

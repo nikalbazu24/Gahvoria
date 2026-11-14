@@ -13,6 +13,8 @@ with zipfile.ZipFile(apk) as archive:
         'assets/essentia_preload/essentia_games.rb',
         'assets/essentia_preload/essentia_compat.rb',
         'assets/licenses/montserrat-OFL.txt',
+        'assets/ruby-runtime/lib/ruby/3.1.0/openssl.rb',
+        'assets/ruby-runtime/lib/ruby/3.1.0/openssl/ssl.rb',
     }
     rbconfigs = [n for n in names if n.startswith('assets/ruby-runtime/lib/ruby/3.1.0/')
                  and n.endswith('/rbconfig.rb') and 'aarch64' in n]
