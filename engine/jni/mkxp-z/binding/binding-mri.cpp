@@ -1352,9 +1352,10 @@ static void showExc(VALUE exc, const BacktraceData &btData) {
     }
 #endif
 #if defined(MKXPZ_BUILD_ANDROID) && !defined(MKXPZ_LEGACY_RUBY)
-    /* Essentia: old games often need the classic engine (Ruby 1.8) */
+    /* The classic engine cannot repair a missing or incompatible native library. */
+    ms.resize(strlen(ms.c_str()));
+    if (!rb_obj_is_kind_of(exc, rb_eLoadError))
     {
-        ms.resize(strlen(ms.c_str()));
         const char *lang = getenv("ESSENTIA_LANG");
         if (lang && !strncmp(lang, "es", 2))
             ms += "\n\n(Essentia: si es un juego antiguo, prueba en la biblioteca: Opciones \u2192 Motor de Ruby \u2192 Cl\u00e1sico)";

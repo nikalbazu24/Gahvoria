@@ -5,6 +5,8 @@ on:
     branches: ['experimental/neural-ai-phase-1']
   pull_request:
     paths:
+      - 'engine/src/main/assets/essentia_preload/essentia_compat.rb'
+      - 'tools/tests/reborn_discord_test.rb'
       - 'engine/src/main/assets/essentia_preload/essentia_translate.rb'
       - 'engine/src/main/assets/essentia_preload/essentia_pretranslate.rb'
       - 'tools/tests/pretranslate_test.rb'
@@ -41,3 +43,4 @@ jobs:
           ruby tools/tests/translation_bridge_test.rb
           ruby tools/tests/translation_bridge_test.rb --disabled
           timeout 15 ruby tools/tests/pretranslate_test.rb
+          ruby tools/tests/reborn_discord_test.rb

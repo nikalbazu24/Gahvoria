@@ -313,6 +313,7 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_TILT", String.valueOf(Math.max(0, Math.min(60, i.getIntExtra(EXTRA_TILT, 0)))));
             startTranslator(i);
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
+            if (!mClassic) setenv("GAHVORIA_GAME_ROOT", game.getCanonicalPath());
             File errorFile = new File(getFilesDir(), "last_error.txt");
             //noinspection ResultOfMethodCallIgnored
             errorFile.delete();  // only an error of this session may be reported

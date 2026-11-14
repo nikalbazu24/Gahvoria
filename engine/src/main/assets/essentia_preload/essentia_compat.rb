@@ -23,6 +23,34 @@ rescue LoadError
 end
 
 module Essentia
+  # Reborn 19.5 loads the desktop Discord extension unconditionally in its presence script.
+  REBORN_DISCORD_FEATURE = %r{\A(?:\./)?(?:gems/)?discord(?:\.(?:so|bundle|dll))?\z}
+
+  def self.reborn_discord_feature?(name)
+    return false unless name.is_a?(String)
+    name = name.tr('\\', '/')
+    root = ENV['GAHVORIA_GAME_ROOT'].to_s
+    return false if root.empty?
+    @reborn_disc = File.file?(File.join(root, 'Scripts/Reborn/Bootstrap.rb')) &&
+      File.file?(File.join(root, 'Scripts/Online/DiscordRichPresence.rb')) if @reborn_disc.nil?
+    return false unless @reborn_disc
+    name = name[(root.length + 1)..-1] if name.start_with?(root + '/')
+    !!REBORN_DISCORD_FEATURE.match(name)
+  end
+
+  def self.load_reborn_discord
+    return false if @reborn_discord_loaded || Object.const_defined?(:Discord)
+    api = Module.new do
+      def self.connected?; false; end
+      def self.connect(_application_id); false; end
+      def self.disconnect; nil; end
+      def self.update; nil; end
+      def self.update_activity(_activity); nil; end
+    end
+    Object.const_set(:Discord, api)
+    @reborn_discord_loaded = true
+  end
+
   WINDOWS_PROGRAM = /\.(exe|bat|cmd|com|vbs|ps1|msi)\b/i
 
   def self.windows_program?(args)
@@ -193,6 +221,7 @@ module Kernel
 
   alias_method :essentia_original_require, :require
   def require(name)
+    return Essentia.load_reborn_discord if Essentia.reborn_discord_feature?(name)
     return true if ESSENTIA_GONE_LIBS.include?(name.to_s.sub(/\.(rb|so)\z/, ''))
     if name == 'openssl' || name == 'openssl.rb'
       archdir = ENV['GAHVORIA_RUBY_ARCHDIR'].to_s
