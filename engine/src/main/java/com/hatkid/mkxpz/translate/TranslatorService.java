@@ -88,7 +88,7 @@ public final class TranslatorService
         mTarget = tag.matches("[a-z]{2,3}(-[a-z0-9]{2,8}){0,3}") ? tag : "es";
         mFile = new File(dir, mTarget + ".tsv");
         mPreparedCatalog = new File(dir, "catalog.ready");
-        mOpening = new File(dir, "opening-es.txt");
+        mOpening = new File(dir, TranslationOpening.FILE_NAME);
         File session = new File(context.getCacheDir(), "translation-session");
         mReqDir = new File(session, "queue");
         mResponses = new File(session, "answers.tsv");
@@ -304,10 +304,11 @@ public final class TranslatorService
             else answers.put(text, cached);
         }
         if (!missing.isEmpty()) {
-            Map<String, String> translated = TranslationBatch.translate(missing, this::neural);
+            Map<String, String> translated = TranslationAudit.translate(missing, this::neural);
             memory.remember(translated);
-            for (Map.Entry<String, String> entry : translated.entrySet()) {
-                if (!entry.getKey().equals(entry.getValue())) answers.put(entry.getKey(), entry.getValue());
+            for (String source : missing) {
+                String answer = memory.get(source);
+                if (answer != null) answers.put(source, answer);
             }
         }
         TranslationMemory.append(responses, answers, false);
@@ -362,8 +363,13 @@ public final class TranslatorService
         } else {
             provider = this::mlkit;
         }
-        Map<String, String> answers = TranslationBatch.translate(missing, provider);
+        boolean neural = PROVIDER_NEURAL.equals(mProvider);
+        Map<String, String> answers = neural ? TranslationAudit.translate(missing, provider)
+                                            : TranslationBatch.translate(missing, provider);
         memory.remember(answers);
+        if (neural) {
+            answers.entrySet().removeIf(entry -> memory.get(entry.getKey()) == null);
+        }
         TranslationMemory.append(responses, answers, false);
         int translated = 0;
         for (Map.Entry<String, String> answer : answers.entrySet()) {

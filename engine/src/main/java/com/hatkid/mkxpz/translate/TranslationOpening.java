@@ -11,18 +11,21 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** A bounded copy of prepared translations, readable before the game's worker responds. */
-final class TranslationOpening {
+public final class TranslationOpening {
+    public static final String FILE_NAME = "opening-es-audited.txt";
+    static final int MAX_ROWS = 768;
+
     private TranslationOpening() {}
 
     static void publish(File catalog, TranslationMemory memory) throws IOException {
-        File target = new File(catalog.getParentFile(), "opening-es.txt");
+        File target = new File(catalog.getParentFile(), FILE_NAME);
         File temp = new File(target.getPath() + ".tmp");
         try {
             Map<String, String> ready = new LinkedHashMap<>();
             int chars = 0;
             try (BufferedReader input = new BufferedReader(new InputStreamReader(
                     new FileInputStream(catalog), StandardCharsets.UTF_8))) {
-                for (int i = 0; i < 768; i++) {
+                for (int i = 0; i < MAX_ROWS; i++) {
                     String row = input.readLine();
                     if (row == null) break;
                     String source = TranslationMemory.unescape(row);

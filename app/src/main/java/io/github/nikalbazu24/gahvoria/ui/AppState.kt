@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationOpening
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameInspector
 import io.github.nikalbazu24.gahvoria.core.Inspection
@@ -394,7 +395,7 @@ class AppState(private val activity: Activity) {
                 val oldRevision = runCatching { revisionFile.readText() }.getOrNull()
                 if (oldRevision != revision) {
                     if (ready.exists() && !ready.delete()) error("No pude renovar el catálogo")
-                    val opening = File(dir, "opening-es.txt")
+                    val opening = File(dir, TranslationOpening.FILE_NAME)
                     if (opening.exists() && !opening.delete()) error("No pude renovar los textos de inicio")
                     File(base.path + ".limited").delete()
                     File(base.path + ".status").delete()

@@ -52,6 +52,7 @@ import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.data.Storage
 import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationAudit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -163,7 +164,7 @@ fun GameScreen(s: AppState, g: Game) {
                         }
                         if (s.hasTranslationCatalog(g)) {
                             Divider()
-                            RowItem("Cobertura del catálogo", "Consulta las frases guardadas y ejemplos pendientes.",
+                            RowItem("Cobertura del catálogo", "Revisa toda la memoria de traducción y los pendientes por causa.",
                                 onClick = { showCoverage = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
                         }
                     }
@@ -299,9 +300,21 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                 val translated = coverage.translated
                 val summary = if (total == 0) "Sin frases detectadas." else {
                     val percent = 100L * translated / total
-                    "$translated de $total guardadas ($percent%) · $pending pendientes"
+                    "$translated de $total pasan la auditoría ($percent%) · $pending pendientes"
                 }
                 RowItem(g.title, summary)
+                for ((issue, count) in coverage.issues) {
+                    Divider()
+                    val label = when (issue) {
+                        TranslationAudit.Issue.MISSING -> "Sin traducción guardada"
+                        TranslationAudit.Issue.OUTDATED -> "Traducción de una versión anterior"
+                        TranslationAudit.Issue.FORMAT -> "Variables o formato alterados"
+                        TranslationAudit.Issue.UNCHANGED -> "Mismo texto que el original"
+                        TranslationAudit.Issue.ENGLISH -> "Restos de inglés detectados"
+                        TranslationAudit.Issue.TERMINOLOGY -> "Terminología Pokémon"
+                    }
+                    RowItem(label, "$count")
+                }
                 if (stale) {
                     Divider()
                     RowItem("Catálogo anterior", "Actualiza la preparación para incluir los archivos y el escáner actuales.")
@@ -311,7 +324,7 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                     RowItem("Catálogo parcial", "El porcentaje corresponde a las frases que se pudieron leer.")
                 }
                 Divider()
-                RowItem("Español", "El conteo usa la memoria de las frases detectadas. Las imágenes y los textos generados al jugar se revisan en el juego.")
+                RowItem("Español", "Vuelve a preparar el juego para intentar corregir los pendientes. Las imágenes y los textos generados al jugar se revisan en el juego.")
             }
         }
         val examples = report?.first?.examples.orEmpty()

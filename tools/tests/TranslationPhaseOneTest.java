@@ -20,7 +20,8 @@ public final class TranslationPhaseOneTest {
         refreshesOnlyOldContextSensitiveEntries();
         openingUsesPreparedEntriesAndReplacesStaleRows();
         coverageReadsCurrentMemoryWithoutChangingIt();
-        System.out.println("8 JVM translation checks passed");
+        auditRepairsOnlyFlaggedRows();
+        System.out.println("9 JVM translation checks passed");
     }
 
     private static void preservesControlTokens() throws Exception {
@@ -61,7 +62,7 @@ public final class TranslationPhaseOneTest {
             (raw, inputs) -> NeuralText.translate(inputs, fragments -> {
                 throw new AssertionError("The whole utterance should fit in one input");
             }, utterances -> {
-                equal(Collections.singletonList("<img data-gahvoria=\"0\">You're an <img data-gahvoria=\"1\">E"
+                equal(Collections.singletonList("<img data-gahvoria=\"0\">You are an <img data-gahvoria=\"1\">E"
                     + "<img data-gahvoria=\"2\">-rank Trainer, <img data-gahvoria=\"3\">!"), utterances);
                 return Collections.singletonList("<img data-gahvoria=\"0\">Eres un entrenador de rango "
                     + "<img data-gahvoria=\"1\">E<img data-gahvoria=\"2\">, <img data-gahvoria=\"3\">!");
@@ -84,6 +85,11 @@ public final class TranslationPhaseOneTest {
             Arrays.asList("Cuz, you know", "Cos Island"), inputs -> {
                 equal(Arrays.asList("Because, you know", "Cos Island"), inputs);
                 return Arrays.asList("Porque, ya sabes", "Cos Island");
+            }, utterances -> { throw new AssertionError("Plain lines"); }));
+        equal(Collections.singletonList("Tenemos tus pases."), NeuralText.translate(
+            Collections.singletonList("We’ve got your passes."), inputs -> {
+                equal(Collections.singletonList("We have got your passes."), inputs);
+                return Collections.singletonList("Tenemos tus pases.");
             }, utterances -> { throw new AssertionError("Plain lines"); }));
     }
 
@@ -180,7 +186,7 @@ public final class TranslationPhaseOneTest {
         Path folder = Files.createTempDirectory("gahvoria-opening");
         Path catalog = folder.resolve("catalog.ready");
         Path cache = folder.resolve("es.tsv");
-        Path opening = folder.resolve("opening-es.txt");
+        Path opening = folder.resolve(TranslationOpening.FILE_NAME);
         try {
             Files.write(catalog, "First\nUnknown\nFirst\nChoose\\twell\n".getBytes(StandardCharsets.UTF_8));
             Files.write(opening, "Old\tViejo\n".getBytes(StandardCharsets.UTF_8));
@@ -239,6 +245,56 @@ public final class TranslationPhaseOneTest {
     private static void equal(Object expected, Object actual) {
         if (!java.util.Objects.equals(expected, actual)) {
             throw new AssertionError("Expected <" + expected + ">, got <" + actual + ">");
+        }
+    }
+
+    private static void auditRepairsOnlyFlaggedRows() throws Exception {
+        Path folder = Files.createTempDirectory("gahvoria-audit");
+        Path catalog = folder.resolve("catalog");
+        Path ready = folder.resolve("catalog.ready");
+        Path cache = folder.resolve("es.tsv");
+        Path opening = folder.resolve(TranslationOpening.FILE_NAME);
+        String english = "We've got your passes.";
+        String formatted = "Hello {1}.";
+        String unchanged = "See you soon.";
+        String term = "Pokémon Center";
+        try {
+            Files.write(ready, Arrays.asList("One", english, formatted, unchanged, term, "Missing"), StandardCharsets.UTF_8);
+            Files.write(cache, Arrays.asList("One\tUno", english + "\tWe've conseguido tus pases.",
+                "\u001Fcontext-v1:" + formatted + "\tHola.",
+                unchanged + "\tSee you soon!", term + "\tCentro de Pokemones"), StandardCharsets.UTF_8);
+            TranslationCoverage before = TranslationCoverage.read(catalog.toFile());
+            equal(6, before.total);
+            equal(1, before.translated);
+            for (TranslationAudit.Issue issue : Arrays.asList(TranslationAudit.Issue.FORMAT,
+                    TranslationAudit.Issue.ENGLISH, TranslationAudit.Issue.UNCHANGED,
+                    TranslationAudit.Issue.TERMINOLOGY, TranslationAudit.Issue.MISSING)) {
+                equal(1, before.issues.get(issue));
+            }
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                java.util.List<String> pending = new java.util.ArrayList<>();
+                for (String source : Files.readAllLines(ready, StandardCharsets.UTF_8)) {
+                    if (memory.get(source) == null) pending.add(source);
+                }
+                memory.remember(TranslationAudit.translate(pending, (originals, inputs) -> {
+                    equal(Arrays.asList(english, formatted, unchanged, "Missing"), originals);
+                    return Arrays.asList("Tenemos tus pases.", "Hola ⟦0⟧.", "Hasta pronto.", "Missing");
+                }));
+                equal("Uno", memory.get("One"));
+                equal("Centro Pokémon", memory.get(term));
+                equal(null, memory.get("Missing"));
+                TranslationOpening.publish(ready.toFile(), memory);
+            }
+            equal(Arrays.asList("One\tUno", english + "\tTenemos tus pases.", formatted + "\tHola {1}.",
+                unchanged + "\tHasta pronto.", term + "\tCentro Pokémon"), Files.readAllLines(opening, StandardCharsets.UTF_8));
+            TranslationCoverage after = TranslationCoverage.read(catalog.toFile());
+            equal(5, after.translated);
+            equal(Collections.singletonMap(TranslationAudit.Issue.MISSING, 1), after.issues);
+            equal(TranslationAudit.Issue.FORMAT, TranslationAudit.check("Go!\u0001", "¡Ve!"));
+            equal(null, TranslationAudit.check("We'll meet at Lavender Town.", "Nos vemos en Lavender Town."));
+            equal(null, TranslationAudit.check("Cos Island", "Isla Cos"));
+        } finally {
+            for (Path path : Arrays.asList(ready, cache, opening, folder)) Files.deleteIfExists(path);
         }
     }
 }

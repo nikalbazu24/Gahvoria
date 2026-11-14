@@ -13,6 +13,7 @@ import java.util.List;
 
 /** Prepares the same private memory the game reads when it starts. */
 public final class TranslationPreparation {
+    private static final int BATCH_SIZE = 24;
     public interface Cancellation { boolean requested(); }
     public interface Progress { void update(int reviewed, int total, int translated); }
 
@@ -33,28 +34,31 @@ public final class TranslationPreparation {
         int translated = 0;
         long lastUpdate = SystemClock.elapsedRealtime();
         progress.update(reviewed, total, translated);
-        BergamotModel model = null;
         try (BufferedReader input = open(catalog);
+             Inference model = new Inference(context);
              TranslationMemory memory = new TranslationMemory(new File(catalog.getParentFile(), "es.tsv"), true)) {
-            List<String> pending = new ArrayList<>(24);
+            List<String> pending = new ArrayList<>(BATCH_SIZE);
             while (!cancel.requested() && reviewed < total) {
                 pending.clear();
                 int read = 0;
-                while (read < 24 && reviewed + read < total) {
+                while (read < BATCH_SIZE && reviewed + read < total) {
                     String line = input.readLine();
                     if (line == null) throw new java.io.IOException("El catálogo de traducción cambió durante la preparación");
                     String original = TranslationMemory.unescape(line);
-                    if (memory.get(original) == null) pending.add(original);
-                    else translated++;
+                    if (original != null && !original.trim().isEmpty()) {
+                        if (memory.get(original) == null) pending.add(original);
+                        else translated++;
+                    }
                     read++;
                 }
                 if (!pending.isEmpty()) {
-                    if (model == null) model = new BergamotModel(context);
-                    BergamotModel current = model;
-                    memory.remember(TranslationBatch.translate(pending, (o, p) -> NeuralText.translate(p, current::translate, current::translateMarkup)));
+                    memory.remember(TranslationAudit.translate(pending, (o, p) -> model.translate(p)));
                     for (String original : pending) if (memory.get(original) != null) translated++;
                 }
                 reviewed += read;
+                if (reviewed == TranslationOpening.MAX_ROWS && reviewed < total) {
+                    TranslationOpening.publish(catalog, memory);
+                }
                 long now = SystemClock.elapsedRealtime();
                 if (now - lastUpdate >= 500 || reviewed == total || cancel.requested()) {
                     progress.update(reviewed, total, translated);
@@ -62,7 +66,23 @@ public final class TranslationPreparation {
                 }
             }
             TranslationOpening.publish(catalog, memory);
-        } finally {
+        }
+    }
+
+    private static final class Inference implements AutoCloseable {
+        private final Context context;
+        private BergamotModel model;
+
+        Inference(Context context) {
+            this.context = context;
+        }
+
+        List<String> translate(List<String> texts) throws Exception {
+            if (model == null) model = new BergamotModel(context);
+            return NeuralText.translate(texts, model::translate, model::translateMarkup);
+        }
+
+        @Override public void close() {
             if (model != null) model.close();
         }
     }

@@ -8,6 +8,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -20,6 +21,7 @@ final class TranslationMemory implements Closeable {
     private final boolean contextual;
     private final java.nio.channels.FileLock lock;
     private final Map<String, String> entries = new LinkedHashMap<>();
+    private final Map<String, TranslationAudit.Issue> rejected;
 
     TranslationMemory(File path) throws IOException {
         this(path, false);
@@ -35,6 +37,7 @@ final class TranslationMemory implements Closeable {
 
     private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
         this.contextual = contextual;
+        rejected = writable ? null : new HashMap<>();
         file = new RandomAccessFile(path, writable ? "rw" : "r");
         try {
             lock = writable ? file.getChannel().tryLock() : null;
@@ -47,11 +50,26 @@ final class TranslationMemory implements Closeable {
     }
 
     String get(String original) {
-        String connector = entries.get(CONNECTOR_PREFIX + original);
-        if (connector != null || (contextual && NeuralText.hasColloquialConnector(original))) return connector;
-        String revised = entries.get(CONTEXT_PREFIX + original);
-        if (revised != null) return revised;
-        return contextual && TranslationBatch.needsContext(original) ? null : entries.get(original);
+        return entries.get(key(original));
+    }
+
+    private String key(String original) {
+        String connector = CONNECTOR_PREFIX + original;
+        if (entries.containsKey(connector) || (contextual && NeuralText.hasColloquialConnector(original))) return connector;
+        String revised = CONTEXT_PREFIX + original;
+        if (entries.containsKey(revised) || (contextual && TranslationBatch.needsContext(original))) return revised;
+        return original;
+    }
+
+    TranslationAudit.Issue audit(String original) {
+        String key = key(original);
+        if (entries.containsKey(key)) return null;
+        TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
+        if (issue == null && !key.equals(original)) {
+            issue = rejected == null ? null : rejected.get(original);
+            if (issue == null && entries.containsKey(original)) return TranslationAudit.Issue.OUTDATED;
+        }
+        return issue == null ? TranslationAudit.Issue.MISSING : issue;
     }
 
     void remember(Map<String, String> answers) throws IOException {
@@ -59,11 +77,10 @@ final class TranslationMemory implements Closeable {
         for (Map.Entry<String, String> answer : answers.entrySet()) {
             String original = answer.getKey();
             String translated = answer.getValue();
-            if (original.isEmpty() || original.equals(translated) || get(original) != null
-                || !TranslationBatch.isSafe(original, translated)) continue;
-            String key = original;
-            if (contextual && NeuralText.hasColloquialConnector(original)) key = CONNECTOR_PREFIX + original;
-            else if (contextual && TranslationBatch.needsContext(original)) key = CONTEXT_PREFIX + original;
+            if (original.isEmpty() || get(original) != null) continue;
+            if (contextual ? TranslationAudit.check(original, translated) != null
+                           : original.equals(translated) || !TranslationBatch.isSafe(original, translated)) continue;
+            String key = key(original);
             if (row(key, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
                 fresh.put(key, translated);
             }
@@ -113,7 +130,16 @@ final class TranslationMemory implements Closeable {
         if (original == null) return;
         String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
         if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
-        if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
+        if (!contextual) {
+            if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
+            return;
+        }
+        TranslationAudit.Issue issue = TranslationAudit.check(source, translated);
+        if (issue == null) {
+            entries.put(original, translated);
+        } else if (rejected != null && !entries.containsKey(original)) {
+            rejected.put(original, issue);
+        }
     }
 
     static void append(RandomAccessFile file, Map<String, String> answers, boolean durable) throws IOException {

@@ -20,6 +20,8 @@ final class NeuralText {
     private static final Pattern PAJAMAS = Pattern.compile("\\bjammies\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern CAUSAL_CONNECTOR = Pattern.compile(
         "(^|[.!?]\\s+)(?:cuz|'cause|’cause)(?=[,\\s])", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONTRACTION = Pattern.compile(
+        "\\b(?:we['’](?:ve|ll)|(?:you|they)['’]re|gonna)\\b", Pattern.CASE_INSENSITIVE);
 
     static boolean hasColloquialConnector(String text) {
         return CAUSAL_CONNECTOR.matcher(text).find();
@@ -31,7 +33,21 @@ final class NeuralText {
 
     private static String normalize(String text) {
         String normalized = PAJAMAS.matcher(text).replaceAll("pajamas");
-        return CAUSAL_CONNECTOR.matcher(normalized).replaceAll("$1Because");
+        normalized = CAUSAL_CONNECTOR.matcher(normalized).replaceAll("$1Because");
+        Matcher contraction = CONTRACTION.matcher(normalized);
+        StringBuffer expanded = new StringBuffer();
+        while (contraction.find()) {
+            String word = contraction.group().replace('’', '\'');
+            int apostrophe = word.indexOf('\'');
+            String replacement = Character.isUpperCase(word.charAt(0)) ? "Going to" : "going to";
+            if (apostrophe >= 0) {
+                String ending = word.substring(apostrophe + 1);
+                String verb = ending.equalsIgnoreCase("ve") ? " have" : ending.equalsIgnoreCase("ll") ? " will" : " are";
+                replacement = word.substring(0, apostrophe) + verb;
+            }
+            contraction.appendReplacement(expanded, replacement);
+        }
+        return contraction.appendTail(expanded).toString();
     }
 
     /** Pass one complete utterance through the model even when RGSS inserts controls inside it. */
