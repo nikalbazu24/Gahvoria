@@ -26,12 +26,20 @@ final class TranslationMemory implements Closeable {
     }
 
     TranslationMemory(File path, boolean contextual) throws IOException {
+        this(path, contextual, true);
+    }
+
+    static TranslationMemory snapshot(File path) throws IOException {
+        return new TranslationMemory(path, true, false);
+    }
+
+    private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
         this.contextual = contextual;
-        file = new RandomAccessFile(path, "rw");
+        file = new RandomAccessFile(path, writable ? "rw" : "r");
         try {
-            lock = file.getChannel().tryLock();
-            if (lock == null) throw new IOException("La memoria de traducción está en uso");
-            load();
+            lock = writable ? file.getChannel().tryLock() : null;
+            if (writable && lock == null) throw new IOException("La memoria de traducción está en uso");
+            load(writable, file.length());
         } catch (IOException | RuntimeException failure) {
             file.close();
             throw failure;
@@ -65,13 +73,13 @@ final class TranslationMemory implements Closeable {
         entries.putAll(fresh);
     }
 
-    private void load() throws IOException {
+    private void load(boolean writable, long length) throws IOException {
         byte[] block = new byte[8192];
         ByteArrayOutputStream row = new ByteArrayOutputStream();
         long offset = 0;
         long complete = 0;
         int count;
-        while ((count = file.read(block)) != -1) {
+        while (offset < length && (count = file.read(block, 0, (int) Math.min(block.length, length - offset))) != -1) {
             for (int i = 0; i < count; i++) {
                 if (block[i] == '\n') {
                     if (row.size() <= MAX_ROW_BYTES) readRow(row.toByteArray());
@@ -84,7 +92,7 @@ final class TranslationMemory implements Closeable {
             offset += count;
         }
         // A killed process may leave an incomplete last row. Drop it before appending.
-        if (complete != offset) {
+        if (writable && complete != offset) {
             file.setLength(complete);
             file.getFD().sync();
         }

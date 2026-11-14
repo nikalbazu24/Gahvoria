@@ -19,7 +19,8 @@ public final class TranslationPhaseOneTest {
         neuralKeepsOneUtteranceAcrossControls();
         refreshesOnlyOldContextSensitiveEntries();
         openingUsesPreparedEntriesAndReplacesStaleRows();
-        System.out.println("7 JVM translation checks passed");
+        coverageReadsCurrentMemoryWithoutChangingIt();
+        System.out.println("8 JVM translation checks passed");
     }
 
     private static void preservesControlTokens() throws Exception {
@@ -196,6 +197,42 @@ public final class TranslationPhaseOneTest {
             }
         } finally {
             for (Path path : Arrays.asList(catalog, cache, opening, folder)) Files.deleteIfExists(path);
+        }
+    }
+
+    private static void coverageReadsCurrentMemoryWithoutChangingIt() throws Exception {
+        Path folder = Files.createTempDirectory("gahvoria-coverage");
+        Path catalog = folder.resolve("catalog");
+        Path ready = folder.resolve("catalog.ready");
+        Path limited = folder.resolve("catalog.limited");
+        Path cache = folder.resolve("es.tsv");
+        try {
+            Files.write(ready, "Hello\nMissing\\nline\nHello\nCuz, look.\nOther game\n".getBytes(StandardCharsets.UTF_8));
+            TranslationCoverage empty = TranslationCoverage.read(catalog.toFile());
+            equal(4, empty.total);
+            equal(0, empty.translated);
+            equal(false, Files.exists(cache));
+            Files.write(cache, "Hello\tHola\nCuz, look.\tCuz, mira.\nUnlisted\tOtro\n".getBytes(StandardCharsets.UTF_8));
+            Files.createFile(limited);
+            try (TranslationMemory writer = new TranslationMemory(cache.toFile(), true)) {
+                TranslationCoverage before = TranslationCoverage.read(catalog.toFile());
+                equal(4, before.total);
+                equal(1, before.translated);
+                equal(true, before.partial);
+                equal(Arrays.asList("Missing line", "Cuz, look.", "Other game"), before.examples);
+                writer.remember(Collections.singletonMap("Cuz, look.", "Porque, mira."));
+                try (RandomAccessFile tail = new RandomAccessFile(cache.toFile(), "rw")) {
+                    tail.seek(tail.length());
+                    tail.write("Other game\tOtro juego".getBytes(StandardCharsets.UTF_8));
+                }
+                long size = Files.size(cache);
+                TranslationCoverage after = TranslationCoverage.read(catalog.toFile());
+                equal(2, after.translated);
+                equal(Arrays.asList("Missing line", "Other game"), after.examples);
+                equal(size, Files.size(cache));
+            }
+        } finally {
+            for (Path path : Arrays.asList(ready, limited, cache, folder)) Files.deleteIfExists(path);
         }
     }
 

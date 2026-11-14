@@ -47,9 +47,11 @@ $test_data = {
 
 Dir.mktmpdir('gahvoria-pretranslation') do |dir|
   FileUtils.mkdir_p(File.join(dir, 'Data', 'Scripts'))
+  FileUtils.mkdir_p(File.join(dir, 'Scripts', 'Game'))
+  File.write(File.join(dir, 'Scripts', 'Game', 'Intro.rb'), 'pbMessage("A root script.")')
   File.write(File.join(dir, 'Data', 'Scripts', 'Intro.rb'), 'pbMessage("An extracted script.")')
   expected = [
-    'Welcome, {1}!', "Watch \\PN!\nGo!", 'New adventure', 'An extracted script.',
+    'Welcome, {1}!', "Watch \\PN!\nGo!", 'New adventure', 'A root script.', 'An extracted script.',
     "Welcome to the academy.\nFollow me.", 'Welcome to the academy. Follow me.',
     'Yes, please', 'Later', 'An event script!', 'A common event.', 'Another map.',
     'Original catalog entry', 'Visible catalog entry'
@@ -82,7 +84,7 @@ EXTRA
 
   collected = []
   GahvoriaPretranslate.collect(dir, lambda { false }) { |text| collected << text }
-  opening_first = expected[4, 5] + expected[0, 4] + expected[9..-1]
+  opening_first = expected[5, 5] + expected[0, 5] + expected[10..-1]
   check(opening_first, collected)
 
   base = File.join(dir, 'prepare')

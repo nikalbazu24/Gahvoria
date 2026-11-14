@@ -129,13 +129,13 @@ module GahvoriaPretranslate
       end
     end
 
-    def collect_scripts(data, cancelled)
+    def collect_scripts(root, data, cancelled)
       ($RGSS_SCRIPTS || []).each do |entry|
         return if cancelled.call
         scripts(entry[3]) { |text| yield text } if entry.is_a?(Array)
       end
-      if data
-        Dir.glob(File.join(data, 'Scripts', '**', '*.rb')).sort.each do |path|
+      [root, data].compact.each do |folder|
+        Dir.glob(File.join(folder, '[Ss][Cc][Rr][Ii][Pp][Tt][Ss]', '**', '*.rb')).sort.each do |path|
           return if cancelled.call
           next unless File.file?(path) && File.size(path) <= MAX_SCRIPT_BYTES
           File.open(path, 'rb') { |file| scripts(file.read(MAX_SCRIPT_BYTES)) { |text| yield text } }
@@ -161,7 +161,7 @@ module GahvoriaPretranslate
             map_commands("#{folder}/#{first}", cancelled) { |text| yield text }
           end
         end
-        collect_scripts(data, cancelled) { |text| yield text }
+        collect_scripts(root, data, cancelled) { |text| yield text }
         return if cancelled.call
         plugins = read_data("#{folder}/PluginScripts.#{ext}")
         if plugins.is_a?(Array) && defined?(Zlib::Inflate)
@@ -197,7 +197,7 @@ module GahvoriaPretranslate
           map_commands("#{folder}/#{name}", cancelled) { |text| yield text }
         end
       end
-      collect_scripts(data, cancelled) { |text| yield text } unless ext
+      collect_scripts(root, data, cancelled) { |text| yield text } unless ext
       names = ['messages.dat', 'messages_core.dat', 'messages_game.dat']
       if data
         names |= Dir.glob(File.join(data, 'messages*.dat')).map { |path| File.basename(path) }

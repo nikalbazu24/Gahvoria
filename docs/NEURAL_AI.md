@@ -123,3 +123,9 @@ La preparación escribe una copia acotada de las primeras traducciones disponibl
 4. Cerrar y volver a abrir. Verificar que los primeros textos se reutilicen y que la partida existente siga disponible. Repetir con Solar Eclipse si se quiere comparar. No hace falta borrar los datos de Gahvoria.
 
 El porcentaje del catálogo se calcula sobre las frases que detectó el escáner. La revisión visual mide las pantallas recorridas. La cobertura de una partida completa requiere un recorrido más amplio y la traducción de textos incrustados en imágenes.
+
+### Cobertura desde la biblioteca
+
+En las opciones de un juego con catálogo, abre **Pantalla → Cobertura del catálogo**. Recuenta las frases únicas con una traducción válida en la memoria española, incluso las guardadas al jugar después de la preparación. Muestra hasta 12 ejemplos pendientes para copiar. La revisión lee una instantánea de la memoria y no inicia el modelo. Las traducciones aplicadas solo al mostrar el texto y los textos en imágenes quedan fuera de la medición.
+
+El escáner ahora incluye archivos Ruby de la carpeta Scripts directamente bajo el juego, además de los de Data/Scripts. Al pulsar **Preparar traducción** por primera vez tras actualizar, se regenera el catálogo anterior y se reutiliza la memoria. Si el escáner llega a su límite, la pantalla señala que el catálogo es parcial.

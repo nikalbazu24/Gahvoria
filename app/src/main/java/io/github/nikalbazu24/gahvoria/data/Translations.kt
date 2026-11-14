@@ -7,6 +7,7 @@ import java.io.File
 
 /** Where each game's translations are kept (inside Gahvoria's own files, so they survive restarts and never touch the game). */
 object Translations {
+    private const val CATALOG_FORMAT = "opening-v4"
 
     private fun root(c: Context) = File(c.filesDir, "translations")
 
@@ -19,15 +20,18 @@ object Translations {
     fun catalogRevision(game: Game): String {
         val root = File(game.path)
         val data = root.listFiles()?.firstOrNull { it.isDirectory && it.name.equals("Data", true) }
+        val scripts = listOfNotNull(root, data).flatMap { folder ->
+            folder.listFiles().orEmpty().filter { it.isDirectory && it.name.equals("Scripts", true) }
+        }
         val files = data?.listFiles().orEmpty().asSequence() +
-            (data?.let { File(it, "Scripts").walkTopDown() } ?: emptySequence()) +
+            scripts.asSequence().flatMap { it.walkTopDown() } +
             root.listFiles().orEmpty().asSequence().filter { it.name.startsWith("Game.", true) }
         val revision = java.security.MessageDigest.getInstance("SHA-256")
-        revision.update("opening-v3\n".toByteArray(Charsets.UTF_8))
+        revision.update("$CATALOG_FORMAT\n".toByteArray(Charsets.UTF_8))
         for (file in files.filter { it.isFile }.sortedBy { it.path }) {
             revision.update("${file.path}\t${file.length()}\t${file.lastModified()}\n".toByteArray(Charsets.UTF_8))
         }
-        return android.util.Base64.encodeToString(revision.digest(), android.util.Base64.NO_WRAP)
+        return "$CATALOG_FORMAT:" + android.util.Base64.encodeToString(revision.digest(), android.util.Base64.NO_WRAP)
     }
 
     /** Phrases and bytes saved for one game (all languages). */

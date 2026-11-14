@@ -51,6 +51,9 @@ import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.data.Storage
+import com.hatkid.mkxpz.translate.TranslationCoverage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** A screen with a title, scrolling content and a width that stays readable on wide screens. */
 @Composable
@@ -81,8 +84,13 @@ fun Page(title: String, onBack: (() -> Unit)? = null, content: @Composable Colum
 @Composable
 fun GameScreen(s: AppState, g: Game) {
     val c = LocalColors.current
-    BackHandler { s.optionsFor = null }
     var tab by remember(g.path) { mutableIntStateOf(0) }
+    var showCoverage by remember(g.path) { mutableStateOf(false) }
+    BackHandler { if (showCoverage) showCoverage = false else s.optionsFor = null }
+    if (showCoverage) {
+        TranslationCoveragePage(s, g) { showCoverage = false }
+        return
+    }
     Page(g.title, onBack = { s.optionsFor = null }) {
         Segmented(listOf("Partidas", "Mando", "Pantalla", "Motor"), tab) { tab = it }
         when (tab) {
@@ -142,7 +150,7 @@ fun GameScreen(s: AppState, g: Game) {
                     val status = s.preparationStatus(g)
                     val action = when {
                         status?.active == true -> "Pausar"
-                        status != null && status.total > 0 && status.reviewed == status.total -> "Revisar"
+                        status != null && status.total > 0 && status.translated == status.total -> "Actualizar"
                         status != null -> "Reanudar"
                         else -> "Preparar"
                     }
@@ -152,6 +160,11 @@ fun GameScreen(s: AppState, g: Game) {
                             else status?.description ?: "Escanea el juego y traduce al español en segundo plano.",
                             onClick = { s.prepareTranslation(g) }) {
                             T(action, 12.sp, FontWeight.Bold, c.accent)
+                        }
+                        if (s.hasTranslationCatalog(g)) {
+                            Divider()
+                            RowItem("Cobertura del catálogo", "Consulta las frases guardadas y ejemplos pendientes.",
+                                onClick = { showCoverage = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
                         }
                     }
                 }
@@ -264,6 +277,57 @@ fun GameScreen(s: AppState, g: Game) {
 }
 
 // -------------------------------------------------------------------- add
+
+@Composable
+private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
+    var revision by remember(g.path) { mutableIntStateOf(0) }
+    var result by remember(g.path, revision) { mutableStateOf<Result<Pair<TranslationCoverage, Boolean>>?>(null) }
+    LaunchedEffect(g.path, revision) {
+        result = withContext(Dispatchers.IO) { runCatching { s.translationCoverage(g) } }
+    }
+    Page("Cobertura del catálogo", onBack) {
+        val state = result
+        val report = state?.getOrNull()
+        Glass(Modifier.fillMaxWidth()) {
+            if (report == null) {
+                RowItem(g.title, if (state == null) "Revisando traducciones guardadas…"
+                    else "No pude leer el catálogo. Puedes volver a prepararlo desde Pantalla.")
+            } else {
+                val (coverage, stale) = report
+                val pending = coverage.total - coverage.translated
+                val total = coverage.total
+                val translated = coverage.translated
+                val summary = if (total == 0) "Sin frases detectadas." else {
+                    val percent = 100L * translated / total
+                    "$translated de $total guardadas ($percent%) · $pending pendientes"
+                }
+                RowItem(g.title, summary)
+                if (stale) {
+                    Divider()
+                    RowItem("Catálogo anterior", "Actualiza la preparación para incluir los archivos y el escáner actuales.")
+                }
+                if (coverage.partial) {
+                    Divider()
+                    RowItem("Catálogo parcial", "El porcentaje corresponde a las frases que se pudieron leer.")
+                }
+                Divider()
+                RowItem("Español", "El conteo usa la memoria de las frases detectadas. Las imágenes y los textos generados al jugar se revisan en el juego.")
+            }
+        }
+        val examples = report?.first?.examples.orEmpty()
+        if (examples.isNotEmpty()) {
+            Label("Ejemplos pendientes")
+            Glass(Modifier.fillMaxWidth()) {
+                examples.forEachIndexed { index, example ->
+                    if (index > 0) Divider()
+                    RowItem(example)
+                }
+            }
+            SecondaryButton("Copiar ejemplos", Modifier.fillMaxWidth()) { s.copyTranslationExamples(examples) }
+        }
+        if (state != null) SecondaryButton("Volver a medir", Modifier.fillMaxWidth()) { revision++ }
+    }
+}
 
 @Composable
 fun AddScreen(s: AppState) {

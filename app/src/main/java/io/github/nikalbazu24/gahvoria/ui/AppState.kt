@@ -1,11 +1,14 @@
 package io.github.nikalbazu24.gahvoria.ui
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.hatkid.mkxpz.translate.TranslationCoverage
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameInspector
 import io.github.nikalbazu24.gahvoria.core.Inspection
@@ -345,6 +348,22 @@ class AppState(private val activity: Activity) {
         private set
 
     fun preparationStatus(g: Game) = TranslationPreparationService.status(Translations.catalog(activity, g))
+
+    fun hasTranslationCatalog(g: Game) =
+        File(Translations.catalog(activity, g).path + ".ready").isFile
+
+    fun translationCoverage(g: Game): Pair<TranslationCoverage, Boolean> {
+        val base = Translations.catalog(activity, g)
+        val result = TranslationCoverage.read(base)
+        val revision = runCatching { File(base.path + ".revision").readText() }.getOrNull()
+        return result to (revision != Translations.catalogRevision(g))
+    }
+
+    fun copyTranslationExamples(examples: List<String>) {
+        val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("Frases pendientes", examples.joinToString("\n")))
+        say("Ejemplos copiados.", NoticeKind.OK)
+    }
 
     fun prepareTranslation(g: Game) {
         if (preparationStatus(g)?.active == true) {
