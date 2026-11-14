@@ -28,6 +28,38 @@ module EssentiaTranslate
   DIALOGUE_WAIT = 0.65
   SPANISH = ENV['ESSENTIA_TR_TARGET'] == 'es'
   SOLAR_ECLIPSE = ENV['ESSENTIA_TR_GAME'].to_s.downcase.gsub(/[^a-z]/, '').include?('solareclipse')
+  REBORN = (defined?(Essentia) && Essentia.respond_to?(:reborn_game?) && Essentia.reborn_game?) ||
+    ENV['ESSENTIA_TR_GAME'].to_s.gsub('é', 'e').gsub('É', 'E').downcase.gsub(/[^a-z0-9]/, '') =~ /\A(?:pokemon)?reborn\d*\z/
+  REBORN_INTRO_SPANISH = {
+    "station master here. we've got your boarding passes." =>
+      "Soy el jefe de estación.\\nAquí tienes tus billetes.",
+    "then, just to be sure, for 'gender' i should put..." =>
+      "Y para confirmar,\\n¿qué pongo en «Género»?",
+    "just between you, me, and the ol' battered fence post, i hear reborn city's kind of a dump." =>
+      "Que quede entre nosotros: dicen que Ciudad Reborn está hecha un desastre.",
+    'there, all set.' => 'Listo, ya está.',
+    "???: okay, thank you very much! i'll see you when we get into the city." =>
+      "???: ¡Muchas gracias!\\nNos vemos al llegar a la ciudad.",
+    "my name's ame. i'm the manager of the reborn league." =>
+      "Soy Ame.\\nDirijo la Liga de Reborn.",
+    'could i see your boarding ticket, please?' => '¿Me enseñas tu billete, por favor?',
+    "shouldn't we be decelerating already?" => '¿No deberíamos estar frenando ya?',
+    'oh no-- move!' => '¡Oh, no! ¡Apártate!'
+  }
+  REBORN_GENDER_SPANISH = {
+    'male' => 'Masculino', 'female' => 'Femenino', 'non-binary' => 'No binario'
+  }
+  REBORN_TICKET_TEXT = {
+    'grandview station' => 'Estación Grandview', 'one' => 'UNO'
+  }
+  REBORN_INTRO_MAPS = [51, 667]
+  REBORN_TICKET_REGIONS = [
+    [108, 28, 294, 24, '¡RUMBO A CIUDAD REBORN!'],
+    [110, 179, 75, 20, 'Nombre'], [280, 179, 108, 20, 'Género'],
+    [112, 228, 54, 19, 'Tren'], [280, 228, 68, 19, 'Asiento'],
+    [110, 252, 60, 20, 'Dest.'],
+    [110, 275, 85, 21, 'Adulto'], [280, 276, 72, 22, 'Tipo']
+  ]
   SOLAR_SPLASHES = [
     [[180, 205], ['Un juego de', 'Peti & Gelato']],
     [[66, 120, 147, 175, 229, 283, 311],
@@ -53,6 +85,10 @@ module EssentiaTranslate
     'Your name?' => '¿Tu nombre?',
     'Enter text using the keyboard. Press Enter to confirm, or Esc to cancel.' =>
       'Escribe con el teclado. Enter para aceptar o Esc para cancelar.',
+    'Enter text using the keyboard. Press ESC to cancel, or ENTER to confirm.' =>
+      "Escribe con el teclado.\nEsc para cancelar o Enter para aceptar.",
+    'Enter text using the keyboard. Press ENTER to confirm.' =>
+      "Escribe con el teclado.\nPulsa Enter para aceptar.",
     'Difficulty' => 'Dificultad',
     'Info' => 'Info',
     'Press Start' => 'Pulsa START',
@@ -116,6 +152,7 @@ module EssentiaTranslate
   @paint_stack = []
   @paint_waiting = []
   @verbatim = 0
+  @reborn_ticket = false
   @hooked = {}
   @originals = []
 
@@ -335,7 +372,7 @@ module EssentiaTranslate
     def ui_label(text)
       label = UI_SPANISH[text]
       return label if label
-      normalized = text.gsub("’", "'")
+      normalized = text.gsub("’", "'").gsub(/\s+/, ' ').strip
       return 'Pulsa para empezar' if text =~ /\Apress\s+(?:the\s+)?(?:enter|start)(?:\s+key)?[!.]?\z/i
       UI_SPANISH_FOLDED[normalized.downcase]
     end
@@ -361,6 +398,19 @@ module EssentiaTranslate
 
     def player_name?(text)
       player_name == text
+    end
+
+    def reborn_intro_map?
+      map = defined?($game_map) && $game_map
+      REBORN && map && map.respond_to?(:map_id) && REBORN_INTRO_MAPS.include?(map.map_id)
+    end
+
+    def reborn_intro_label(text)
+      return nil unless text.is_a?(String) && text.size <= 512 && reborn_intro_map?
+      body = text.sub(/\x01\z/, '').gsub(/\\n/i, ' ')
+      body = body.gsub("’", "'").gsub(/\s+/, ' ').strip.downcase
+      label = REBORN_INTRO_SPANISH[body]
+      marked(label + (text.end_with?("\1") ? "\1" : '')) if label
     end
 
     def scene_label(text, hint)
@@ -407,7 +457,9 @@ module EssentiaTranslate
       normalized = choices.map { |value| value.is_a?(String) ? value.gsub("’", "'").strip.downcase : nil }
       glossary = nil
       if SPANISH
-        if normalized.include?('casual') && normalized.include?('proud') && normalized.include?('the best')
+        if REBORN && REBORN_GENDER_SPANISH.keys.all? { |key| normalized.include?(key) }
+          glossary = REBORN_GENDER_SPANISH
+        elsif normalized.include?('casual') && normalized.include?('proud') && normalized.include?('the best')
           glossary = TRAINER_STYLE_SPANISH
         elsif normalized.include?('appearance') && normalized.include?('name') && normalized.include?('difficulty')
           glossary = SETUP_SPANISH
@@ -439,13 +491,18 @@ module EssentiaTranslate
     def message_text(source, wait, hint = nil)
       return lookup(source, wait) unless SPANISH && source.is_a?(String)
       return source if source.instance_variable_get(:@gahvoria_translated)
-      label = scene_label(source, hint) || visible_label(source)
+      label = reborn_intro_label(source) || scene_label(source, hint) || visible_label(source)
       return label if label
-      key = message_key(source)
+      pause = source.end_with?("\1")
+      dialogue = pause ? source[0...-1] : source
+      key = message_key(dialogue)
       token = PLAYER_NAME_TOKEN
       translated = lookup(key, wait)
-      if key != source
-        translated = translated.equal?(key) ? source : marked(translated.gsub(token) { player_name.to_s })
+      if translated.equal?(key)
+        translated = source
+      else
+        translated = marked(translated.gsub(token) { player_name.to_s }) if key != dialogue
+        translated = marked(translated + "\1") if pause
       end
       # Translate roles on nameplates. The body and the exact speaker identifiers stay independent.
       text = translated.gsub(NAME_BOX) do |code|
@@ -457,6 +514,10 @@ module EssentiaTranslate
     end
 
     def rendering_text(text, choice = false)
+      if @reborn_ticket && @verbatim == 0 && text.is_a?(String) && !player_name?(text)
+        key = text.downcase
+        return REBORN_GENDER_SPANISH[key] || REBORN_TICKET_TEXT[key] || text
+      end
       return text if @verbatim > 0 || (!choice && !@displaying.empty?)
       if SPANISH && text.is_a?(String) && !text.instance_variable_get(:@gahvoria_translated)
         return text if player_name?(text)
@@ -570,6 +631,10 @@ module EssentiaTranslate
     def localize_title_prompt(bitmap, path)
       return unless SPANISH && path.is_a?(String)
       normalized = path.tr('\\', '/').sub(/\A\.\/+/, '')
+      if REBORN && normalized =~ /\AGraphics\/Pictures\/introTicket(?:\.png)?\z/i
+        localize_reborn_ticket(bitmap)
+        return
+      end
       title_folder = normalized =~ /\AGraphics\/(?:Titles|Title|UI\/(?:Titles|Title|Title Screen))\//i
       filename = normalized.split('/').last.to_s.sub(/\.(?:png|bmp|gif|webp)\z/i, '').downcase.gsub(/[ _-]/, '')
       solar_intro = SOLAR_ECLIPSE && normalized =~ /\AGraphics\/(?:Pictures|UI|Titles?)\//i &&
@@ -596,6 +661,27 @@ module EssentiaTranslate
       # Leave unrecognized artwork on the normal rendering path.
     end
 
+    def localize_reborn_ticket(bitmap)
+      return unless bitmap.width == 512 && bitmap.height == 384
+      ink = bitmap.get_pixel(112, 182)
+      paper = bitmap.get_pixel(104, 30)
+      return unless ink.alpha == 255 && ink.red < 110 && paper.red > 185 &&
+                    bitmap.get_pixel(0, 383).alpha == 0
+      font = bitmap.font
+      font.color = Color.new(78, 66, 66)
+      font.bold = true
+      font.outline = false if font.respond_to?(:outline=)
+      font.shadow = false if font.respond_to?(:shadow=)
+      verbatim do
+        REBORN_TICKET_REGIONS.each_with_index do |region, index|
+          x, y, width, height, text = region
+          bitmap.fill_rect(x, y, width, height, bitmap.get_pixel(x + width, y + height / 2))
+          font.size = index == 0 ? 20 : 16
+          bitmap.draw_text(x + 2, y, width - 4, height, text, index == 0 ? 1 : 0)
+        end
+      end
+    end
+
     # ------------------------------------------------------------ hooks
 
     def invoke(index, receiver, args, block)
@@ -608,6 +694,18 @@ module EssentiaTranslate
         end
       elsif kind == :verbatim
         return verbatim { original.bind(receiver).call(*args, &block) }
+      elsif kind == :reborn_ticket
+        previous_ticket = @reborn_ticket
+        begin
+          @reborn_ticket = true
+          return original.bind(receiver).call(*args, &block)
+        ensure
+          @reborn_ticket = previous_ticket
+        end
+      elsif kind == :help_text
+        if args[argument].is_a?(String)
+          args[argument] = visible_label(args[argument]) || lookup(args[argument])
+        end
       elsif kind == :layout
         if @verbatim == 0 && @displaying.empty?
           text = args[argument]
@@ -755,6 +853,8 @@ module EssentiaTranslate
       [:pbDrawPlainText, :pbDrawShadowText, :pbDrawOutlineText].each { |name| wrap_top(name, 5, 0, :draw) }
       wrap_top(:drawFormattedTextEx, 4, 0, :draw)
       wrap_top(:drawTextEx, 5, 0, :draw)
+      wrap_top(:pbEnterPlayerName, 0, 0, :help_text)
+      wrap_top(:pbTicketText, 0, 0, :reborn_ticket) if SPANISH && REBORN
       [:drawFormattedChars, :drawSingleFormattedChar, :renderLineBrokenChunks,
        :renderLineBrokenChunksWithShadow].each { |name| wrap_top(name, 0, 0, :verbatim) }
       if defined?(Window_DrawableCommand)
@@ -767,6 +867,9 @@ module EssentiaTranslate
       if defined?(Window_TextEntry_Keyboard)
         wrap_method(Window_TextEntry_Keyboard, :refresh, 0, 0, :verbatim)
       end
+      if defined?(Window_UnformattedTextPokemon)
+        wrap_method(Window_UnformattedTextPokemon, :initialize, 0, 0, :help_text)
+      end
       wrap_method(PokemonLoadPanel, :refresh, 0, 0, :paint) if defined?(PokemonLoadPanel)
       wrap_method(Window_PokemonOption, :refresh, 0, 0, :paint) if defined?(Window_PokemonOption)
     end
@@ -774,6 +877,7 @@ module EssentiaTranslate
     def message_catalog_text(text)
       # Keep UI originals available for the selector or drawing hook to resolve in context.
       return text if SPANISH && text.is_a?(String) && (ui_label(text) ||
+        (REBORN && (REBORN_GENDER_SPANISH.has_key?(text.downcase) || reborn_intro_label(text))) ||
         TRAINER_STYLE_SPANISH.has_key?(text.downcase) || SETUP_SPANISH.has_key?(text.downcase) ||
         SCENE_HINTS.any? { |_pattern, terms| terms.has_key?(text.downcase) })
       lookup(text, 0)

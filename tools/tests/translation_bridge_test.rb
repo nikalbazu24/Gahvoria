@@ -28,6 +28,11 @@ class Bitmap
   def fill_rect(*args); end
   def clear_rect(*args); @drawn.clear; end
   def get_pixel(x, y)
+    if @source == 'Graphics/Pictures/introTicket.png'
+      return Color.new(255, 255, 255, 0) if x == 0 && y == 383
+      return Color.new(78, 66, 66) if x == 112 && y == 182
+      return Color.new(216, 216, 200)
+    end
     centers = case @source
               when 'Graphics/Titles/splash1.png'; [180, 205]
               when 'Graphics/Titles/splash2.png'; [66, 120, 147, 175, 229, 283, 311]
@@ -73,11 +78,63 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   ENV['ESSENTIA_TR_FILE'] = answers
   ENV['ESSENTIA_TR_REQ'] = requests
   ENV['ESSENTIA_TR_TARGET'] = 'es'
-  ENV['ESSENTIA_TR_GAME'] = 'Pokemon Solar Eclipse'
+  reborn = ARGV.include?('--reborn')
+  ENV['ESSENTIA_TR_GAME'] = reborn ? 'Pokémon Reborn' : 'Pokemon Solar Eclipse'
   opening = File.join(directory, 'opening-es.txt')
   File.open(opening, 'wb') { |file| file.write("Opening greeting\tSaludo inicial\nUnfinished\tIncompleto") }
   ENV['ESSENTIA_TR_OPENING'] = opening
   load script
+
+  if reborn
+    $game_map = Struct.new(:map_id).new(51)
+    $Trainer = Struct.new(:name).new('nico')
+    original = "Station master here.\\nWe've got your boarding passes."
+    File.write(answers, "#{EssentiaTranslate.esc(original)}\tTexto mezclado\nMale\t¿Macho\n")
+    EssentiaTranslate.load_new
+    assert_equal(original, EssentiaTranslate.message_catalog_text(original))
+    assert_equal("Soy el jefe de estación.\\nAquí tienes tus billetes.\1",
+                 EssentiaTranslate.message_text(original + "\1", 0))
+    assert_equal(['Masculino', 'Femenino', 'No binario'],
+                 EssentiaTranslate.render_choices(['Male', 'Female', 'Non-binary']))
+
+    def pbEnterPlayerName(heading, initial)
+      [heading, initial]
+    end
+    class Window_UnformattedTextPokemon
+      attr_reader :text
+      def initialize(text = ''); @text = text; end
+    end
+    def pbDrawTextPositions(bitmap, rows)
+      rows.each { |row| bitmap.draw_text(0, 0, 512, 32, row[0]) }
+    end
+    def pbTicketText(bitmap)
+      pbDrawTextPositions(bitmap, [['Male'], ['Grandview Station'], ['8R750'], [$Trainer.name]])
+    end
+    EssentiaTranslate.install
+    assert_equal(['¿Tu nombre?', 'nico'], pbEnterPlayerName('Your name?', 'nico'))
+    help = "Enter text using the keyboard.  Press\nESC to cancel, or ENTER to confirm."
+    assert_equal("Escribe con el teclado.\nEsc para cancelar o Enter para aceptar.",
+                 Window_UnformattedTextPokemon.new(help).text)
+    assert_equal('', Window_UnformattedTextPokemon.new.text)
+    ticket = Bitmap.new('Graphics/Pictures/introTicket.png')
+    assert_equal(['¡RUMBO A CIUDAD REBORN!', 'Nombre', 'Género', 'Tren', 'Asiento', 'Dest.', 'Adulto', 'Tipo'],
+                 ticket.drawn)
+    assert_equal([], Bitmap.new('Graphics/Pictures/other.png').drawn)
+    overlay = Bitmap.new(512, 384)
+    pbTicketText(overlay)
+    assert_equal(['Masculino', 'Estación Grandview', '8R750', 'nico'], overlay.drawn)
+
+    sentence = "???: Okay, thank you very much!\\nI'll see you when we get into the city."
+    $game_map.map_id = 667
+    assert_equal("???: ¡Muchas gracias!\\nNos vemos al llegar a la ciudad.",
+                 EssentiaTranslate.message_text(sentence, 0))
+    $game_map.map_id = 2
+    assert_equal('Texto mezclado', EssentiaTranslate.message_text(original, 0))
+    assert_equal("Texto mezclado\1", EssentiaTranslate.message_text(original + "\1", 0))
+    puts 'Reborn intro translation checks passed'
+    exit
+  end
+
   assert_equal('Saludo inicial', EssentiaTranslate.lookup('Opening greeting'))
   assert_equal([], Dir[File.join(requests, '*.req')])
 
