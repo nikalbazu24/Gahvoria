@@ -88,7 +88,6 @@ public class GameActivity extends SDLActivity
     /** Picture style ("crt" = old TV lines) and the wide-screen mode value. */
     public static final String EXTRA_FILTER = "gahvoria.FILTER";
     /** Lean-back angle in degrees (0 to 60) of the experimental 2.5D / 3D effect; 0 = flat. */
-    public static final String EXTRA_TILT = "gahvoria.TILT";
 
     public static final String ENGINE_MODERN = "modern";
     public static final String ENGINE_CLASSIC = "classic";
@@ -322,7 +321,6 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_ASPECT", String.format(Locale.US, "%.4f", aspect));
             String filter = i.getStringExtra(EXTRA_FILTER);
             setenv("ESSENTIA_FILTER", filter == null ? "" : filter);
-            setenv("ESSENTIA_TILT", String.valueOf(Math.max(0, Math.min(60, i.getIntExtra(EXTRA_TILT, 0)))));
             startTranslator(i);
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
             if (!mClassic) setenv("GAHVORIA_GAME_ROOT", game.getCanonicalPath());

@@ -397,7 +397,7 @@ public final class TranslatorService
                 throw new IOException("No pude cargar el motor Neural", failure);
             }
         }
-        return NeuralText.translate(protectedTexts, mBergamot::translate, mBergamot::translateMarkup);
+        return NeuralText.translate(originals, protectedTexts, mBergamot::translate, mBergamot::translateMarkup);
     }
 
     // ---------------------------------------------------------------- ML Kit

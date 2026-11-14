@@ -5,6 +5,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,8 +42,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -52,7 +59,7 @@ fun T(
     text: String, size: TextUnit = 14.sp, weight: FontWeight = FontWeight.Medium, color: Color = LocalColors.current.ink,
     modifier: Modifier = Modifier, align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE, spacing: TextUnit = TextUnit.Unspecified,
 ) = Text(text, modifier, color = color, fontSize = size, fontWeight = weight, fontFamily = Montserrat, textAlign = align,
-    maxLines = maxLines, letterSpacing = spacing, lineHeight = (size.value * 1.35f).sp)
+    maxLines = maxLines, overflow = TextOverflow.Ellipsis, letterSpacing = spacing, lineHeight = (size.value * 1.35f).sp)
 
 /** Small uppercase label above a group. */
 @Composable
@@ -157,6 +164,26 @@ fun Segmented(options: List<String>, selected: Int, modifier: Modifier = Modifie
                     .background(if (on) c.glassStrong else Color.Transparent, shape).padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center,
             ) { T(o, 13.sp, FontWeight.Bold, if (on) c.ink else c.muted) }
+        }
+    }
+}
+
+/** Game sections remain readable at narrow widths and enlarged system font sizes. */
+@Composable
+fun ScrollableTabs(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
+    val c = LocalColors.current
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEachIndexed { index, title ->
+            val on = index == selectedIndex
+            val shape = RoundedCornerShape(14.dp)
+            Box(Modifier.heightIn(min = 48.dp).semantics { selected = on }
+                .press(shape, role = Role.Tab) { onSelect(index) }
+                .background(if (on) c.glassStrong else c.glass, shape)
+                .border(1.dp, if (on) c.accent.copy(alpha = .5f) else c.line, shape)
+                .padding(horizontal = 16.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+                T(title, 13.sp, FontWeight.Bold, if (on) c.accent else c.muted, maxLines = 1)
+            }
         }
     }
 }

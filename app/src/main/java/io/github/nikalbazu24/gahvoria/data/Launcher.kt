@@ -155,7 +155,6 @@ object Launcher {
             .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
             .putExtra(GameActivity.EXTRA_COVER, cover)
             .putExtra(GameActivity.EXTRA_FILTER, if (st.retro(game.path)) "crt" else "")
-            .putExtra(GameActivity.EXTRA_TILT, st.tilt(game.path))
         // The private memory is available even when the selected provider has no key.
         if (st.translateOn && st.translateGame(game.path)) {
             intent.putExtra(GameActivity.EXTRA_TR_DIR, Translations.dirFor(a, game).absolutePath)

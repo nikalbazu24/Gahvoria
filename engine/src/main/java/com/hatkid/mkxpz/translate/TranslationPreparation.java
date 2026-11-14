@@ -52,7 +52,7 @@ public final class TranslationPreparation {
                     read++;
                 }
                 if (!pending.isEmpty()) {
-                    memory.remember(TranslationAudit.translate(pending, (o, p) -> model.translate(p)));
+                    memory.remember(TranslationAudit.translate(pending, (o, p) -> model.translate(o, p)));
                     for (String original : pending) if (memory.get(original) != null) translated++;
                 }
                 reviewed += read;
@@ -77,9 +77,9 @@ public final class TranslationPreparation {
             this.context = context;
         }
 
-        List<String> translate(List<String> texts) throws Exception {
+        List<String> translate(List<String> originals, List<String> texts) throws Exception {
             if (model == null) model = new BergamotModel(context);
-            return NeuralText.translate(texts, model::translate, model::translateMarkup);
+            return NeuralText.translate(originals, texts, model::translate, model::translateMarkup);
         }
 
         @Override public void close() {

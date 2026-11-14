@@ -14,6 +14,11 @@ final class TranslationBatch {
         "\\\\[A-Za-z]+(?:\\[[^\\]\\r\\n]*\\])?|\\\\[.!|^<>{}$\\\\]|"
         + "<[^>\\r\\n]{1,40}>|\\[[A-Za-z_]+\\]|\\{\\d+(?::[A-Za-z0-9. +#-]+)?\\}|%\\d*\\$?[sdif%]|[\\x01-\\x1F⟦⟧]");
 
+    private static final Pattern VALUES = Pattern.compile(
+        "\\{[0-9]+(?::[A-Za-z0-9. +#-]+)?\\}|%[0-9]+\\$[sdif]|"
+        + "(?i)\\\\(?:PN|PM|PG|V\\[[0-9]+\\]|N\\[[0-9]+\\])");
+    private static final Pattern MARKERS = Pattern.compile("⟦([0-9]+)⟧");
+
     interface Provider {
         List<String> translate(List<String> originals, List<String> protectedTexts) throws Exception;
     }
@@ -51,17 +56,35 @@ final class TranslationBatch {
 
     private static String unshield(String output, List<String> codes) {
         if (output == null) return null;
-        StringBuilder result = new StringBuilder();
-        int position = 0;
-        for (int i = 0; i < codes.size(); i++) {
-            int next = output.indexOf('⟦', position);
-            String marker = "⟦" + i + "⟧";
-            if (next < 0 || !output.startsWith(marker, next)) return null;
-            result.append(output, position, next).append(codes.get(i));
-            position = next + marker.length();
+        Matcher markers = MARKERS.matcher(output);
+        StringBuffer result = new StringBuffer();
+        boolean[] seen = new boolean[codes.size()];
+        int count = 0;
+        while (markers.find()) {
+            int index;
+            try { index = Integer.parseInt(markers.group(1)); }
+            catch (NumberFormatException invalid) { return null; }
+            if (index >= codes.size() || seen[index]) return null;
+            seen[index] = true;
+            count++;
+            markers.appendReplacement(result, Matcher.quoteReplacement(codes.get(index)));
         }
-        if (output.indexOf('⟦', position) >= 0) return null;
-        return result.append(output, position, output.length()).toString();
+        markers.appendTail(result);
+        if (count != codes.size()) return null;
+        return result.toString();
+    }
+
+    static List<String> tokens(String original) {
+        List<String> result = new ArrayList<>();
+        Matcher matcher = CODES.matcher(original);
+        while (matcher.find()) result.add(matcher.group());
+        return result;
+    }
+
+    // Only named/numbered values may change position. Effects, colors, pauses and
+    // unnumbered printf arguments must keep their order and value boundaries.
+    static boolean movable(String token) {
+        return VALUES.matcher(token).matches();
     }
 
     static boolean needsContext(String original) {
@@ -75,11 +98,30 @@ final class TranslationBatch {
     /** Check existing rows and restored results for added, dropped, or reordered game tokens. */
     static boolean isSafe(String original, String translated) {
         if (translated == null || translated.trim().isEmpty()) return false;
-        Matcher expected = CODES.matcher(original);
-        Matcher actual = CODES.matcher(translated);
-        while (expected.find()) {
-            if (!actual.find() || !expected.group().equals(actual.group())) return false;
+        List<String> expected = tokens(original);
+        List<String> actual = tokens(translated);
+        if (expected.size() != actual.size()) return false;
+        Map<String, Integer> values = new LinkedHashMap<>();
+        int next = 0;
+        for (String token : expected) {
+            if (movable(token)) {
+                values.put(token, values.containsKey(token) ? values.get(token) + 1 : 1);
+                continue;
+            }
+            while (next < actual.size() && movable(actual.get(next))) {
+                String value = actual.get(next++);
+                values.put(value, values.containsKey(value) ? values.get(value) - 1 : -1);
+            }
+            for (int count : values.values()) if (count != 0) return false;
+            values.clear();
+            if (next >= actual.size() || !token.equals(actual.get(next++))) return false;
         }
-        return !actual.find();
+        while (next < actual.size()) {
+            String value = actual.get(next++);
+            if (!movable(value)) return false;
+            values.put(value, values.containsKey(value) ? values.get(value) - 1 : -1);
+        }
+        for (int count : values.values()) if (count != 0) return false;
+        return true;
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -43,11 +44,7 @@ import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
 import io.github.nikalbazu24.gahvoria.core.LoadTimes
-import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import kotlin.math.roundToInt
 import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
@@ -65,15 +62,15 @@ fun Page(title: String, onBack: (() -> Unit)? = null, content: @Composable Colum
             Modifier.widthIn(max = 560.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(44.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
                 if (onBack != null) {
                     val c = LocalColors.current
                     val shape = RoundedCornerShape(14.dp)
-                    Box(Modifier.size(40.dp).press(shape, onClick = onBack).background(c.glass, shape).border(1.dp, c.line, shape),
+                    Box(Modifier.size(48.dp).press(shape, onClick = onBack).background(c.glass, shape).border(1.dp, c.line, shape),
                         contentAlignment = Alignment.Center) { T("‹", 22.sp, FontWeight.Bold) }
                     Spacer(Modifier.size(12.dp))
                 }
-                T(title, 22.sp, FontWeight.ExtraBold)
+                T(title, 22.sp, FontWeight.ExtraBold, modifier = Modifier.weight(1f), maxLines = 2)
             }
             content()
             Spacer(Modifier.height(8.dp))
@@ -86,7 +83,7 @@ fun Page(title: String, onBack: (() -> Unit)? = null, content: @Composable Colum
 @Composable
 fun GameScreen(s: AppState, g: Game) {
     val c = LocalColors.current
-    var tab by remember(g.path) { mutableIntStateOf(0) }
+    var tab by remember(g.path, s.gameOptionsTab) { mutableIntStateOf(s.gameOptionsTab) }
     var showCoverage by remember(g.path) { mutableStateOf(false) }
     var showGameplayReport by remember(g.path) { mutableStateOf(false) }
     BackHandler {
@@ -105,9 +102,9 @@ fun GameScreen(s: AppState, g: Game) {
         return
     }
     Page(g.title, onBack = { s.optionsFor = null }) {
-        Segmented(listOf("Partidas", "Mando", "Pantalla", "Motor"), tab) { tab = it }
+        ScrollableTabs(listOf("Traducción", "Pantalla", "Controles", "Partidas", "Avanzado"), tab) { tab = it }
         when (tab) {
-            0 -> {
+            3 -> {
                 val dir = remember(g.path) { s.saveDir(g) }
                 val saves = remember(g.path) { Saves.list(dir) }
                 Glass(Modifier.fillMaxWidth()) {
@@ -140,17 +137,15 @@ fun GameScreen(s: AppState, g: Game) {
                         onClick = { folderPicker.launch(null) }) { T("Elegir", 12.sp, FontWeight.Bold, c.accent) }
                 }
             }
-            1 -> {
+            2 -> {
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Controles táctiles", "Botones en pantalla. Se ocultan solos al usar un mando.", role = Role.Switch,
                         onClick = { s.changeGame(g.path) { it.copy(touch = !it.touch) } }) { Toggle(g.touch) }
                 }
                 if (g.touch) PadEditor(s, g)
             }
-            2 -> {
+            0 -> {
                 var rev by remember(g.path) { mutableIntStateOf(0) }
-                val mode = remember(g.path, rev) { s.screenMode(g) }
-                val retro = remember(g.path, rev) { s.retro(g) }
                 val tr = remember(g.path, rev, s.coverVersion) { s.translateGame(g) }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Traducir este juego",
@@ -167,6 +162,7 @@ fun GameScreen(s: AppState, g: Game) {
                         status != null -> "Reanudar"
                         else -> "Preparar"
                     }
+                    Label("Antes de jugar")
                     Glass(Modifier.fillMaxWidth()) {
                         RowItem("Preparar traducción",
                             if (s.startingPreparation) "Comprobando archivos…"
@@ -174,51 +170,42 @@ fun GameScreen(s: AppState, g: Game) {
                             onClick = { s.prepareTranslation(g) }) {
                             T(action, 12.sp, FontWeight.Bold, c.accent)
                         }
+                    }
+                    Label("Revisar resultados")
+                    Glass(Modifier.fillMaxWidth()) {
                         if (s.hasTranslationCatalog(g)) {
-                            Divider()
-                            RowItem("Cobertura del catálogo", "Revisa toda la memoria de traducción y los pendientes por causa.",
+                            RowItem("Cobertura del catálogo", "Frases revisadas y pendientes. Este porcentaje no mide la calidad del español.",
                                 onClick = { showCoverage = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
+                            Divider()
                         }
-                        Divider()
                         RowItem("Traducción en partida", "Registra el texto que pasa por el traductor en una sesión de prueba.",
                             onClick = { showGameplayReport = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
                     }
                 }
+            }
+            1 -> {
+                var rev by remember(g.path) { mutableIntStateOf(0) }
+                val mode = remember(g.path, rev) { s.screenMode(g) }
+                val retro = remember(g.path, rev) { s.retro(g) }
+                Label("Formato de pantalla")
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Original (4:3)", "La forma con que se hizo el juego, con barras a los lados.", role = Role.RadioButton,
                         onClick = { s.setScreenMode(g, "original"); rev++ }) { Radio(mode == "original") }
                     Divider()
-                    RowItem("Panorámica completa (experimental)", "Modo experimental: en batallas y menús todavía hay bugs visuales.", role = Role.RadioButton,
-                        onClick = { s.setScreenMode(g, "wide"); rev++ }) { Radio(mode == "wide") }
-                    Divider()
                     RowItem("Panorámica solo en el mapa", "Más mapa a los lados; menús y batallas conservan su forma, con los lados difuminados.", role = Role.RadioButton,
                         onClick = { s.setScreenMode(g, "wide_safe"); rev++ }) { Radio(mode == "wide_safe") }
+                    Divider()
+                    RowItem("Panorámica completa (experimental)", "Modo experimental: en batallas y menús todavía hay bugs visuales.", role = Role.RadioButton,
+                        onClick = { s.setScreenMode(g, "wide"); rev++ }) { Radio(mode == "wide") }
                 }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Pantalla retro", "Líneas finas como de tele antigua sobre la imagen.",
                         role = Role.Switch, onClick = { s.setRetro(g, !retro); rev++ }) { Toggle(retro) }
                 }
-                var tilt by remember(g.path, rev) { mutableIntStateOf(s.tilt(g)) }
-                Label("Profundidad (experimental)")
-                Glass(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Segmented(Depth.names, Depth.modeOf(tilt)) { tilt = Depth.angleOf(it); s.setTilt(g, tilt) }
-                        T("Inclina la imagen hacia atrás con perspectiva, como un diorama. Es solo un efecto sobre la imagen final: el juego no cambia. Por ahora inclina todo el cuadro, también menús y batallas, y los toques sobre la imagen no siguen la inclinación. Sin medir en la Thor.",
-                            12.sp, FontWeight.Medium, c.muted)
-                        if (tilt > 0) Row(verticalAlignment = Alignment.CenterVertically) {
-                            T("Inclinación", 12.sp, FontWeight.Bold, c.muted)
-                            Slider(
-                                tilt.toFloat(), { tilt = it.roundToInt() }, onValueChangeFinished = { s.setTilt(g, tilt) },
-                                valueRange = 5f..Depth.MAX.toFloat(), modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                                colors = SliderDefaults.colors(thumbColor = c.accent, activeTrackColor = c.accent, inactiveTrackColor = c.line),
-                            )
-                            T("$tilt°", 12.sp, FontWeight.Bold)
-                        }
-                    }
-                }
                 T("Los cambios se aplican la próxima vez que abras el juego.", 12.sp, FontWeight.Medium, c.muted)
             }
             else -> {
+                Label("Compatibilidad")
                 val classic = s.classicAvailable()
                 val profile = remember(g.path, s.profileTick) { s.profile(g) }
                 val autoPick = if (profile.recommendedEngine == Game.ENGINE_CLASSIC && classic) "clásico" else "moderno"
@@ -242,52 +229,55 @@ fun GameScreen(s: AppState, g: Game) {
                 }
             }
         }
-        val coverSource = s.covers.source(g)
-        val coverText = when (coverSource) {
-            io.github.nikalbazu24.gahvoria.data.Covers.Source.WEB -> s.covers.credit(g) ?: "Imagen oficial de Internet."
-            io.github.nikalbazu24.gahvoria.data.Covers.Source.FOLDER -> "Imagen de la carpeta del juego."
-            else -> if (s.coversOnline) "Sin imagen: dibujada por Gahvoria. Si el juego trae una o está en el catálogo, aparecerá sola."
-                    else "Sin imagen: dibujada por Gahvoria."
-        }
-        Glass(Modifier.fillMaxWidth()) { RowItem("Carátula", coverText) }
-        val lastErr = remember(g.path, s.coverVersion) { s.lastReport(g) }
-        Glass(Modifier.fillMaxWidth()) {
-            if (lastErr == null) RowItem("Informe de error", "Este juego no ha dejado errores.")
-            else RowItem("Enviar último informe", "Error del " + DateUtils.getRelativeTimeSpanString(lastErr.first,
-                System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) + ": " + GameReport.firstLine(lastErr.second),
-                onClick = { s.sendReport(g, lastErr.second) }) { T("Enviar", 12.sp, FontWeight.Bold, c.accent) }
-        }
-        LaunchedEffect(Unit) { if (s.storeGames.isEmpty()) s.loadStore() }
-        s.storeUpdate(g)?.let { n ->
-            Glass(Modifier.fillMaxWidth()) {
-                RowItem("Versión nueva en la tienda", "El creador publicó la ${n.version} y tienes la ${s.profile(g).gameVersion}. Tus partidas no se tocan al actualizar.",
-                    titleColor = c.accent, onClick = { s.openPage(n.page) }) { T("Abrir", 12.sp, FontWeight.Bold, c.accent) }
+        if (tab == 4) {
+            Label("Administrar juego")
+            val coverSource = s.covers.source(g)
+            val coverText = when (coverSource) {
+                io.github.nikalbazu24.gahvoria.data.Covers.Source.WEB -> s.covers.credit(g) ?: "Imagen oficial de Internet."
+                io.github.nikalbazu24.gahvoria.data.Covers.Source.FOLDER -> "Imagen de la carpeta del juego."
+                else -> if (s.coversOnline) "Sin imagen: dibujada por Gahvoria. Si el juego trae una o está en el catálogo, aparecerá sola."
+                        else "Sin imagen: dibujada por Gahvoria."
             }
-        }
-        if (s.creatorMode) {
-            s.mineVersion
-            val mine = s.isMine(g)
+            Glass(Modifier.fillMaxWidth()) { RowItem("Carátula", coverText) }
+            val lastErr = remember(g.path, s.coverVersion) { s.lastReport(g) }
             Glass(Modifier.fillMaxWidth()) {
-                RowItem("Este juego es mío", "Guarda el historial de sus errores y activa su panel de creador.",
-                    role = Role.Switch, onClick = { s.setMine(g, !mine) }) { Toggle(mine) }
-                if (mine) {
-                    Divider()
-                    RowItem("Panel de creador", "Resumen, chequeo, informes y pedidos de ajuste.", onClick = { s.openCreator(g) }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+                if (lastErr == null) RowItem("Informe de error", "Este juego no ha dejado errores.")
+                else RowItem("Enviar último informe", "Error del " + DateUtils.getRelativeTimeSpanString(lastErr.first,
+                    System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) + ": " + GameReport.firstLine(lastErr.second),
+                    onClick = { s.sendReport(g, lastErr.second) }) { T("Enviar", 12.sp, FontWeight.Bold, c.accent) }
+            }
+            LaunchedEffect(Unit) { if (s.storeGames.isEmpty()) s.loadStore() }
+            s.storeUpdate(g)?.let { n ->
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Versión nueva en la tienda", "El creador publicó la ${n.version} y tienes la ${s.profile(g).gameVersion}. Tus partidas no se tocan al actualizar.",
+                        titleColor = c.accent, onClick = { s.openPage(n.page) }) { T("Abrir", 12.sp, FontWeight.Bold, c.accent) }
                 }
             }
-        }
-        Spacer(Modifier.height(4.dp))
-        var step by remember(g.path) { mutableIntStateOf(0) }
-        Glass(Modifier.fillMaxWidth()) {
-            RowItem(
-                when (step) { 0 -> "Quitar de la biblioteca"; else -> "Toca otra vez para confirmar" },
-                "No borra la carpeta del juego ni sus partidas.", titleColor = c.accent,
-                onClick = { if (step == 0) step = 1 else s.forget(g) },
-            ) { T("→", 16.sp, FontWeight.Bold, c.faint) }
-            Divider()
-            RowItem("Borrar juego por completo", "Borra su carpeta, partidas y accesos. Pide dos confirmaciones.",
-                titleColor = if (c.dark) androidx.compose.ui.graphics.Color(0xFFFF8E8E) else androidx.compose.ui.graphics.Color(0xFFC62F3A),
-                onClick = { s.deleting = g }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+            if (s.creatorMode) {
+                s.mineVersion
+                val mine = s.isMine(g)
+                Glass(Modifier.fillMaxWidth()) {
+                    RowItem("Este juego es mío", "Guarda el historial de sus errores y activa su panel de creador.",
+                        role = Role.Switch, onClick = { s.setMine(g, !mine) }) { Toggle(mine) }
+                    if (mine) {
+                        Divider()
+                        RowItem("Panel de creador", "Resumen, chequeo, informes y pedidos de ajuste.", onClick = { s.openCreator(g) }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            var step by remember(g.path) { mutableIntStateOf(0) }
+            Glass(Modifier.fillMaxWidth()) {
+                RowItem(
+                    when (step) { 0 -> "Quitar de la biblioteca"; else -> "Toca otra vez para confirmar" },
+                    "No borra la carpeta del juego ni sus partidas.", titleColor = c.accent,
+                    onClick = { if (step == 0) step = 1 else s.forget(g) },
+                ) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+                Divider()
+                RowItem("Borrar juego por completo", "Borra su carpeta, partidas y accesos. Pide dos confirmaciones.",
+                    titleColor = if (c.dark) androidx.compose.ui.graphics.Color(0xFFFF8E8E) else androidx.compose.ui.graphics.Color(0xFFC62F3A),
+                    onClick = { s.deleting = g }) { T("→", 16.sp, FontWeight.Bold, c.faint) }
+            }
         }
     }
 }
@@ -307,7 +297,7 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
         Glass(Modifier.fillMaxWidth()) {
             if (report == null) {
                 RowItem(g.title, if (state == null) "Revisando traducciones guardadas…"
-                    else "No pude leer el catálogo. Puedes volver a prepararlo desde Pantalla.")
+                    else "No pude leer el catálogo. Puedes volver a prepararlo desde Traducción.")
             } else {
                 val (coverage, stale) = report
                 val pending = coverage.total - coverage.translated
@@ -557,7 +547,7 @@ fun SettingsScreen(s: AppState) {
         if (wide) {
             Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 Column(Modifier.width(220.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    T("Ajustes", 22.sp, FontWeight.ExtraBold, modifier = Modifier.height(44.dp))
+                    T("Ajustes", 22.sp, FontWeight.ExtraBold, modifier = Modifier.heightIn(min = 48.dp))
                     SettingsSearch(query) { query = it }
                     for (sec in Sec.entries) {
                         val on = sec == picked && query.isBlank()
@@ -686,7 +676,7 @@ private fun SecContent(s: AppState, sec: Sec) {
             }
             Sec.TRANSLATE -> {
                 Glass(Modifier.fillMaxWidth()) {
-                    RowItem("Traducir mientras juegas", "Apagado hasta que lo actives. Después eliges en qué juegos, en sus opciones → Pantalla.",
+                    RowItem("Traducir mientras juegas", "Apagado hasta que lo actives. Después eliges en qué juegos, en sus opciones → Traducción.",
                         role = Role.Switch, onClick = { s.chooseTranslateOn(!s.translateOn) }) { Toggle(s.translateOn) }
                 }
                 if (s.translateOn) {

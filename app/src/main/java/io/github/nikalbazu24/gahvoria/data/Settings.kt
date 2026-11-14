@@ -1,7 +1,6 @@
 package io.github.nikalbazu24.gahvoria.data
 
 import android.content.Context
-import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 
@@ -101,8 +100,6 @@ class Settings(context: Context) {
     fun retro(path: String): Boolean = prefs.getBoolean("retro:$path", false)
     fun setRetro(path: String, on: Boolean) = prefs.edit().putBoolean("retro:$path", on).apply()
     /** Lean-back angle in degrees for the 2.5D / 3D effect (0 = flat). */
-    fun tilt(path: String): Int = Depth.clamp(prefs.getInt("tilt:$path", 0))
-    fun setTilt(path: String, deg: Int) = prefs.edit().apply { if (deg <= 0) remove("tilt:$path") else putInt("tilt:$path", Depth.clamp(deg)) }.apply()
 
     /** Everything kept about one game (touch layout, translation, screen, engine memory) when it is deleted. */
     fun forgetGame(path: String) = prefs.edit().apply {

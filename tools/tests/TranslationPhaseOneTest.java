@@ -21,7 +21,67 @@ public final class TranslationPhaseOneTest {
         openingUsesPreparedEntriesAndReplacesStaleRows();
         coverageReadsCurrentMemoryWithoutChangingIt();
         auditRepairsOnlyFlaggedRows();
-        System.out.println("9 JVM translation checks passed");
+        templatesKeepSubjectsAndValidateValues();
+        migratesOnlyOldValueTemplates();
+        System.out.println("11 JVM translation checks passed");
+    }
+
+    private static void templatesKeepSubjectsAndValidateValues() throws Exception {
+        String source = "What will {1} do?";
+        Map<String, String> result = TranslationBatch.translate(Collections.singletonList(source),
+            (raw, inputs) -> NeuralText.translate(raw, inputs, sentences -> {
+                equal(Collections.singletonList("What will ZXQVA do?"), sentences);
+                return Collections.singletonList("¿Qué hará ZXQVA?");
+            }, markup -> { throw new AssertionError("No markup needed for values"); }));
+        equal("¿Qué hará {1}?", result.get(source));
+        // Named values may move within one formatting region; controls cannot.
+        equal(true, TranslationBatch.isSafe("{1}'s {2}", "{2} de {1}"));
+        equal(false, TranslationBatch.isSafe("{1} \\c[1]{2}", "{2} \\c[1]{1}"));
+        equal(false, TranslationBatch.isSafe("{1:03d}", "{1:d}"));
+        equal(false, TranslationBatch.isSafe("{1} {1}", "{1} {2}"));
+        equal(false, TranslationBatch.isSafe("\\c[1]Hi\\c[2]", "\\c[2]Hola\\c[1]"));
+        equal("{2} de {1}", TranslationBatch.translate(Collections.singletonList("{1}'s {2}"),
+            (raw, inputs) -> Collections.singletonList("⟦1⟧ de ⟦0⟧")).get("{1}'s {2}"));
+        for (String broken : Arrays.asList("¿Qué hará ZXQVB?", "¿Qué hará ZXQVA ZXQVA?",
+                                           "¿Qué hará ZXQ VA?", "¿Qué hará?")) {
+            equal(0, TranslationBatch.translate(Collections.singletonList(source),
+                (raw, inputs) -> NeuralText.translate(raw, inputs,
+                    sentences -> Collections.singletonList(broken), sentences -> null)).size());
+        }
+        String colored = "\\c[1]Hello, {1}!";
+        result = TranslationBatch.translate(Collections.singletonList(colored),
+            (raw, inputs) -> NeuralText.translate(raw, inputs, sentences -> {
+                throw new AssertionError("Keep complete message through alignment");
+            }, sentences -> {
+                equal(Collections.singletonList("<img data-gahvoria=\"0\">Hello, ZXQVB!"), sentences);
+                return Collections.singletonList("<img data-gahvoria=\"0\">¡Hola, ZXQVB!");
+            }));
+        equal("\\c[1]¡Hola, {1}!", result.get(colored));
+        equal(true, NeuralText.usesValueSlots("Hello \\PN"));
+        equal(true, NeuralText.usesValueSlots("Money {2:03d}"));
+        equal(false, NeuralText.usesValueSlots("\\c[1]Ready!\\se[Sound]"));
+        equal(false, NeuralText.usesValueSlots("Hello %s"));
+    }
+
+    private static void migratesOnlyOldValueTemplates() throws Exception {
+        Path cache = Files.createTempFile("gahvoria-slots", ".tsv");
+        String source = "Welcome, {1}!";
+        Files.write(cache, Arrays.asList("Hello\tHola",
+            "\u001Fcontext-v1:" + source + "\tBienvenido{1}.",
+            "\u001Fcontext-v1:\\\\c[1]Ready\t\\\\c[1]Listo"), StandardCharsets.UTF_8);
+        try {
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal(TranslationAudit.Issue.OUTDATED, memory.audit(source));
+                equal("Hola", memory.get("Hello"));
+                equal("\\c[1]Listo", memory.get("\\c[1]Ready"));
+            }
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                memory.remember(Collections.singletonMap(source, "¡Bienvenido, {1}!"));
+            }
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal("¡Bienvenido, {1}!", memory.get(source));
+            }
+        } finally { Files.delete(cache); }
     }
 
     private static void preservesControlTokens() throws Exception {

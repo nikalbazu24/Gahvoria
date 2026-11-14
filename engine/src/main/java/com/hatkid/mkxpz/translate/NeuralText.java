@@ -3,6 +3,8 @@ package com.hatkid.mkxpz.translate;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,6 +50,74 @@ final class NeuralText {
             contraction.appendReplacement(expanded, replacement);
         }
         return contraction.appendTail(expanded).toString();
+    }
+
+    static boolean usesValueSlots(String text) {
+        for (String token : TranslationBatch.tokens(text)) if (TranslationBatch.movable(token)) return true;
+        return false;
+    }
+
+    private static final Pattern NUMBER_FORMAT = Pattern.compile(".*:[ 0-9.+#-]*[dif]\\}");
+    private static final Pattern QUANTITY_NOUN = Pattern.compile(
+        "(?i)^\\s+(?:coins|points|badges|minutes|seconds|hours|days|rooms|steps|levels|items|times|HP|PP)\\b.*", Pattern.DOTALL);
+
+    private static boolean numericSlot(String original, String token) {
+        if (NUMBER_FORMAT.matcher(token).matches()) return true;
+        int at = original.indexOf(token);
+        return at >= 0 && QUANTITY_NOUN.matcher(original.substring(at + token.length())).matches();
+    }
+
+    private static String slot(int index) {
+        String suffix = "";
+        do { suffix = (char) ('A' + index % 26) + suffix; index = index / 26 - 1; } while (index >= 0);
+        return "ZXQV" + suffix;
+    }
+
+    /** Empty HTML markers erase the grammatical subject. Keep values visible to
+     * inference as opaque words, then restore only an exact, complete inventory.
+     * Never send real player/Pokémon names through this template path. */
+    static List<String> translate(List<String> originals, List<String> texts,
+                                  Inference plain, Inference aligned) throws IOException {
+        List<String> prepared = new ArrayList<>(texts);
+        List<Map<Integer, String>> slots = new ArrayList<>();
+        for (int row = 0; row < texts.size(); row++) {
+            Map<Integer, String> indices = new LinkedHashMap<>();
+            String text = texts.get(row);
+            if (!text.toUpperCase(java.util.Locale.ROOT).contains("ZXQV")) {
+                List<String> tokens = TranslationBatch.tokens(originals.get(row));
+                for (int i = 0; i < tokens.size(); i++) {
+                    if (TranslationBatch.movable(tokens.get(i))) {
+                        String value = slot(i);
+                        if (numericSlot(originals.get(row), tokens.get(i))) {
+                            int number = 73189 + i;
+                            while (originals.get(row).contains(String.valueOf(number)) || indices.containsValue(String.valueOf(number))) number++;
+                            value = String.valueOf(number);
+                        }
+                        indices.put(i, value);
+                        text = text.replace("⟦" + i + "⟧", value);
+                    }
+                }
+            }
+            prepared.set(row, text);
+            slots.add(indices);
+        }
+        List<String> result = translate(prepared, plain, aligned);
+        for (int row = 0; row < result.size(); row++) {
+            if (slots.get(row).isEmpty() || result.get(row) == null) continue;
+            String output = result.get(row);
+            boolean valid = true;
+            for (Map.Entry<Integer, String> entry : slots.get(row).entrySet()) {
+                int index = entry.getKey();
+                Matcher token = Pattern.compile("(?i)(?<![A-Za-z0-9])" + entry.getValue() + "(?![A-Za-z0-9])").matcher(output);
+                if (!token.find()) { valid = false; break; }
+                int start = token.start(), end = token.end();
+                if (token.find()) { valid = false; break; }
+                output = output.substring(0, start) + "⟦" + index + "⟧" + output.substring(end);
+            }
+            if (output.toUpperCase(java.util.Locale.ROOT).contains("ZXQV")) valid = false;
+            result.set(row, valid ? output : null);
+        }
+        return result;
     }
 
     /** Pass one complete utterance through the model even when RGSS inserts controls inside it. */

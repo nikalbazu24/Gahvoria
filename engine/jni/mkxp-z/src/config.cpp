@@ -366,6 +366,7 @@ try { exp } catch (...) {}
     {
         const char *tr = getenv("ESSENTIA_TR_FILE");
         if (tr && *tr) {
+            preloadScripts.push_back("essentia_preload/essentia_pokemon_terms.rb");
             preloadScripts.push_back("essentia_preload/essentia_translate.rb");
             const char *prepare = getenv("ESSENTIA_TR_PREPARE");
             if (prepare && *prepare)

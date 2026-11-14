@@ -12,7 +12,7 @@ module EssentiaTranslate
   OPENING = ENV['ESSENTIA_TR_OPENING'].to_s
   DIAGNOSTICS = ENV['ESSENTIA_TR_DIAGNOSTICS'].to_s
   DIAGNOSTIC_LIMIT = 2500
-  ENGLISH_IN_DISPLAY = /\b(?:we['’](?:ve|ll)|you['’](?:re|ll)|they['’]re|jammies|gonna|cuz)\b/i
+  ENGLISH_IN_DISPLAY = /\b(?:we['’](?:ve|ll)|you['’](?:re|ll)|they['’]re|jammies|gonna|cuz|what will|would like|for winning|your name|enter text|badges|fight|bag|pound|growl|bubble|grew to level|sp\. (?:atk|def))\b/i
   @map = {}
   @displaying = []
   @pending = {}
@@ -79,7 +79,7 @@ module EssentiaTranslate
     'What will {1} do?' => '¿Qué hará {1}?',
     '{1} used {2}!' => '¡{1} usó {2}!',
     '{1} grew to Level {2}!' => '¡{1} subió al nivel {2}!',
-    '{1} got 2 for winning!' => '¡{1} ganó 2 por el combate!',
+    '{1} got ${2} for winning!' => '¡{1} ganó ${2} por el combate!',
     '{1} would like to battle!' => '¡{1} quiere combatir!',
     '{1:s}PP: ---<br>TYPE/{2:s}' => '{1:s}PP: ---<br>TIPO/{2:s}',
     '{1:s}PP: {2: 2d}/{3: 2d}<br>TYPE/{4:s}' => '{1:s}PP: {2: 2d}/{3: 2d}<br>TIPO/{4:s}'
@@ -200,6 +200,7 @@ module EssentiaTranslate
     [/\b(?:is that correct|did i get that right|did i understand correctly)\b/i,
      { 'right' => 'Correcto', 'right.' => 'Correcto.' }]
   ]
+  @formatting = 0
   @paint_stack = []
   @paint_waiting = []
   @verbatim = 0
@@ -372,6 +373,7 @@ module EssentiaTranslate
     def lookup(text, wait = 0)
       return text unless text.is_a?(String) && !text.empty?
       return text if text.instance_variable_get(:@gahvoria_translated) || player_name?(text)
+      return formatted_text(text, wait) if text.instance_variable_get(:@gahvoria_template)
       return text if display_format?(text)
       label = gameplay_label(text)
       return marked(label) if label
@@ -401,12 +403,121 @@ module EssentiaTranslate
       result
     end
 
+    # Translate the reusable sentence before the game inserts names, amounts or move labels.
+    # Keep the game's own formatter; no guessed regex replacement of expanded dialogue.
+    def format_call(original, receiver, args, argument, sprintf = false)
+      return original.bind(receiver).call(*args) if @formatting > 0 || @verbatim > 0 ||
+        !args[argument].is_a?(String)
+      source = args[argument]
+      translated = message_catalog_text(source)
+      copied = args.dup
+      copied[argument] = translated.dup
+      @formatting += 1
+      begin
+        result = original.bind(receiver).call(*copied)
+      ensure
+        @formatting -= 1
+      end
+      return result unless result.is_a?(String)
+      if translated != source || translated.instance_variable_get(:@gahvoria_translated)
+        marked(result)
+      else
+        result = result.dup
+        values = args[(argument + 1)..-1]
+        if values.all? { |value| value.is_a?(String) || value.is_a?(Numeric) || value.nil? || value == true || value == false }
+          # Only Marshal-safe primitives may live on a String that a game might save.
+          values = values.map { |value| value.is_a?(String) ? String.new(value) : value }
+          result.instance_variable_set(:@gahvoria_template, [sprintf, values, String.new(source)])
+        end
+        result
+      end
+    end
+
+    def formatted_text(text, wait)
+      sprintf, values, source = text.instance_variable_get(:@gahvoria_template)
+      translated = lookup(source, wait)
+      return text if translated.equal?(source)
+      pattern = sprintf ? /\{([0-9]+):([^}]+)\}/ : /\{([0-9]+)\}/
+      result = translated.gsub(pattern) do |token|
+        index = $1.to_i - 1
+        format = $2
+        if index < 0 || index >= values.size
+          token
+        elsif sprintf
+          Kernel.sprintf('%' + format, values[index])
+        else
+          values[index].to_s
+        end
+      end
+      marked(result)
+    rescue StandardError
+      text
+    end
+
+    def term_label(kind, text)
+      return nil unless SPANISH && defined?(GahvoriaPokemonTerms) && text.is_a?(String)
+      terms = GahvoriaPokemonTerms::NAMES[kind]
+      return nil unless terms
+      return terms[text] if terms.has_key?(text)
+      @folded_terms ||= {}
+      unless @folded_terms[kind]
+        folded = {}
+        terms.each do |name, label|
+          key = name.downcase.gsub(/[^a-z0-9]/, '')
+          folded[key] = folded.has_key?(key) && folded[key] != label ? false : label
+        end
+        @folded_terms[kind] = folded
+      end
+      @folded_terms[kind][text.downcase.gsub(/[^a-z0-9]/, '')]
+    end
+
+    def message_kind(type)
+      return nil unless defined?(MessageTypes)
+      {:move => %w[Moves MOVE_NAMES], :item => %w[Items ITEM_NAMES],
+       :ability => %w[Abilities ABILITY_NAMES], :type => %w[Types TYPE_NAMES],
+       :nature => %w[Natures NATURE_NAMES]}.each do |kind, names|
+        names.each do |name|
+          return kind if MessageTypes.const_defined?(name) && MessageTypes.const_get(name) == type
+        end
+      end
+      nil
+    end
+
+    def wrap_terms
+      if defined?(GameData)
+        %w[Move Item Ability Type Nature].each do |name|
+          next unless GameData.const_defined?(name)
+          owner = GameData.const_get(name)
+          wrap_method(owner, :name, 0, 0, ('term_' + name.downcase).to_sym) if owner.is_a?(Class)
+        end
+      end
+      # Legacy Essentials uses named modules; IDs stay entirely in the game's own table.
+      {:move => :PBMoves, :item => :PBItems, :ability => :PBAbilities,
+       :type => :PBTypes, :nature => :PBNatures}.each do |kind, name|
+        next unless Object.const_defined?(name)
+        owner = Object.const_get(name)
+        meta = class << owner; self; end
+        wrap_method(meta, :getName, 0, 0, ('term_' + kind.to_s).to_sym)
+      end
+      if REBORN
+        {:getMoveName => :move, :getMoveShortName => :move, :getItemName => :item,
+         :getAbilityName => :ability, :getTypeName => :type, :getNatureName => :nature}.each do |name, kind|
+          wrap_top(name, 0, 0, ('term_' + kind.to_s).to_sym)
+        end
+        wrap_method(PBMove, :name, 0, 0, :term_move) if defined?(PBMove)
+        if defined?(PokeBattle_Move)
+          wrap_method(PokeBattle_Move, :name, 0, 0, :term_move)
+          wrap_method(PokeBattle_Move, :getMoveUseName, 0, 0, :term_move)
+        end
+      end
+    end
+
     # Kinds of names that stay as they are (Pokémon, trainers)
     def keep_type?(type)
       return false unless defined?(MessageTypes)
       @keep ||= begin
         list = []
-        %w[Species SPECIES_NAMES TrainerNames TRAINER_NAMES SpeciesForms FORM_NAMES].each do |c|
+        %w[Species SPECIES_NAMES TrainerNames TRAINER_NAMES SpeciesForms FormNames FORM_NAMES].each do |c|
           list << MessageTypes.const_get(c) if MessageTypes.const_defined?(c)
         end
         list
@@ -634,6 +745,7 @@ module EssentiaTranslate
     def message_text(source, wait, hint = nil)
       return lookup(source, wait) unless SPANISH && source.is_a?(String)
       return source if source.instance_variable_get(:@gahvoria_translated)
+      return formatted_text(source, wait) if source.instance_variable_get(:@gahvoria_template)
       label = reborn_intro_label(source) || scene_label(source, hint) || visible_label(source)
       return label if label
       pause = source.end_with?("\1")
@@ -855,7 +967,13 @@ module EssentiaTranslate
 
     def invoke(index, receiver, args, block)
       original, argument, wait, kind = @originals[index]
-      if kind == :move_name
+      if kind == :format || kind == :sprintf
+        return format_call(original, receiver, args, argument, kind == :sprintf)
+      elsif kind.to_s.start_with?('term_')
+        name = original.bind(receiver).call(*args, &block)
+        label = term_label(kind.to_s.sub('term_', '').to_sym, name)
+        return label ? marked(label) : name
+      elsif kind == :move_name
         name = original.bind(receiver).call(*args, &block)
         move = receiver.instance_variable_get(:@move)
         return REBORN_MOVES.has_key?(move) && name == REBORN_MOVE_NAMES[move] ? marked(REBORN_MOVES[move]) : name
@@ -983,6 +1101,8 @@ module EssentiaTranslate
           args[argument] = message_text(source, slow ? wait : 0)
           record_display('window', source, args[argument])
           key = SPANISH && source.is_a?(String) ? message_key(source) : source
+          template = source.instance_variable_get(:@gahvoria_template) if source.is_a?(String)
+          key = template[2] if template
           if !slow && source.is_a?(String) && args[argument].equal?(source) && @pending[key]
             @paint_waiting.delete_if { |item| item[0].equal?(receiver) }
             @paint_waiting.shift if @paint_waiting.size >= 32
@@ -1098,6 +1218,7 @@ module EssentiaTranslate
     end
 
     def message_catalog_text(text)
+      return text if @formatting > 0
       if text.is_a?(String) && !player_name?(text)
         label = gameplay_label(text)
         if SPANISH && !label
@@ -1131,7 +1252,13 @@ module EssentiaTranslate
         else
           meta.send(:define_method, name) do |*args|
             r = current.bind(self).call(*args)
-            EssentiaTranslate.keep_type?(args[0]) ? r : EssentiaTranslate.message_catalog_text(r)
+            kind = EssentiaTranslate.message_kind(args[0])
+            label = kind && EssentiaTranslate.term_label(kind, r)
+            if label
+              EssentiaTranslate.marked(label)
+            else
+              EssentiaTranslate.keep_type?(args[0]) ? r : EssentiaTranslate.message_catalog_text(r)
+            end
           end
         end
         @hooked[[meta, name]] = meta.instance_method(name)
@@ -1147,8 +1274,13 @@ module EssentiaTranslate
         wrap_top(:pbMessageDisplay, 1, DIALOGUE_WAIT, :message)
         wrap_top(:pbShowCommands, 1, 0, :commands)
         wrap_messages
+        wrap_top(:_INTL, 0, 0, :format)
+        wrap_top(:_ISPRINTF, 0, 0, :sprintf)
+        wrap_top(:_MAPINTL, 1, 0, :format)
+        wrap_top(:_MAPISPRINTF, 1, 0, :sprintf)
         wrap_dialogue_window
         wrap_ui
+        wrap_terms
       ensure
         @installing = false
       end
@@ -1175,7 +1307,7 @@ unless EssentiaTranslate::FILE.empty? || EssentiaTranslate::REQ.empty?
     alias_method :essentia_translation_method_added, :method_added
     def method_added(name)
       essentia_translation_method_added(name)
-      if name.to_s =~ /\A(?:_INTL|pbGetMapNameFromId|pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
+      if name.to_s =~ /\A(?:_INTL|_ISPRINTF|_MAPINTL|_MAPISPRINTF|getMoveName|getMoveShortName|getItemName|getAbilityName|getTypeName|getNatureName|pbGetMapNameFromId|pbMessage|pbMessageDisplay|pbShowCommands|getLineBrokenChunks|getFormattedText(?:ForDims)?|pbDrawTextPositions|pbDrawPlainText|pbDrawShadowText|pbDrawOutlineText|drawTextEx|drawFormattedTextEx|drawFormattedChars|drawSingleFormattedChar|renderLineBrokenChunks|renderLineBrokenChunksWithShadow)\z/
         EssentiaTranslate.install
       end
     end

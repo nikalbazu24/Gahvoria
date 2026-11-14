@@ -66,6 +66,7 @@ script = File.expand_path('../../engine/src/main/assets/essentia_preload/essenti
 if ARGV.include?('--disabled')
   ENV['ESSENTIA_TR_FILE'] = ''
   ENV['ESSENTIA_TR_REQ'] = ''
+  load File.join(File.dirname(script), 'essentia_pokemon_terms.rb')
   load script
   assert_equal(false, Graphics.respond_to?(:essentia_tr_original_update))
   puts 'Disabled bridge check passed'
@@ -86,6 +87,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
   ENV['ESSENTIA_TR_OPENING'] = opening
   diagnostics = File.join(directory, 'gameplay-translation.tsv')
   ENV['ESSENTIA_TR_DIAGNOSTICS'] = diagnostics if ARGV.include?('--diagnostics')
+  load File.join(File.dirname(script), 'essentia_pokemon_terms.rb')
   load script
 
   if ARGV.include?('--diagnostics')
@@ -194,7 +196,7 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     assert_equal('Arraigo', EssentiaTranslate.lookup('Ingrain'))
     assert_equal('¿Qué hará {1}?', MessageTypes.getFromHash(0, "What will\n{1} do?"))
     assert_equal('¡{1} usó {2}!', MessageTypes.getFromHash(0, "{1} used\r\n{2}!"))
-    assert_equal('¡{1} ganó 2 por el combate!', MessageTypes.getFromHash(0, "{1} got 2\r\nfor winning!"))
+    assert_equal('¡{1} ganó ${2} por el combate!', MessageTypes.getFromHash(0, "{1} got ${2}\r\nfor winning!"))
     assert_equal("PS máx.<r>+{1}\r\nAtaque<r>+{2}\r\nDef. Esp.<r>+{3}",
                  MessageTypes.getFromHash(0, "Max. HP<r>+{1}\r\nAttack<r>+{2}\r\nSp. Def<r>+{3}"))
     assert_equal("Bueno, Nico… ¿qué te parece un combate?\1",

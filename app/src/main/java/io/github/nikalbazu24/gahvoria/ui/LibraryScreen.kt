@@ -71,7 +71,8 @@ fun LibraryScreen(s: AppState) {
             LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { s.selected = it } }
             LaunchedEffect(s.games.size, s.selected) { if (pager.currentPage != s.selected && s.selected < s.games.size) pager.scrollToPage(s.selected) }
             val game = s.games[pager.currentPage.coerceIn(0, s.games.lastIndex)]
-            val coverH = if (wide) (maxHeight - 40.dp).coerceAtMost(320.dp) else 300.dp
+            val coverH = if (wide) (maxHeight - 40.dp).coerceIn(120.dp, 288.dp)
+                else (maxHeight * .38f).coerceIn(168.dp, 248.dp)
             val coverW = coverH * .75f
             val railWidth = if (wide) maxWidth / 2 else maxWidth
             val carousel = @Composable { mod: Modifier ->
@@ -88,7 +89,7 @@ fun LibraryScreen(s: AppState) {
                             scaleX = k; scaleY = k; alpha = 1f - offset * .45f
                         }) { scope.launch { if (page == pager.currentPage) s.play(s.games[page]) else pager.animateScrollToPage(page) } }
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     Dots(s.games.size, pager.currentPage)
                 }
             }
@@ -111,7 +112,10 @@ private fun Header(s: AppState) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Cartridge(30.dp)
         Spacer(Modifier.width(10.dp))
-        T("Gahvoria", 18.sp, FontWeight.Bold, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            T("Gahvoria", 18.sp, FontWeight.Bold)
+            T("TU BIBLIOTECA", 9.sp, FontWeight.Bold, c.muted, spacing = 1.4.sp)
+        }
         val u = s.update
         if (u is UpdateState.Available || u is UpdateState.Ready || u is UpdateState.Downloading) {
             val name = when (u) { is UpdateState.Available -> u.release.versionName; is UpdateState.Ready -> u.release.versionName
@@ -121,7 +125,7 @@ private fun Header(s: AppState) {
                 .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(7.dp).clip(CircleShape).background(c.ok))
                 Spacer(Modifier.width(8.dp))
-                T("Versión $name lista", 12.sp, FontWeight.SemiBold)
+                T(if (u is UpdateState.Downloading) "Descargando…" else "Versión $name", 12.sp, FontWeight.SemiBold)
             }
         }
     }
@@ -133,7 +137,7 @@ private fun Cover(s: AppState, g: Game, index: Int, modifier: Modifier, onClick:
     val shape = RoundedCornerShape(26.dp)
     val colors = listOf(c.accent, c.accent2, c.accent3)
     val seed = g.path.hashCode()
-    Box(modifier.shadow(18.dp, shape, ambientColor = c.accent, spotColor = c.accent).press(shape, onClick = onClick)
+    Box(modifier.shadow(8.dp, shape).press(shape, onClick = onClick)
         .border(1.dp, c.line, shape)) {
         val base = if (c.dark) c.bg2 else Color(0xFF22232C)
         Canvas(Modifier.fillMaxSize()) { drawFacets(seed, base, colors[(seed and 0xff) % 3], colors[((seed shr 8) and 0xff) % 3]) }
@@ -171,19 +175,17 @@ private fun Info(s: AppState, g: Game, modifier: Modifier) {
     val c = LocalColors.current
     val support = g.inspection.support
     val saves = remember(g.path, g.lastPlayed) { if (g.kind.isRpgMaker) Saves.list(s.saveDir(g)) else emptyList<File>() }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        T(g.title, 28.sp, FontWeight.ExtraBold, maxLines = 2)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            T(g.inspection.engineLabel, 12.sp, FontWeight.SemiBold, c.muted)
-            Sep()
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        T(g.title, 25.sp, FontWeight.ExtraBold, maxLines = 2)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val (text, color) = when (support) {
                 Support.PLAYABLE -> "Compatible" to c.ok
                 Support.NEXT_PHASE -> "Próxima fase" to c.warn
                 Support.RESEARCH -> "En investigación" to c.warn
                 Support.NOT_A_GAME -> "No reconocido" to c.warn
             }
-            T(text, 12.sp, FontWeight.SemiBold, color)
-            if (g.playMs > 60_000) { Sep(); T(playTime(g.playMs) + " jugadas", 12.sp, FontWeight.SemiBold, c.muted) }
+            T(g.inspection.engineLabel + " · " + text, 12.sp, FontWeight.SemiBold, color)
+            if (g.playMs > 60_000) T(playTime(g.playMs) + " jugadas", 12.sp, FontWeight.SemiBold, c.muted)
         }
         Glass(Modifier.fillMaxWidth(), radius = 18.dp) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
@@ -192,23 +194,17 @@ private fun Info(s: AppState, g: Game, modifier: Modifier) {
                 T(progressLine(g, saves.size, support), 14.sp, FontWeight.Medium)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PrimaryButton(if (support == Support.PLAYABLE) "Jugar" else "Aún no disponible", Modifier.weight(1f),
+        PrimaryButton(if (support == Support.PLAYABLE) "Jugar" else "Aún no disponible", Modifier.fillMaxWidth(),
                 enabled = support == Support.PLAYABLE,
                 icon = { Canvas(Modifier.size(14.dp)) {
                     val p = androidx.compose.ui.graphics.Path().apply { moveTo(0f, 0f); lineTo(size.width, size.height / 2); lineTo(0f, size.height); close() }
                     drawPath(p, c.onAccent)
                 } }) { s.play(g) }
-            val shape = RoundedCornerShape(18.dp)
-            Box(Modifier.size(56.dp).press(shape) { s.optionsFor = g }.background(c.glass, shape).border(1.dp, c.line, shape),
-                contentAlignment = Alignment.Center) { T("•••", 14.sp, FontWeight.Bold) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (g.kind.isRpgMaker) SecondaryButton("Traducción", Modifier.weight(1f)) { s.openGameOptions(g) }
+            SecondaryButton("Opciones", Modifier.weight(1f)) { s.openGameOptions(g, 1) }
         }
     }
-}
-
-@Composable
-private fun Sep() {
-    Box(Modifier.padding(horizontal = 8.dp).size(3.dp).clip(CircleShape).background(LocalColors.current.faint))
 }
 
 private fun progressLine(g: Game, saves: Int, support: Support): String = when {

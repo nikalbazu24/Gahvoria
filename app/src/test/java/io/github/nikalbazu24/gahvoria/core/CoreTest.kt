@@ -582,13 +582,6 @@ class CoreTest {
         assertEquals(games.size, games.map { it.id }.toSet().size)
     }
 
-    @Test fun depthModesAndAnglesAgree() {
-        assertEquals(0, Depth.modeOf(0))
-        assertEquals(1, Depth.modeOf(Depth.DEFAULT_25D))
-        assertEquals(2, Depth.modeOf(Depth.DEFAULT_3D))
-        for (m in 0..2) assertEquals(m, Depth.modeOf(Depth.angleOf(m)))
-        assertEquals(60, Depth.clamp(200)); assertEquals(0, Depth.clamp(-5))
-    }
 
     /**
      * The classic engine is Ruby 1.8.7: a single "%i[...]" or "{ key: value }" in a script it loads stops every game

@@ -75,6 +75,11 @@ class AppState(private val activity: Activity) {
     var tab by mutableStateOf(Tab.LIBRARY)
     /** The game whose options are open (null: none). */
     var optionsFor by mutableStateOf<Game?>(null)
+    var gameOptionsTab by mutableIntStateOf(0)
+    fun openGameOptions(game: Game, tab: Int = 0) {
+        gameOptionsTab = tab.coerceIn(0, 4)
+        optionsFor = game
+    }
     var games by mutableStateOf(Library.ordered(library.load()))
         private set
     var selected by mutableIntStateOf(0)
@@ -468,8 +473,6 @@ class AppState(private val activity: Activity) {
     fun setScreenMode(g: Game, mode: String) { settings.setScreen(g.path, mode); coverVersion++ }
     fun retro(g: Game) = settings.retro(g.path)
     fun setRetro(g: Game, on: Boolean) { settings.setRetro(g.path, on); coverVersion++ }
-    fun tilt(g: Game) = settings.tilt(g.path)
-    fun setTilt(g: Game, deg: Int) = settings.setTilt(g.path, deg)
     fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)
     fun translateStatus() = io.github.nikalbazu24.gahvoria.data.Translations.status(activity)
     fun clearTranslations() {
@@ -618,7 +621,7 @@ class AppState(private val activity: Activity) {
         addMessage = null
         tab = Tab.LIBRARY
         say("${g.title} está en tu biblioteca.", NoticeKind.OK)
-        if (prepare) { optionsFor = g; prepareTranslation(g) }
+        if (prepare) { openGameOptions(g); prepareTranslation(g) }
         refreshShortcuts()
         refreshCovers()
     }

@@ -17,6 +17,7 @@ final class TranslationMemory implements Closeable {
     private static final int MAX_ROW_BYTES = 64 * 1024;
     private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
     private static final String CONNECTOR_PREFIX = "\u001Fconnector-v1:";
+    private static final String SLOT_PREFIX = "\u001Fslots-v1:";
     private final RandomAccessFile file;
     private final boolean contextual;
     private final java.nio.channels.FileLock lock;
@@ -54,6 +55,8 @@ final class TranslationMemory implements Closeable {
     }
 
     private String key(String original) {
+        String slots = SLOT_PREFIX + original;
+        if (entries.containsKey(slots) || (contextual && NeuralText.usesValueSlots(original))) return slots;
         String connector = CONNECTOR_PREFIX + original;
         if (entries.containsKey(connector) || (contextual && NeuralText.hasColloquialConnector(original))) return connector;
         String revised = CONTEXT_PREFIX + original;
@@ -66,8 +69,12 @@ final class TranslationMemory implements Closeable {
         if (entries.containsKey(key)) return null;
         TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
         if (issue == null && !key.equals(original)) {
-            issue = rejected == null ? null : rejected.get(original);
-            if (issue == null && entries.containsKey(original)) return TranslationAudit.Issue.OUTDATED;
+            for (String previous : new String[]{CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original}) {
+                if (previous.equals(key)) continue;
+                issue = rejected == null ? null : rejected.get(previous);
+                if (issue != null) break;
+                if (entries.containsKey(previous)) return TranslationAudit.Issue.OUTDATED;
+            }
         }
         return issue == null ? TranslationAudit.Issue.MISSING : issue;
     }
@@ -130,6 +137,7 @@ final class TranslationMemory implements Closeable {
         if (original == null) return;
         String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
         if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
+        if (original.startsWith(SLOT_PREFIX)) source = original.substring(SLOT_PREFIX.length());
         if (!contextual) {
             if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
             return;

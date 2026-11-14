@@ -1194,7 +1194,9 @@ static void runRMXPScripts(BacktraceData &btData) {
 #ifdef MKXPZ_BUILD_ANDROID
     const char *translationCatalog = getenv("ESSENTIA_TR_CATALOG");
     if (translationCatalog && *translationCatalog) {
-        runCustomScript("essentia_preload/essentia_translate.rb");
+        runCustomScript("essentia_preload/essentia_pokemon_terms.rb");
+        if (rb_gv_get("$!") == Qnil)
+            runCustomScript("essentia_preload/essentia_translate.rb");
         if (rb_gv_get("$!") == Qnil)
             runCustomScript("essentia_preload/essentia_pretranslate.rb");
         return;

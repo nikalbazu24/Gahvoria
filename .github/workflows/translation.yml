@@ -9,11 +9,16 @@ on:
       - 'tools/tests/reborn_discord_test.rb'
       - 'tools/tests/reborn_engine_test.rb'
       - 'engine/src/main/assets/essentia_preload/essentia_translate.rb'
+      - 'engine/src/main/assets/essentia_preload/essentia_pokemon_terms.rb'
       - 'engine/src/main/assets/essentia_preload/essentia_pretranslate.rb'
       - 'tools/tests/pretranslate_test.rb'
       - 'engine/src/main/java/com/hatkid/mkxpz/translate/**'
       - 'tools/tests/*Translation*'
       - 'tools/tests/translation*'
+      - 'tools/tests/NeuralInferenceProbe.java'
+      - 'tools/neural_probe.mjs'
+      - 'tools/stage_neural_probe.py'
+      - 'engine/neural/model-en-es.json'
       - '.github/workflows/translation.yml'
 
 permissions:
@@ -35,7 +40,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/translation-test"
           javac --release 8 -encoding UTF-8 -d "$RUNNER_TEMP/translation-test" \
             "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/TranslationOpening.java" \
-            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java
+            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java tools/tests/NeuralInferenceProbe.java
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationPhaseOneTest
       - uses: ruby/setup-ruby@v1
         with:
@@ -46,8 +51,23 @@ jobs:
           ruby tools/tests/translation_bridge_test.rb --disabled
           ruby tools/tests/translation_bridge_test.rb --diagnostics
           ruby tools/tests/translation_bridge_test.rb --reborn
+          ruby tools/tests/translation_templates_test.rb
           timeout 15 ruby tools/tests/pretranslate_test.rb
           ruby tools/tests/reborn_discord_test.rb
           ruby tools/tests/reborn_engine_test.rb
           ruby tools/tests/reborn_engine_test.rb --other-game
           ruby tools/tests/reborn_engine_test.rb --native-tilemap
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Compare complete sentences with the real offline model
+        run: |
+          python3 -m pip install zstandard==0.25.0
+          python3 tools/stage_neural_probe.py "$RUNNER_TEMP/neural-probe"
+          java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.NeuralInferenceProbe \
+            "$(command -v node)" tools/neural_probe.mjs "$RUNNER_TEMP/neural-probe/package" \
+            "$RUNNER_TEMP/neural-probe" > "$RUNNER_TEMP/neural-probe-results.tsv"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neural-sentence-comparison
+          path: ${{ runner.temp }}/neural-probe-results.tsv
