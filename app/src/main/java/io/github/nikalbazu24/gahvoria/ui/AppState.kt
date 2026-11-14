@@ -1,11 +1,17 @@
 package io.github.nikalbazu24.gahvoria.ui
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationOpening
+import com.hatkid.mkxpz.GameActivity
+import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.core.GameInspector
 import io.github.nikalbazu24.gahvoria.core.Inspection
@@ -22,6 +28,8 @@ import io.github.nikalbazu24.gahvoria.data.GameReport
 import io.github.nikalbazu24.gahvoria.data.Launcher
 import io.github.nikalbazu24.gahvoria.data.Settings
 import io.github.nikalbazu24.gahvoria.data.Storage
+import io.github.nikalbazu24.gahvoria.data.Translations
+import io.github.nikalbazu24.gahvoria.data.TranslationPreparationService
 import android.net.Uri
 import android.content.Intent
 import io.github.nikalbazu24.gahvoria.core.StoreCatalog
@@ -164,7 +172,9 @@ class AppState(private val activity: Activity) {
     /** Back from the game or from Android's settings. */
     fun onResume() {
         hasAccess = Storage.hasAccess(activity)
+        translationsVersion++
         settings.takeSession()?.let { (path, at) ->
+            val interruptedPreparation = com.hatkid.mkxpz.GameActivity.translationPreparationMarker(activity, at).delete()
             val played = System.currentTimeMillis() - at
             // Sessions longer than 12 h are not counted: the game was probably left in the background.
             if (played in 1..12L * 3600_000) library.update(path) { it.copy(playMs = it.playMs + played) }
@@ -180,17 +190,21 @@ class AppState(private val activity: Activity) {
             // A creator's own game keeps the history of its errors, including the ones that were retried.
             if (errRaw != null && played0 != null && settings.mine(path))
                 runCatching { creatorLog.add(creatorLog.key(path, played0.title), System.currentTimeMillis(), GameReport.withScript(File(path), errRaw)) }
-            if (errRaw == null) {
+            if (interruptedPreparation && errRaw != null && played0 != null && usedEngine != null) {
+                say("La preparación de traducción se interrumpió. Reabro el juego con lo que ya está traducido.", NoticeKind.WARN)
+                play(played0, usedEngine, force = true, skipTranslationPreparation = true)
+            } else if (errRaw == null) {
                 // It ran: for "automatic" games remember the engine that worked, so the next start uses it directly.
-                if (auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
+                if (!interruptedPreparation && auto && usedEngine != null && played >= 20_000) settings.setLearnedEngine(path, usedEngine)
                 settings.setRetried(path, false)
             } else if (played0 != null) {
                 val other = usedEngine?.let { Launcher.otherEngine(activity, it) }
                 // A missing file is not fixed by the other engine: reopening would only close the game a second time.
-                val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true)
+                val engineFixable = !errRaw.contains("No such file or directory", ignoreCase = true) &&
+                    (other != Game.ENGINE_CLASSIC || Launcher.profile(played0).clues.modern.isEmpty())
                 // Failed while starting (first 90 s), or with the classic Ruby 1.8 / modern Ruby 3 clash at any moment (Pokémon Ópalo: after the new game).
                 val clash = io.github.nikalbazu24.gahvoria.core.ErrorDiagnosis.engineClash(errRaw, (usedEngine ?: "modern") != "classic")
-                if (auto && other != null && engineFixable && !settings.retried(path) && (played < 90_000 || clash)) {
+                if (!interruptedPreparation && auto && other != null && engineFixable && !settings.retried(path) && (played < 90_000 || clash)) {
                     // Failed while starting: reopen once with the other engine, without asking.
                     settings.setRetried(path, true)
                     settings.setLearnedEngine(path, null)
@@ -217,7 +231,8 @@ class AppState(private val activity: Activity) {
 
     // ---------------------------------------------------------------- library
 
-    fun play(game: Game, engine: String? = null, force: Boolean = false) {
+    fun play(game: Game, engine: String? = null, force: Boolean = false,
+             skipTranslationPreparation: Boolean = false, translationDiagnostics: Boolean = false) {
         val dir = File(game.path)
         if (!hasAccess) { say("Gahvoria necesita acceso a tus archivos para abrir juegos.", NoticeKind.WARN, "Dar acceso") { askAccess() }; return }
         if (!dir.isDirectory) { say("No encuentro la carpeta de ${game.title}. ¿La moviste o borraste?", NoticeKind.ERROR); return }
@@ -227,19 +242,28 @@ class AppState(private val activity: Activity) {
             val missing = io.github.nikalbazu24.gahvoria.core.GameCheck.missingData(dir)
             if (missing.isNotEmpty()) {
                 say("${game.title} no se abrirá: le faltan ${missing.joinToString(", ") { "$it.rxdata" }} en Data. Suele pasar si se descomprimió a medias; vuelve a instalarlo desde su archivo original.",
-                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true) }
+                    NoticeKind.ERROR, "Abrir igual") { play(game, engine, force = true,
+                        skipTranslationPreparation = skipTranslationPreparation, translationDiagnostics = translationDiagnostics) }
                 return
             }
         }
-        val now = System.currentTimeMillis()
-        library.update(game.path) { it.copy(lastPlayed = now) }
-        settings.startSession(game.path, now)
-        if (engine == null) settings.setRetried(game.path, false)
-        // Off the main thread: reading a big game's scripts to choose the engine takes seconds, and a previous session may still be closing.
+        val preparing = TranslationPreparationService.active
         Thread({
-            if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)   // or the new one starts inside a dying process and hangs
-            runCatching { Launcher.profile(game) }                            // warms the cache that engineFor uses
-            activity.runOnUiThread { Launcher.play(activity, game, engine) }
+            if (!TranslationPreparationService.pauseAndWait()) {
+                activity.runOnUiThread { say("La traducción está guardando el último lote. Vuelve a abrir el juego en unos segundos.", NoticeKind.WARN) }
+                return@Thread
+            }
+            if (Launcher.gameRunning(activity)) Launcher.stopGame(activity)
+            runCatching { Launcher.profile(game) }
+            activity.runOnUiThread {
+                val now = System.currentTimeMillis()
+                library.update(game.path) { it.copy(lastPlayed = now) }
+                settings.startSession(game.path, now)
+                if (engine == null) settings.setRetried(game.path, false)
+                val status = preparationStatus(game)
+                val prepared = translateTarget == "es" && status != null && status.total > 0 && status.reviewed == status.total
+                Launcher.play(activity, game, engine, now, skipTranslationPreparation || preparing || prepared, translationDiagnostics)
+            }
         }, "GahvoriaPlay").start()
         selected = 0
     }
@@ -325,6 +349,119 @@ class AppState(private val activity: Activity) {
             }
         }
     }
+    var startingPreparation by mutableStateOf(false)
+        private set
+
+    fun preparationStatus(g: Game) = TranslationPreparationService.status(Translations.catalog(activity, g))
+
+    fun hasTranslationCatalog(g: Game) =
+        File(Translations.catalog(activity, g).path + ".ready").isFile
+
+    fun testGameplayTranslation(g: Game) {
+        if (!translateOn || !translateGame(g) || translateTarget != "es") {
+            say("Activa la traducción para este juego y elige español como destino.", NoticeKind.WARN)
+            return
+        }
+        optionsFor = null
+        play(g, skipTranslationPreparation = true, translationDiagnostics = true)
+    }
+
+    fun gameplayTranslationReport(g: Game) = GameplayTranslationReport.read(
+        File(Translations.dirFor(activity, g), GameActivity.TRANSLATION_DIAGNOSTICS_FILE)
+    )
+
+    fun translationCoverage(g: Game): Pair<TranslationCoverage, Boolean> {
+        val base = Translations.catalog(activity, g)
+        val result = TranslationCoverage.read(base)
+        val revision = runCatching { File(base.path + ".revision").readText() }.getOrNull()
+        return result to (revision != Translations.catalogRevision(g))
+    }
+
+    fun copyTranslationExamples(examples: List<String>) {
+        val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("Frases pendientes", examples.joinToString("\n")))
+        say("Ejemplos copiados.", NoticeKind.OK)
+    }
+
+    fun copyGameplayTranslationReport(report: GameplayTranslationReport) {
+        val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
+        val text = buildString {
+            appendLine("Traducción en partida")
+            appendLine(report.summary)
+            append(report.export.take(100_000))
+            if (report.export.length > 100_000) appendLine("\nInforme recortado para copiar.")
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Traducción en partida", text))
+        say("Informe copiado.", NoticeKind.OK)
+    }
+
+    fun prepareTranslation(g: Game) {
+        if (preparationStatus(g)?.active == true) {
+            TranslationPreparationService.pause()
+            return
+        }
+        if (startingPreparation || TranslationPreparationService.active) {
+            say("Ya hay una traducción en preparación.", NoticeKind.WARN)
+            return
+        }
+        if (!g.kind.isRpgMaker || !hasAccess || !File(g.path).isDirectory) {
+            say("Necesito acceso a la carpeta RPG Maker de este juego para preparar su traducción.", NoticeKind.WARN)
+            return
+        }
+        if (translateTarget != "es") {
+            say("La preparación Neural está disponible en español. Elige español en Ajustes → Traducción.", NoticeKind.WARN)
+            return
+        }
+        startingPreparation = true
+        val base = Translations.catalog(activity, g)
+        worker.execute {
+            val result = runCatching {
+                val dir = base.parentFile ?: error("Falta la carpeta de traducción")
+                if (!dir.mkdirs() && !dir.isDirectory) error("No pude crear la memoria de traducción")
+                val revisionFile = File(base.path + ".revision")
+                val revision = Translations.catalogRevision(g)
+                val ready = File(base.path + ".ready")
+                val oldRevision = runCatching { revisionFile.readText() }.getOrNull()
+                if (oldRevision != revision) {
+                    if (ready.exists() && !ready.delete()) error("No pude renovar el catálogo")
+                    val opening = File(dir, TranslationOpening.FILE_NAME)
+                    if (opening.exists() && !opening.delete()) error("No pude renovar los textos de inicio")
+                    File(base.path + ".limited").delete()
+                    File(base.path + ".status").delete()
+                    revisionFile.writeText(revision)
+                }
+                if (!ready.isFile) Launcher.profile(g)
+                for (suffix in listOf(".error", ".skip")) {
+                    val marker = File(base.path + suffix)
+                    if (marker.exists() && !marker.delete()) error("No pude reanudar la lectura")
+                }
+                !ready.isFile
+            }
+            activity.runOnUiThread {
+                startingPreparation = false
+                val needsScan = result.getOrElse {
+                    say(it.message ?: "No pude preparar la traducción.", NoticeKind.ERROR)
+                    return@runOnUiThread
+                }
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                if (Launcher.gameRunning(activity)) {
+                    say("Cierra el juego para preparar su traducción.", NoticeKind.WARN)
+                    return@runOnUiThread
+                }
+                if (!TranslationPreparationService.start(activity, base, g.title)) {
+                    say("No pude iniciar la preparación en segundo plano.", NoticeKind.ERROR)
+                    return@runOnUiThread
+                }
+                chooseTranslateOn(true)
+                setTranslateGame(g, true)
+                if (needsScan) runCatching { Launcher.scanTranslation(activity, g, base) }.onFailure {
+                    TranslationPreparationService.pause()
+                    say("No pude abrir el lector del juego.", NoticeKind.ERROR)
+                }
+            }
+        }
+    }
+
     fun translateGame(g: Game) = settings.translateGame(g.path)
     fun setTranslateGame(g: Game, on: Boolean) { settings.setTranslateGame(g.path, on); coverVersion++ }
     fun screenMode(g: Game) = settings.screen(g.path)
@@ -336,6 +473,11 @@ class AppState(private val activity: Activity) {
     fun translationsTotal() = io.github.nikalbazu24.gahvoria.data.Translations.total(activity)
     fun translateStatus() = io.github.nikalbazu24.gahvoria.data.Translations.status(activity)
     fun clearTranslations() {
+        if (startingPreparation || TranslationPreparationService.active) {
+            say("Pausa la preparación antes de borrar las traducciones.", NoticeKind.WARN)
+            return
+        }
+        TranslationPreparationService.forgetStatus()
         io.github.nikalbazu24.gahvoria.data.Translations.clearAll(activity)
         translationsVersion++
         say("Borré las traducciones guardadas. Tus juegos y partidas no se tocaron.", NoticeKind.OK)
@@ -355,6 +497,12 @@ class AppState(private val activity: Activity) {
 
     /** Deletes the game's folder, saves, shortcuts, cover and what Gahvoria kept about it. Only after both confirmations. */
     fun deleteGame(g: Game) {
+        if (startingPreparation || preparationStatus(g)?.active == true) {
+            deleting = null
+            say("Pausa la preparación antes de borrar el juego.", NoticeKind.WARN)
+            return
+        }
+        TranslationPreparationService.forgetStatus()
         val plan = deletePlan(g)
         deleting = null
         worker.execute {
@@ -420,10 +568,10 @@ class AppState(private val activity: Activity) {
         }
     }
 
-    /** The diagnosis said the classic engine may fix it: switch this game to it and open it again. */
-    fun retryClassic(e: ErrorReport) {
+    /** Applies the engine selected from the error report. */
+    fun retryEngine(e: ErrorReport, engine: String) {
         errorReport = null
-        changeGame(e.game.path) { it.copy(engine = Game.ENGINE_CLASSIC) }
+        changeGame(e.game.path) { it.copy(engine = engine) }
         games.firstOrNull { it.path == e.game.path }?.let { play(it) }
     }
 
@@ -461,7 +609,7 @@ class AppState(private val activity: Activity) {
         }
     }
 
-    fun addFound() {
+    fun addFound(prepare: Boolean = false) {
         val f = found ?: return
         val g = Game(f.dir.absolutePath, f.inspection.title, f.inspection.kind, f.inspection.essentials, addedAt = System.currentTimeMillis())
         games = Library.ordered(library.add(g))
@@ -470,6 +618,7 @@ class AppState(private val activity: Activity) {
         addMessage = null
         tab = Tab.LIBRARY
         say("${g.title} está en tu biblioteca.", NoticeKind.OK)
+        if (prepare) { optionsFor = g; prepareTranslation(g) }
         refreshShortcuts()
         refreshCovers()
     }

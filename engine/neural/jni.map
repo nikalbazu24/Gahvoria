@@ -1,0 +1,7 @@
+{
+  global:
+    JNI_OnLoad;
+    Java_com_hatkid_mkxpz_translate_BergamotNative_*;
+  local:
+    *;
+};

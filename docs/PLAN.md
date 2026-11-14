@@ -72,3 +72,26 @@ Documento completo: https://claude.ai/artifact/HwzQwtcr6CKk8T3ew25cRj
 - Error corregido: `essentia_games.rb` usaba `%i[]` y el motor clásico (Ruby 1.8.7) paraba con SyntaxError (Solar Eclipse, 0.1.30). Una prueba revisa que los scripts que carga el clásico no tengan sintaxis moderna.
 - Insurgence (motor moderno): `String can't be coerced into Integer` en `fgetdw` → `each_byte`. Hipótesis, sin confirmar: el juego lee bytes como texto UTF-8 y `essentia_single_byte` falla con un carácter de varios bytes. El error ahora dice cuántos bytes, qué codificación y los primeros bytes del texto, para decidirlo con el próximo informe.
 - Instalar un .zip/.7z/.rar: hilo propio (ya no el hilo compartido), servicio en primer plano con notificación de progreso (`InstallService`) y aviso de progreso en todas las pantallas. Se puede salir de la app. No hay botón de cancelar todavía.
+
+## Gahvoria Neural AI (experimental)
+
+La auditoría, la primera reparación del traductor y el plan del modelo local están en [Gahvoria Neural AI](NEURAL_AI.md).
+
+
+### Arranque de Pokémon Reborn
+
+- El perfil automático comprueba los scripts externos indicados por el arranque, incluyendo los ajustes de Reborn que su cargador descubre dinámicamente. Si encuentra sintaxis de hash de Ruby moderno, corrige la elección incluso si el modo automático había memorizado el motor clásico.
+- Si el motor clásico devuelve el error de sintaxis correspondiente, el informe ofrece reabrir con el motor moderno. La corrección se comprueba con scripts de prueba y queda pendiente de verificar con Reborn en el teléfono.
+
+- Reborn 19.5 avanzó al motor moderno y RubyGems pidió `rbconfig`. El APK incorpora la configuración generada por el mismo Ruby ARM64 que ejecuta el juego. Gahvoria la carga antes de que el juego agregue la biblioteca de escritorio. El verificador del APK comprueba el archivo. Queda por probar el arranque de Reborn en el teléfono.
+
+- Tras cargar RubyGems, el actualizador de Reborn pide OpenSSL desde `Net::HTTP`. Se habilita la extensión nativa en Ruby para Android y se empaquetan sus archivos Ruby correspondientes. La compilación comprueba que la extensión esté enlazada y que los archivos lleguen al APK. Se conserva la verificación TLS.
+
+- Reborn 19.5.0 carga Discord Rich Presence mediante una extensión nativa de escritorio. Para la estructura de scripts de Reborn, el motor moderno ofrece las cinco operaciones que usa el juego y mantiene Discord desconectado. La prueba automatizada cubre la carga repetida y comprueba que los errores de otras bibliotecas siguen visibles. El arranque hasta el menú queda por verificar en Android.
+
+- Reborn 19.5.0 necesita las entradas lógicas D, E y F de su variante de mkxp-z. El perfil del motor moderno conecta sus atajos con el teclado y entrega tiempos de pulsación en segundos al juego. El motor añade la búsqueda `System.file_exist?` y monta las carpetas de parches declaradas antes de los archivos base. El perfil también aporta el reloj de sesión usado para el tiempo de partida y reproduce los efectos de sonido mediante la salida estéreo normal. Pruebas automatizadas cubren las entradas y el reloj. Queda por verificar el arranque hasta el primer diálogo en Android.
+
+- La prueba en Android con 0.1.79 llegó al primer mapa y se detuvo al llamar a `TilemapUtils.updateAutoTiles`. El perfil de Reborn ofrece esa entrada y conserva la animación que Gahvoria ejecuta mediante `Tilemap#update` para cada mapa. La prueba cubre la llamada, el aislamiento del perfil y la conservación de una implementación nativa. Queda por comprobar en Android el primer mapa, el movimiento y el primer diálogo.
+
+- En 0.1.81 se confirmó en teléfono el arranque de Reborn 19.5 y la llegada al vagón. Las franjas grises de las primeras pantallas corresponden a las imágenes originales del juego. Queda por reproducir el problema de movimiento del tren con video en Android. La beta localiza las frases revisadas de los mapas de inicio, la selección de género, el cuadro para escribir el nombre y las etiquetas del boleto. El boleto se dibuja traducido en memoria sobre las zonas de texto de la imagen reconocida. La prueba comprueba que se conservan el nombre del jugador, los códigos del boleto y las pausas de diálogo.
+- La beta traduce la pregunta de Julia y el menú de controles con etiquetas breves. En Reborn se oculta el menú de pausa mientras se muestran los controles y se restaura al volver. El motor limpia la textura completa de cada selector al repintarlo, incluso si otra operación dejó un recorte activo. Queda por confirmar en Android si esto elimina el cursor doble.

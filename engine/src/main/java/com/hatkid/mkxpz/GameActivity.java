@@ -37,6 +37,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
@@ -75,10 +76,15 @@ public class GameActivity extends SDLActivity
     /** A small copy of the game's cover, for the blurred background of the loading screen ("" if none). */
     public static final String EXTRA_COVER = "gahvoria.COVER";
     /** Translation: the folder that keeps this game's translations, the provider, the target language and the DeepL key. */
+    public static final String EXTRA_TRANSLATION_CATALOG = "gahvoria.TRANSLATION_CATALOG";
+    public static final String EXTRA_LAUNCH_AT = "gahvoria.LAUNCH_AT";
+    public static final String EXTRA_SKIP_TR_PREPARATION = "gahvoria.SKIP_TR_PREPARATION";
     public static final String EXTRA_TR_DIR = "gahvoria.TR_DIR";
     public static final String EXTRA_TR_PROVIDER = "gahvoria.TR_PROVIDER";
     public static final String EXTRA_TR_TARGET = "gahvoria.TR_TARGET";
     public static final String EXTRA_TR_KEY = "gahvoria.TR_KEY";
+    public static final String EXTRA_TR_DIAGNOSTICS = "gahvoria.TR_DIAGNOSTICS";
+    public static final String TRANSLATION_DIAGNOSTICS_FILE = "gameplay-translation.tsv";
     /** Picture style ("crt" = old TV lines) and the wide-screen mode value. */
     public static final String EXTRA_FILTER = "gahvoria.FILTER";
     /** Lean-back angle in degrees (0 to 60) of the experimental 2.5D / 3D effect; 0 = flat. */
@@ -149,9 +155,23 @@ public class GameActivity extends SDLActivity
         sMain = new Handler(Looper.getMainLooper());
         sVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         if (valid) {
-            mTrust = new FutureTask<>(() -> trustFile(getApplicationContext()));
-            new Thread(mTrust, "GahvoriaTrust").start();
-            prepareEnvironment(new File(path), i);
+            String catalog = i.getStringExtra(EXTRA_TRANSLATION_CATALOG);
+            if (catalog == null) {
+                mTrust = new FutureTask<>(() -> trustFile(getApplicationContext()));
+                new Thread(mTrust, "GahvoriaTrust").start();
+                prepareEnvironment(new File(path), i);
+            } else {
+                try {
+                    setenv("ESSENTIA_TR_ROOT", path);
+                    setenv("ESSENTIA_TR_CATALOG", catalog);
+                    setenv("ESSENTIA_TR_TARGET", "es");
+                } catch (Exception failure) {
+                    Log.w(TAG, "Could not configure translation scan", failure);
+                    super.onCreate(savedInstanceState);
+                    finish();
+                    return;
+                }
+            }
         }
 
         super.onCreate(savedInstanceState);
@@ -179,11 +199,20 @@ public class GameActivity extends SDLActivity
 
         if (mTouch) addKeyboardButton();
 
-        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted, new LoadingScreen.Host()
+        sScreen = new LoadingScreen(this, mLook, mTitle, i.getStringExtra(EXTRA_INFO), i.getStringExtra(EXTRA_COVER), loadingStarted,
+            mPreparesTranslation, new LoadingScreen.Host()
         {
             @Override
             public void exit()
             {
+                if (i.hasExtra(EXTRA_TRANSLATION_CATALOG)) {
+                    try { new File(i.getStringExtra(EXTRA_TRANSLATION_CATALOG) + ".skip").createNewFile(); }
+                    catch (IOException failure) { Log.w(TAG, "Could not pause catalog scan", failure); }
+                }
+                if (mPreparesTranslation) {
+                    mTranslator.skipPreparation();
+                    translationPreparationMarker(GameActivity.this, i.getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();
+                }
                 finish();
             }
 
@@ -201,33 +230,77 @@ public class GameActivity extends SDLActivity
             }
         });
         mLayout.addView(sScreen, new RelativeLayout.LayoutParams(-1, -1));
+        if (i.hasExtra(EXTRA_TRANSLATION_CATALOG)) {
+            sScreen.setTranslationPreparation("Leyendo mapas, eventos y scripts…", "Pausar lectura", this::finish);
+        }
     }
 
     private com.hatkid.mkxpz.translate.TranslatorService mTranslator;
+    private boolean mPreparesTranslation;
 
     /** When this game is set to be translated, tells the Ruby side where the translations live and starts the translator. */
     private void startTranslator(Intent i) throws Exception
     {
+        setenv("ESSENTIA_TR_FILE", "");
+        setenv("ESSENTIA_TR_REQ", "");
+        setenv("ESSENTIA_TR_OPENING", "");
+        setenv("ESSENTIA_TR_DIAGNOSTICS", "");
+        setenv("ESSENTIA_TR_TARGET", "");
+        setenv("ESSENTIA_TR_GAME", "");
+        setenv("ESSENTIA_TR_PREPARE", "");
+        setenv("ESSENTIA_TR_ROOT", "");
+        setenv("ESSENTIA_TR_PREPARE_MARKER", "");
         String dir = i.getStringExtra(EXTRA_TR_DIR);
-        if (dir == null || dir.isEmpty()) {
-            setenv("ESSENTIA_TR_FILE", "");
-            setenv("ESSENTIA_TR_REQ", "");
+        if (dir == null || dir.isEmpty()) return;
+        File folder = new File(dir);
+        if (!folder.mkdirs() && !folder.isDirectory()) {
+            Log.w(TAG, "Could not create the translation directory");
             return;
         }
-        File folder = new File(dir);
-        //noinspection ResultOfMethodCallIgnored
-        folder.mkdirs();
         mTranslator = new com.hatkid.mkxpz.translate.TranslatorService(this, folder,
-            i.getStringExtra(EXTRA_TR_PROVIDER), i.getStringExtra(EXTRA_TR_TARGET), i.getStringExtra(EXTRA_TR_KEY));
-        setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
-        setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
-        mTranslator.start();
-        String p = i.getStringExtra(EXTRA_TR_PROVIDER);
-        if ((p == null || "mlkit".equals(p)) && !com.hatkid.mkxpz.translate.TranslatorService.mlkitAvailable(this)) {
-            // Handhelds without Google Play services: tell the player once the game is on screen.
-            new Handler(Looper.getMainLooper()).postDelayed(() ->
-                notice("El traductor del teléfono necesita servicios de Google, que este equipo no tiene. Usa DeepL en Ajustes → Traducción.", mLook.warn), 6000);
+            i.getStringExtra(EXTRA_TR_PROVIDER), i.getStringExtra(EXTRA_TR_TARGET), i.getStringExtra(EXTRA_TR_KEY),
+            message -> sMain.post(() -> {
+                if (sScreen != null) sScreen.setTranslationPreparation(message, mTranslator::skipPreparation);
+            }));
+        try {
+            mTranslator.start();
+            setenv("ESSENTIA_TR_FILE", mTranslator.translationsFile().getAbsolutePath());
+            setenv("ESSENTIA_TR_REQ", mTranslator.requestDir().getAbsolutePath());
+            setenv("ESSENTIA_TR_OPENING", mTranslator.openingPath());
+            String target = i.getStringExtra(EXTRA_TR_TARGET);
+            setenv("ESSENTIA_TR_TARGET", target == null ? "es" : target);
+            if (i.getBooleanExtra(EXTRA_TR_DIAGNOSTICS, false)) {
+                File report = new File(folder, TRANSLATION_DIAGNOSTICS_FILE);
+                // Truncate the previous test only after the game and translator can start.
+                try (java.io.FileOutputStream ignored = new java.io.FileOutputStream(report)) {
+                    setenv("ESSENTIA_TR_DIAGNOSTICS", report.getAbsolutePath());
+                } catch (Exception failure) {
+                    Log.w(TAG, "Could not start gameplay translation diagnostics", failure);
+                }
+            }
+            setenv("ESSENTIA_TR_GAME", mTitle);
+            String preparation = i.getBooleanExtra(EXTRA_SKIP_TR_PREPARATION, false) ? "" : mTranslator.preparationPath();
+            if (!preparation.isEmpty()) {
+                long launchAt = i.getLongExtra(EXTRA_LAUNCH_AT, 0L);
+                if (launchAt > 0L) {
+                    setenv("ESSENTIA_TR_PREPARE_MARKER", translationPreparationMarker(this, launchAt).getAbsolutePath());
+                }
+                setenv("ESSENTIA_TR_PREPARE", preparation);
+                mPreparesTranslation = true;
+            }
+            String root = i.getStringExtra(EXTRA_GAME_PATH);
+            setenv("ESSENTIA_TR_ROOT", root == null ? "" : root);
+        } catch (Exception failure) {
+            mTranslator.stop();
+            setenv("ESSENTIA_TR_FILE", "");
+            setenv("ESSENTIA_TR_REQ", "");
+            setenv("ESSENTIA_TR_PREPARE", "");
+            Log.w(TAG, "Could not start the optional translator", failure);
         }
+    }
+
+    public static File translationPreparationMarker(android.content.Context context, long launchAt) {
+        return new File(context.getCacheDir(), "translation-preparing-" + launchAt);
     }
 
     /** Settings the engine and its compatibility scripts read from the environment. */
@@ -252,6 +325,7 @@ public class GameActivity extends SDLActivity
             setenv("ESSENTIA_TILT", String.valueOf(Math.max(0, Math.min(60, i.getIntExtra(EXTRA_TILT, 0)))));
             startTranslator(i);
             setenv("ESSENTIA_LANG", Locale.getDefault().getLanguage());
+            if (!mClassic) setenv("GAHVORIA_GAME_ROOT", game.getCanonicalPath());
             File errorFile = new File(getFilesDir(), "last_error.txt");
             //noinspection ResultOfMethodCallIgnored
             errorFile.delete();  // only an error of this session may be reported
@@ -400,9 +474,67 @@ public class GameActivity extends SDLActivity
         return super.getLibraries();
     }
 
+    /** Installs the Android Ruby configuration and the matching OpenSSL library files. */
+    private File rubyRuntimeDirectory() throws IOException
+    {
+        String root = "ruby-runtime/lib/ruby/3.1.0";
+        String[] architectures = getAssets().list(root);
+        if (architectures == null || architectures.length == 0)
+            throw new IOException("Missing Android Ruby configuration in the APK");
+        String architecture = null;
+        for (String entry : architectures) {
+            if (entry.contains("android")) {
+                architecture = entry;
+                break;
+            }
+        }
+        if (architecture == null) throw new IOException("Missing Android Ruby architecture in the APK");
+        String asset = root + "/" + architecture + "/rbconfig.rb";
+        File base = new File(getCacheDir(), "runtime/v" + versionCode());
+        File directory = new File(base, root + "/" + architecture);
+        File ready = new File(directory, ".ready");
+        if (!ready.isFile()) {
+            installRubyAsset(base, asset);
+            String[] wrappers = getAssets().list(root + "/openssl");
+            if (wrappers == null || wrappers.length == 0) throw new IOException("Missing Android OpenSSL wrappers");
+            for (String entry : wrappers) {
+                if (entry.endsWith(".rb")) installRubyAsset(base, root + "/openssl/" + entry);
+            }
+            installRubyAsset(base, root + "/openssl.rb");
+            if (!ready.createNewFile() && !ready.isFile()) throw new IOException("Cannot mark Ruby runtime ready");
+        }
+        return directory;
+    }
+
+    private void installRubyAsset(File base, String asset) throws IOException
+    {
+        File dest = new File(base, asset);
+        File directory = dest.getParentFile();
+        if (!directory.mkdirs() && !directory.isDirectory()) throw new IOException("Cannot create Ruby runtime folder");
+        File temporary = File.createTempFile("rbconfig-", ".tmp", directory);
+        try {
+            try (InputStream input = getAssets().open(asset); FileOutputStream output = new FileOutputStream(temporary)) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            }
+            if (!temporary.renameTo(dest)) throw new IOException("Cannot install " + asset);
+        } finally {
+            temporary.delete();
+        }
+    }
+
     @Override
     protected String[] getArguments()
     {
+        if (mTrust == null) return new String[0];
+        if (!mClassic) {
+            try {
+                setenv("GAHVORIA_RUBY_ARCHDIR", rubyRuntimeDirectory().getAbsolutePath());
+            } catch (Exception e) {
+                Log.w(TAG, "Could not prepare Android Ruby configuration", e);
+            }
+        }
         try {
             String trust = mTrust.get().getAbsolutePath();
             setenv("ESSENTIA_CA_FILE", trust);
@@ -630,6 +762,15 @@ public class GameActivity extends SDLActivity
     protected void onDestroy()
     {
         if (mTrust != null) mTrust.cancel(true);
+        String catalog = getIntent().getStringExtra(EXTRA_TRANSLATION_CATALOG);
+        if (catalog != null && !new File(catalog + ".ready").isFile() && !new File(catalog + ".error").isFile()) {
+            try { new File(catalog + ".skip").createNewFile(); }
+            catch (IOException failure) { Log.w(TAG, "Could not close translation scan", failure); }
+        }
+        if (mTranslator != null) mTranslator.stop();
+        if (mPreparesTranslation && isFinishing()) {
+            translationPreparationMarker(this, getIntent().getLongExtra(EXTRA_LAUNCH_AT, 0L)).delete();
+        }
         super.onDestroy();
         // Ruby cannot start again in the same process: end it together with the game.
         System.exit(0);

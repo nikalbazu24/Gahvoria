@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import io.github.nikalbazu24.gahvoria.BuildConfig
 import io.github.nikalbazu24.gahvoria.core.Game
 import io.github.nikalbazu24.gahvoria.data.GameReport
+import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
 import io.github.nikalbazu24.gahvoria.core.LoadTimes
 import io.github.nikalbazu24.gahvoria.core.Depth
 import io.github.nikalbazu24.gahvoria.core.Palettes
@@ -51,6 +52,10 @@ import io.github.nikalbazu24.gahvoria.core.Saves
 import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.data.Storage
+import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationAudit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** A screen with a title, scrolling content and a width that stays readable on wide screens. */
 @Composable
@@ -81,8 +86,24 @@ fun Page(title: String, onBack: (() -> Unit)? = null, content: @Composable Colum
 @Composable
 fun GameScreen(s: AppState, g: Game) {
     val c = LocalColors.current
-    BackHandler { s.optionsFor = null }
     var tab by remember(g.path) { mutableIntStateOf(0) }
+    var showCoverage by remember(g.path) { mutableStateOf(false) }
+    var showGameplayReport by remember(g.path) { mutableStateOf(false) }
+    BackHandler {
+        when {
+            showCoverage -> showCoverage = false
+            showGameplayReport -> showGameplayReport = false
+            else -> s.optionsFor = null
+        }
+    }
+    if (showCoverage) {
+        TranslationCoveragePage(s, g) { showCoverage = false }
+        return
+    }
+    if (showGameplayReport) {
+        GameplayTranslationPage(s, g) { showGameplayReport = false }
+        return
+    }
     Page(g.title, onBack = { s.optionsFor = null }) {
         Segmented(listOf("Partidas", "Mando", "Pantalla", "Motor"), tab) { tab = it }
         when (tab) {
@@ -130,13 +151,38 @@ fun GameScreen(s: AppState, g: Game) {
                 var rev by remember(g.path) { mutableIntStateOf(0) }
                 val mode = remember(g.path, rev) { s.screenMode(g) }
                 val retro = remember(g.path, rev) { s.retro(g) }
-                val tr = remember(g.path, rev) { s.translateGame(g) }
+                val tr = remember(g.path, rev, s.coverVersion) { s.translateGame(g) }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Traducir este juego",
                         if (!s.translateOn) "Primero activa «Traducir mientras juegas» en Ajustes → Traducción."
-                        else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "Falta tu clave de DeepL en Ajustes → Traducción."
+                        else if (s.translateProvider == "deepl" && !s.hasDeeplKey) "La memoria del juego sigue disponible. Agrega tu clave de DeepL para traducir frases nuevas."
                         else "Traduce el texto del juego al idioma elegido. Las frases quedan guardadas para la próxima vez. No traduce texto dibujado en imágenes.",
                         role = Role.Switch, onClick = { s.setTranslateGame(g, !tr); rev++ }) { Toggle(tr) }
+                }
+                if (g.kind.isRpgMaker) {
+                    val status = s.preparationStatus(g)
+                    val action = when {
+                        status?.active == true -> "Pausar"
+                        status != null && status.total > 0 && status.translated == status.total -> "Actualizar"
+                        status != null -> "Reanudar"
+                        else -> "Preparar"
+                    }
+                    Glass(Modifier.fillMaxWidth()) {
+                        RowItem("Preparar traducción",
+                            if (s.startingPreparation) "Comprobando archivos…"
+                            else status?.description ?: "Escanea el juego y traduce al español en segundo plano.",
+                            onClick = { s.prepareTranslation(g) }) {
+                            T(action, 12.sp, FontWeight.Bold, c.accent)
+                        }
+                        if (s.hasTranslationCatalog(g)) {
+                            Divider()
+                            RowItem("Cobertura del catálogo", "Revisa toda la memoria de traducción y los pendientes por causa.",
+                                onClick = { showCoverage = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
+                        }
+                        Divider()
+                        RowItem("Traducción en partida", "Registra el texto que pasa por el traductor en una sesión de prueba.",
+                            onClick = { showGameplayReport = true }) { T("›", 18.sp, FontWeight.Bold, c.accent) }
+                    }
                 }
                 Glass(Modifier.fillMaxWidth()) {
                     RowItem("Original (4:3)", "La forma con que se hizo el juego, con barras a los lados.", role = Role.RadioButton,
@@ -249,6 +295,104 @@ fun GameScreen(s: AppState, g: Game) {
 // -------------------------------------------------------------------- add
 
 @Composable
+private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
+    var revision by remember(g.path) { mutableIntStateOf(0) }
+    var result by remember(g.path, revision) { mutableStateOf<Result<Pair<TranslationCoverage, Boolean>>?>(null) }
+    LaunchedEffect(g.path, revision) {
+        result = withContext(Dispatchers.IO) { runCatching { s.translationCoverage(g) } }
+    }
+    Page("Cobertura del catálogo", onBack) {
+        val state = result
+        val report = state?.getOrNull()
+        Glass(Modifier.fillMaxWidth()) {
+            if (report == null) {
+                RowItem(g.title, if (state == null) "Revisando traducciones guardadas…"
+                    else "No pude leer el catálogo. Puedes volver a prepararlo desde Pantalla.")
+            } else {
+                val (coverage, stale) = report
+                val pending = coverage.total - coverage.translated
+                val total = coverage.total
+                val translated = coverage.translated
+                val summary = if (total == 0) "Sin frases detectadas." else {
+                    val percent = 100L * translated / total
+                    "$translated de $total pasan la auditoría ($percent%) · $pending pendientes"
+                }
+                RowItem(g.title, summary)
+                for ((issue, count) in coverage.issues) {
+                    Divider()
+                    val label = when (issue) {
+                        TranslationAudit.Issue.MISSING -> "Sin traducción guardada"
+                        TranslationAudit.Issue.OUTDATED -> "Traducción de una versión anterior"
+                        TranslationAudit.Issue.FORMAT -> "Variables o formato alterados"
+                        TranslationAudit.Issue.UNCHANGED -> "Mismo texto que el original"
+                        TranslationAudit.Issue.ENGLISH -> "Restos de inglés detectados"
+                        TranslationAudit.Issue.TERMINOLOGY -> "Terminología Pokémon"
+                    }
+                    RowItem(label, "$count")
+                }
+                if (stale) {
+                    Divider()
+                    RowItem("Catálogo anterior", "Actualiza la preparación para incluir los archivos y el escáner actuales.")
+                }
+                if (coverage.partial) {
+                    Divider()
+                    RowItem("Catálogo parcial", "El porcentaje corresponde a las frases que se pudieron leer.")
+                }
+                Divider()
+                RowItem("Español", "Vuelve a preparar el juego para intentar corregir los pendientes. Las imágenes y los textos generados al jugar se revisan en el juego.")
+            }
+        }
+        val examples = report?.first?.examples.orEmpty()
+        if (examples.isNotEmpty()) {
+            Label("Ejemplos pendientes")
+            Glass(Modifier.fillMaxWidth()) {
+                examples.forEachIndexed { index, example ->
+                    if (index > 0) Divider()
+                    RowItem(example)
+                }
+            }
+            SecondaryButton("Copiar ejemplos", Modifier.fillMaxWidth()) { s.copyTranslationExamples(examples) }
+        }
+        if (state != null) SecondaryButton("Volver a medir", Modifier.fillMaxWidth()) { revision++ }
+    }
+}
+
+@Composable
+private fun GameplayTranslationPage(s: AppState, g: Game, onBack: () -> Unit) {
+    var result by remember(g.path) { mutableStateOf<Result<GameplayTranslationReport>?>(null) }
+    LaunchedEffect(g.path) {
+        result = withContext(Dispatchers.IO) { runCatching { s.gameplayTranslationReport(g) } }
+    }
+    Page("Traducción en partida", onBack) {
+        val state = result
+        val report = state?.getOrNull()
+        Glass(Modifier.fillMaxWidth()) {
+            val summary = when {
+                state == null -> "Leyendo la última prueba…"
+                report == null -> "No se pudo leer la última prueba."
+                report.handled + report.unchanged + report.english == 0 -> "Aún no hay texto registrado."
+                else -> report.summary
+            }
+            RowItem(g.title, summary)
+            Divider()
+            RowItem("Probar en partida", "Inicia un nuevo registro local para este juego.",
+                onClick = { s.testGameplayTranslation(g) })
+        }
+        if (report != null && report.handled + report.unchanged + report.english > 0) {
+            if (report.examples.isNotEmpty()) {
+                Glass(Modifier.fillMaxWidth()) {
+                    report.examples.forEachIndexed { index, example ->
+                        if (index > 0) Divider()
+                        RowItem(example)
+                    }
+                }
+            }
+            SecondaryButton("Copiar informe", Modifier.fillMaxWidth()) { s.copyGameplayTranslationReport(report) }
+        }
+    }
+}
+
+@Composable
 fun AddScreen(s: AppState) {
     val c = LocalColors.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -290,6 +434,12 @@ fun AddScreen(s: AppState) {
                 else -> {
                     if (i.support != Support.PLAYABLE) T("Puedes añadirlo para tenerlo a mano; se podrá jugar cuando su motor esté listo.", 13.sp, FontWeight.Medium, c.muted)
                     PrimaryButton("Añadir a la biblioteca", Modifier.fillMaxWidth()) { s.addFound() }
+                    if (f.inspection.kind.isRpgMaker) {
+                        Glass(Modifier.fillMaxWidth()) {
+                            RowItem("Añadir y preparar traducción", "Al español, en segundo plano.",
+                                onClick = { s.addFound(prepare = true) })
+                        }
+                    }
                 }
             }
         }
@@ -545,7 +695,7 @@ private fun SecContent(s: AppState, sec: Sec) {
                         RowItem("En el teléfono (gratis)", "Traductor de Google sin conexión. Baja un paquete de idioma la primera vez (necesita Internet). Calidad modesta.",
                             role = Role.RadioButton, onClick = { s.chooseTranslateProvider("mlkit") }) { Radio(s.translateProvider == "mlkit") }
                         Divider()
-                        RowItem("DeepL con tu propia clave", "Mejor calidad. La clave y el gasto son tuyos; Gahvoria no incluye ninguna.",
+                        RowItem("DeepL con tu propia clave", "Usa tu clave y la cuota de tu cuenta de DeepL.",
                             role = Role.RadioButton, onClick = { s.chooseTranslateProvider("deepl") }) { Radio(s.translateProvider == "deepl") }
                         if (s.translateProvider == "deepl") {
                             Divider()
@@ -564,6 +714,9 @@ private fun SecContent(s: AppState, sec: Sec) {
                                 s.deeplState?.let { T(it, 12.sp, FontWeight.SemiBold, c.muted) }
                             }
                         }
+                        Divider()
+                        RowItem("Gahvoria Neural AI", "Inglés → español sin conexión. Android 9 o posterior.",
+                            role = Role.RadioButton, onClick = { s.chooseTranslateProvider("neural") }) { Radio(s.translateProvider == "neural") }
                     }
                     Label("Traducir a")
                     Glass(Modifier.fillMaxWidth()) {

@@ -148,6 +148,7 @@ RB_METHOD(mkxpSettingsMenu);
 RB_METHOD(mkxpCpuCount);
 RB_METHOD(mkxpSystemMemory);
 RB_METHOD(mkxpReloadPathCache);
+RB_METHOD(mkxpFileExists);
 RB_METHOD(mkxpAddPath);
 RB_METHOD(mkxpRemovePath);
 RB_METHOD(mkxpLaunch);
@@ -262,6 +263,7 @@ static void mriBindingInit()
 	_rb_define_module_function(mod, "memory", mkxpSystemMemory);
 
 	_rb_define_module_function(mod, "reload_cache", mkxpReloadPathCache);
+	_rb_define_module_function(mod, "file_exist?", mkxpFileExists);
 	_rb_define_module_function(mod, "mount", mkxpAddPath);
 	_rb_define_module_function(mod, "unmount", mkxpRemovePath);
 
@@ -569,6 +571,14 @@ RB_METHOD(mkxpReloadPathCache) {
     
     shState->fileSystem().reloadPathCache();
     return Qnil;
+}
+
+RB_METHOD(mkxpFileExists) {
+    RB_UNUSED_PARAM;
+    VALUE path;
+    rb_scan_args(argc, argv, "1", &path);
+    SafeStringValue(path);
+    return rb_bool_new(shState->fileSystem().exists(StringValueCStr(path)));
 }
 
 RB_METHOD(mkxpAddPath) {
@@ -1181,6 +1191,15 @@ static void runRMXPScripts(BacktraceData &btData) {
         rb_ary_store(script, 3, rb_utf8_str_new_cstr(decodeBuffer.c_str()));
     }
     
+#ifdef MKXPZ_BUILD_ANDROID
+    const char *translationCatalog = getenv("ESSENTIA_TR_CATALOG");
+    if (translationCatalog && *translationCatalog) {
+        runCustomScript("essentia_preload/essentia_translate.rb");
+        if (rb_gv_get("$!") == Qnil)
+            runCustomScript("essentia_preload/essentia_pretranslate.rb");
+        return;
+    }
+#endif
     essentiaLoadPhase("start");
 
     essentiaLoadPhase("preloads");
@@ -1343,9 +1362,10 @@ static void showExc(VALUE exc, const BacktraceData &btData) {
     }
 #endif
 #if defined(MKXPZ_BUILD_ANDROID) && !defined(MKXPZ_LEGACY_RUBY)
-    /* Essentia: old games often need the classic engine (Ruby 1.8) */
+    /* The classic engine cannot repair a missing or incompatible native library. */
+    ms.resize(strlen(ms.c_str()));
+    if (!rb_obj_is_kind_of(exc, rb_eLoadError))
     {
-        ms.resize(strlen(ms.c_str()));
         const char *lang = getenv("ESSENTIA_LANG");
         if (lang && !strncmp(lang, "es", 2))
             ms += "\n\n(Essentia: si es un juego antiguo, prueba en la biblioteca: Opciones \u2192 Motor de Ruby \u2192 Cl\u00e1sico)";

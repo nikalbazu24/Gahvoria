@@ -1,0 +1,53 @@
+name: Translation checks
+
+on:
+  push:
+    branches: ['experimental/neural-ai-phase-1']
+  pull_request:
+    paths:
+      - 'engine/src/main/assets/essentia_preload/essentia_compat.rb'
+      - 'tools/tests/reborn_discord_test.rb'
+      - 'tools/tests/reborn_engine_test.rb'
+      - 'engine/src/main/assets/essentia_preload/essentia_translate.rb'
+      - 'engine/src/main/assets/essentia_preload/essentia_pretranslate.rb'
+      - 'tools/tests/pretranslate_test.rb'
+      - 'engine/src/main/java/com/hatkid/mkxpz/translate/**'
+      - 'tools/tests/*Translation*'
+      - 'tools/tests/translation*'
+      - '.github/workflows/translation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  translation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Test translation validation and persistence
+        run: |
+          src=engine/src/main/java/com/hatkid/mkxpz/translate
+          mkdir -p "$RUNNER_TEMP/translation-test"
+          javac --release 8 -encoding UTF-8 -d "$RUNNER_TEMP/translation-test" \
+            "$src/TranslationBatch.java" "$src/TranslationMemory.java" "$src/TranslationOpening.java" \
+            "$src/TranslationCoverage.java" "$src/TranslationAudit.java" "$src/NeuralText.java" tools/tests/TranslationPhaseOneTest.java
+          java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.TranslationPhaseOneTest
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+      - name: Test the Ruby bridge
+        run: |
+          ruby tools/tests/translation_bridge_test.rb
+          ruby tools/tests/translation_bridge_test.rb --disabled
+          ruby tools/tests/translation_bridge_test.rb --diagnostics
+          ruby tools/tests/translation_bridge_test.rb --reborn
+          timeout 15 ruby tools/tests/pretranslate_test.rb
+          ruby tools/tests/reborn_discord_test.rb
+          ruby tools/tests/reborn_engine_test.rb
+          ruby tools/tests/reborn_engine_test.rb --other-game
+          ruby tools/tests/reborn_engine_test.rb --native-tilemap

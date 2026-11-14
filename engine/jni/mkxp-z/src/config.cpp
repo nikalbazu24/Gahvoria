@@ -365,11 +365,16 @@ try { exp } catch (...) {}
     // Essentia: automatic translation (only for games the user marked)
     {
         const char *tr = getenv("ESSENTIA_TR_FILE");
-        if (tr && *tr)
+        if (tr && *tr) {
             preloadScripts.push_back("essentia_preload/essentia_translate.rb");
+            const char *prepare = getenv("ESSENTIA_TR_PREPARE");
+            if (prepare && *prepare)
+                preloadScripts.push_back("essentia_preload/essentia_pretranslate.rb");
+        }
     }
 #endif
     fillStringVec(opts["RTP"], rtps);
+    fillStringVec(opts["patches"], patches);
 #ifdef MKXPZ_BUILD_ANDROID
     // Essentia: RPG Maker RTP folders found by the app (Essentia/RTP/...)
     {

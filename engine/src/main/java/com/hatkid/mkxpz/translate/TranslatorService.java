@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.common.MlKit;
 import com.google.mlkit.common.model.DownloadConditions;
 import com.google.mlkit.nl.languageid.LanguageIdentification;
 import com.google.mlkit.nl.languageid.LanguageIdentifier;
@@ -23,170 +24,400 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Translates a game's text while it runs. The game's Ruby side (essentia_translate.rb) drops the texts it does not
- * know in "queue/NNN.req" files (one escaped text per line) and reads answers appended to "<lang>.tsv"
- * ("original TAB translation", escaped). This thread answers the requests, so every translation is kept in that
- * file and found instantly the next time, even after restarting the game.
- *
- * Two providers: "mlkit" (Google's on-device translator, free, needs a one-time language download) and "deepl"
- * (the player's own key). Nothing here has a key or an account of its own.
+ * Processes the Ruby game's private mailbox in the background. Durable memory stays per game and target;
+ * Ruby receives validated answers through a disposable session file.
  */
 public final class TranslatorService
 {
     private static final String TAG = "GahvoriaTranslate";
     public static final String PROVIDER_MLKIT = "mlkit";
     public static final String PROVIDER_DEEPL = "deepl";
+    private static final String PROVIDER_NEURAL = "neural";
 
-    private final Context mContext;
     private final File mReqDir;
     private final File mFile;
+    private final File mResponses;
     private final File mStatus;
+    private final File mPreparation;
+    private final File mPreparedCatalog;
+    private final File mOpening;
+    public interface PreparationProgress { void show(String message); }
+
+    private final PreparationProgress mProgress;
     private final String mProvider;
     private final String mTarget;
     private final String mKey;
-    private final Set<String> mKnown = new HashSet<>();
+    private Thread mWorker;
     private volatile boolean mRunning;
     private int mDone;
-    private String mMessage = "";
 
-    // ML Kit state (only used by the thread)
+    // ML Kit has a separate runtime in the game's Android process.
+    private static boolean sMlKitInitialized;
+
+    // ML Kit client state (only used by the thread)
+    private final Context mContext;
+    private BergamotModel mBergamot;
+    private boolean mNeuralUnavailable;
     private Translator mTranslator;
     private String mTranslatorSource = "";
+    private Task<Void> mModelDownload;
     private LanguageIdentifier mIdentifier;
     private String mLockedSource = "";
     private String mLastVote = "";
     private int mVotes;
 
-    public TranslatorService(Context context, File dir, String provider, String target, String key)
+    public TranslatorService(Context context, File dir, String provider, String target, String key, PreparationProgress progress)
     {
         mContext = context.getApplicationContext();
-        mTarget = target == null || target.isEmpty() ? "es" : target.toLowerCase(Locale.ROOT);
+        String tag = target == null ? "" : target.toLowerCase(Locale.ROOT);
+        mTarget = tag.matches("[a-z]{2,3}(-[a-z0-9]{2,8}){0,3}") ? tag : "es";
         mFile = new File(dir, mTarget + ".tsv");
-        mReqDir = new File(dir, "queue");
+        mPreparedCatalog = new File(dir, "catalog.ready");
+        mOpening = new File(dir, TranslationOpening.FILE_NAME);
+        File session = new File(context.getCacheDir(), "translation-session");
+        mReqDir = new File(session, "queue");
+        mResponses = new File(session, "answers.tsv");
         mStatus = new File(context.getFilesDir(), "translate_status.txt");
+        mPreparation = new File(session, "prepare");
+        mProgress = progress;
         mProvider = provider == null ? PROVIDER_MLKIT : provider;
         mKey = key == null ? "" : key.trim();
     }
 
-    /** ML Kit runs through Google Play services: without them (many handhelds) it can never translate. */
-    public static boolean mlkitAvailable(Context c)
-    {
+    public File translationsFile() { return mResponses; }
+    public File requestDir() { return mReqDir; }
+    public String openingPath() {
+        return "es".equals(mTarget) && mOpening.isFile() ? mOpening.getAbsolutePath() : "";
+    }
+
+    public String preparationPath() {
+        return PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget) ? mPreparation.getAbsolutePath() : "";
+    }
+
+    private File preparationFile(String suffix) {
+        return new File(mPreparation.getPath() + suffix);
+    }
+
+    public void skipPreparation() {
         try {
-            c.getPackageManager().getPackageInfo("com.google.android.gms", 0);
-            return true;
-        } catch (Exception e) {
-            return false;
+            preparationFile(".skip").createNewFile();
+        } catch (IOException failure) {
+            Log.w(TAG, "Could not skip translation preparation", failure);
         }
     }
 
-    public File translationsFile() { return mFile; }
-    public File requestDir() { return mReqDir; }
-
-    public void start()
+    public void start() throws IOException
     {
-        //noinspection ResultOfMethodCallIgnored
-        mReqDir.mkdirs();
-        File[] old = mReqDir.listFiles();
-        if (old != null) for (File f : old) //noinspection ResultOfMethodCallIgnored
-            f.delete();
-        loadKnown();
-        mRunning = true;
-        if (PROVIDER_MLKIT.equals(mProvider) && !mlkitAvailable(mContext)) {
-            // Say it plainly instead of waiting for texts that will never be translated.
-            mRunning = false;
-            status("Este equipo no tiene servicios de Google Play: el traductor del teléfono no puede funcionar. Usa DeepL en Ajustes → Traducción.");
-            return;
+        if (!mReqDir.mkdirs() && !mReqDir.isDirectory()) throw new IOException("No se pudo abrir el buzón");
+        File[] stale = mReqDir.listFiles();
+        if (stale == null) throw new IOException("No se pudo leer el buzón");
+        for (File entry : stale) {
+            if ((entry.getName().endsWith(".req") || entry.getName().endsWith(".tmp")) && !entry.delete()) {
+                throw new IOException("No se pudo limpiar el buzón");
+            }
         }
-        Thread t = new Thread(this::loop, "gahvoria-translate");
-        t.setDaemon(true);
-        t.start();
+        for (String suffix : new String[]{".tmp", ".ready", ".done", ".skip"}) {
+            File file = preparationFile(suffix);
+            if (file.exists() && !file.delete()) throw new IOException("No se pudo preparar el buzón de traducción");
+        }
+        try (RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) { responses.setLength(0); }
+        mRunning = true;
         status("Esperando texto del juego");
+        mWorker = new Thread(this::loop, "gahvoria-translate");
+        mWorker.setDaemon(true);
+        mWorker.start();
     }
 
     public void stop()
     {
         mRunning = false;
-        try { if (mTranslator != null) mTranslator.close(); } catch (Exception ignored) { }
+        if (mWorker != null) mWorker.interrupt();
     }
-
-    // ---------------------------------------------------------------- loop
 
     private void loop()
     {
-        while (mRunning) {
-            try {
-                File[] files = mReqDir.listFiles((d, n) -> n.endsWith(".req"));
-                if (files == null || files.length == 0) { Thread.sleep(150); continue; }
-                Arrays.sort(files);
-                List<String> todo = new ArrayList<>();
-                for (File f : files) {
-                    for (String line : readLines(f)) {
-                        String text = unescape(line);
-                        if (!text.isEmpty() && !mKnown.contains(text) && !todo.contains(text)) todo.add(text);
-                    }
-                    //noinspection ResultOfMethodCallIgnored
-                    f.delete();
+        try (TranslationMemory memory = new TranslationMemory(mFile, PROVIDER_NEURAL.equals(mProvider) && "es".equals(mTarget));
+             RandomAccessFile responses = new RandomAccessFile(mResponses, "rw")) {
+            if (openingPath().isEmpty()) seedPreparedTranslations(memory, responses);
+            Map<File, Long> retryAfter = new LinkedHashMap<>();
+            Map<File, Long> firstFailures = new LinkedHashMap<>();
+            boolean scanning = false;
+            boolean preparationHandled = preparationPath().isEmpty();
+            while (mRunning) {
+                if (!preparationHandled && preparationFile(".ready").isFile()) {
+                    preparationHandled = true;
+                    prepare(memory, responses);
+                    scanning = false;
+                } else if (!preparationHandled && preparationFile(".skip").exists()) {
+                    preparationHandled = true;
+                    if (scanning) mProgress.show(null);
+                } else if (!preparationHandled && !scanning && preparationFile(".tmp").isFile()) {
+                    scanning = true;
+                    mProgress.show("Buscando textos del juego…");
                 }
-                if (todo.isEmpty()) continue;
-                translateAll(todo);
-            } catch (InterruptedException e) {
-                return;
-            } catch (Throwable e) {
-                Log.w(TAG, "Translation round failed", e);
-                status(friendly(e));
-                try { Thread.sleep(2000); } catch (InterruptedException ie) { return; }
+                File[] files = mReqDir.listFiles((d, name) -> name.endsWith(".req"));
+                if (files == null || files.length == 0) {
+                    Thread.sleep(120);
+                    continue;
+                }
+                Arrays.sort(files);
+                long now = android.os.SystemClock.elapsedRealtime();
+                File request = null;
+                for (File file : files) {
+                    Long retry = retryAfter.get(file);
+                    if (retry == null || retry <= now) { request = file; break; }
+                }
+                if (request == null) { Thread.sleep(120); continue; }
+                try {
+                    answer(request, memory, responses);
+                    if (!request.delete() && request.exists()) throw new IOException("No se pudo cerrar la solicitud");
+                    retryAfter.remove(request);
+                    firstFailures.remove(request);
+                } catch (InterruptedException stop) {
+                    throw stop;
+                } catch (Exception failure) {
+                    if (!"Preparando el idioma".equals(failure.getMessage())) Log.w(TAG, "Translation round failed", failure);
+                    status(friendly(failure));
+                    Long previousFailure = firstFailures.get(request);
+                    long firstFailure = previousFailure == null ? now : previousFailure;
+                    if (now - firstFailure >= 120_000 && (request.delete() || !request.exists())) {
+                        firstFailures.remove(request);
+                        retryAfter.remove(request);
+                    } else {
+                        firstFailures.put(request, firstFailure);
+                        retryAfter.put(request, android.os.SystemClock.elapsedRealtime() + 5000);
+                    }
+                }
+            }
+        } catch (InterruptedException stop) {
+            Thread.currentThread().interrupt();
+        } catch (Exception failure) {
+            Log.w(TAG, "Translation storage unavailable", failure);
+            status(friendly(failure));
+        } finally {
+            try {
+                if (mTranslator != null) mTranslator.close();
+            } finally {
+                try {
+                    if (mIdentifier != null) mIdentifier.close();
+                } finally {
+                    if (mBergamot != null) mBergamot.close();
+                }
             }
         }
     }
 
-    private void translateAll(List<String> texts) throws Exception
+    /** Make cached opening text available before the first round trip through the mailbox. */
+    private void seedPreparedTranslations(TranslationMemory memory, RandomAccessFile responses) {
+        if (!"es".equals(mTarget) || !mPreparedCatalog.isFile()) return;
+        try (BufferedReader input = new BufferedReader(new InputStreamReader(
+                new FileInputStream(mPreparedCatalog), StandardCharsets.UTF_8))) {
+            Map<String, String> cached = new LinkedHashMap<>();
+            int chars = 0;
+            for (int i = 0; i < 384 && chars < 96_000 && mRunning; i++) {
+                String line = input.readLine();
+                if (line == null) break;
+                String source = TranslationMemory.unescape(line);
+                if (source == null) continue;
+                String answer = memory.get(source);
+                if (answer != null) {
+                    cached.put(source, answer);
+                    chars += source.length() + answer.length();
+                }
+            }
+            TranslationMemory.append(responses, cached, false);
+        } catch (IOException failure) {
+            Log.w(TAG, "Could not preload cached translations", failure);
+        }
+    }
+
+    private void prepare(TranslationMemory memory, RandomAccessFile responses) {
+        File ready = preparationFile(".ready");
+        File skip = preparationFile(".skip");
+        int processed = 0;
+        try {
+            if (skip.exists()) return;
+            mProgress.show("Preparando traducción del juego…");
+            int total = 0;
+            try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(ready), StandardCharsets.UTF_8))) {
+                while (mRunning && !skip.exists() && input.readLine() != null) total++;
+            }
+            long lastUpdate = 0;
+            try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(ready), StandardCharsets.UTF_8))) {
+                List<String> batch = new ArrayList<>(8);
+                String line;
+                while (mRunning && !skip.exists() && (line = input.readLine()) != null) {
+                    String text = TranslationMemory.unescape(line);
+                    if (text == null || text.isEmpty()) continue;
+                    batch.add(text);
+                    if (batch.size() < 8) continue;
+                    prepareBatch(batch, memory, responses);
+                    processed += batch.size();
+                    batch.clear();
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - lastUpdate >= 400) {
+                        reportPreparation(processed, total);
+                        lastUpdate = now;
+                    }
+                }
+                if (mRunning && !skip.exists() && !batch.isEmpty()) {
+                    prepareBatch(batch, memory, responses);
+                    processed += batch.size();
+                }
+            }
+            status((skip.exists() ? "Preparación parcial: " : "Preparación: ") + processed + " frases revisadas");
+        } catch (Exception | LinkageError failure) {
+            Log.w(TAG, "Could not prepare game translations", failure);
+            status("Preparación incompleta. " + friendly(failure));
+        } finally {
+            try {
+                preparationFile(".done").createNewFile();
+                ready.delete();
+            } catch (IOException failure) {
+                Log.w(TAG, "Could not close translation preparation", failure);
+            }
+            mProgress.show(null);
+        }
+    }
+
+    private void prepareBatch(List<String> batch, TranslationMemory memory, RandomAccessFile responses) throws Exception {
+        Map<String, String> answers = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String text : batch) {
+            String cached = memory.get(text);
+            if (cached == null) missing.add(text);
+            else answers.put(text, cached);
+        }
+        if (!missing.isEmpty()) {
+            Map<String, String> translated = TranslationAudit.translate(missing, this::neural);
+            memory.remember(translated);
+            for (String source : missing) {
+                String answer = memory.get(source);
+                if (answer != null) answers.put(source, answer);
+            }
+        }
+        TranslationMemory.append(responses, answers, false);
+    }
+
+    private void reportPreparation(int processed, int total) {
+        String message = "Preparando traducción: " + processed + " / " + total + " frases";
+        mProgress.show(message);
+    }
+
+    private void answer(File request, TranslationMemory memory, RandomAccessFile responses) throws Exception
     {
-        List<String> out = new ArrayList<>(texts.size());
-        // Control codes (\c[1], \PN, <b>...) are swapped for markers and put back; if one goes missing the text is left alone.
-        List<List<String>> codes = new ArrayList<>();
-        List<String> shielded = new ArrayList<>();
-        for (String t : texts) {
-            List<String> c = new ArrayList<>();
-            shielded.add(shield(t, c));
-            codes.add(c);
+        // Ruby publishes one complete file with at most eight phrases.
+        if (request.length() > 160_000) return;
+        LinkedHashSet<String> texts = new LinkedHashSet<>();
+        try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(request), StandardCharsets.UTF_8))) {
+            String line;
+            while (texts.size() < 8 && (line = input.readLine()) != null) {
+                String original = TranslationMemory.unescape(line);
+                if (original != null && !original.isEmpty() && original.getBytes(StandardCharsets.UTF_8).length <= 9000) {
+                    texts.add(original);
+                }
+            }
         }
-        List<String> translated = PROVIDER_DEEPL.equals(mProvider) ? deepl(shielded) : mlkit(shielded);
-        for (int i = 0; i < texts.size(); i++) {
-            String r = unshield(translated.get(i), codes.get(i));
-            out.add(r == null || r.trim().isEmpty() ? texts.get(i) : r);
+        Map<String, String> cached = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String original : texts) {
+            String translation = memory.get(original);
+            if (translation == null) missing.add(original);
+            else cached.put(original, translation);
         }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < texts.size(); i++) {
-            sb.append(escape(texts.get(i))).append('\t').append(escape(out.get(i))).append('\n');
-            mKnown.add(texts.get(i));
+        TranslationMemory.append(responses, cached, false);
+        if (missing.isEmpty()) {
+            if (!cached.isEmpty()) status("Usando la memoria de traducción del juego");
+            return;
         }
-        try (OutputStream os = new FileOutputStream(mFile, true)) {
-            os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-            os.flush();
+        if (PROVIDER_NEURAL.equals(mProvider) && !"es".equals(mTarget)) {
+            status("Gahvoria Neural AI traduce del inglés al español. Elige Español como destino.");
+            return;
         }
-        mDone += texts.size();
-        status("Traducidas " + mDone + " frases");
+        if (PROVIDER_NEURAL.equals(mProvider) && mNeuralUnavailable) return;
+        if (PROVIDER_DEEPL.equals(mProvider) && mKey.isEmpty()) {
+            status("Falta la clave de DeepL. La memoria del juego sigue disponible.");
+            return;
+        }
+
+        TranslationBatch.Provider provider;
+        if (PROVIDER_NEURAL.equals(mProvider)) {
+            provider = this::neural;
+        } else if (PROVIDER_DEEPL.equals(mProvider)) {
+            provider = (originals, protectedTexts) -> deepl(protectedTexts);
+        } else {
+            provider = this::mlkit;
+        }
+        boolean neural = PROVIDER_NEURAL.equals(mProvider);
+        Map<String, String> answers = neural ? TranslationAudit.translate(missing, provider)
+                                            : TranslationBatch.translate(missing, provider);
+        memory.remember(answers);
+        if (neural) {
+            answers.entrySet().removeIf(entry -> memory.get(entry.getKey()) == null);
+        }
+        TranslationMemory.append(responses, answers, false);
+        int translated = 0;
+        for (Map.Entry<String, String> answer : answers.entrySet()) {
+            if (!answer.getKey().equals(answer.getValue())) translated++;
+        }
+        mDone += translated;
+        if (translated > 0) {
+            status("Traducidas " + mDone + " frases");
+        } else if (answers.isEmpty()) {
+            status("Recibí texto del juego, pero no salió una traducción válida");
+        } else {
+            status("Recibí texto del juego, pero quedó en el idioma original");
+        }
+    }
+
+    private List<String> neural(List<String> originals, List<String> protectedTexts) throws Exception
+    {
+        if (mBergamot == null) {
+            status("Cargando el modelo Neural inglés → español");
+            try {
+                mBergamot = new BergamotModel(mContext);
+            } catch (Exception | LinkageError failure) {
+                mNeuralUnavailable = true;
+                if (failure instanceof Exception) throw (Exception) failure;
+                throw new IOException("No pude cargar el motor Neural", failure);
+            }
+        }
+        return NeuralText.translate(protectedTexts, mBergamot::translate, mBergamot::translateMarkup);
     }
 
     // ---------------------------------------------------------------- ML Kit
 
-    private List<String> mlkit(List<String> texts) throws Exception
+    // ML Kit's default initializer only runs in the main process. GameActivity runs in :game.
+    private static synchronized void initializeMlKit(Context context)
     {
-        String source = chooseSource(texts);
+        if (sMlKitInitialized) return;
+        MlKit.initialize(context);
+        sMlKitInitialized = true;
+    }
+
+    private List<String> mlkit(List<String> originals, List<String> texts) throws Exception
+    {
+        try {
+            initializeMlKit(mContext);
+        } catch (RuntimeException failure) {
+            throw new IOException("No se pudo iniciar el traductor del teléfono", failure);
+        }
+        String source = chooseSource(originals);
         List<String> out = new ArrayList<>();
         String sourceTag = TranslateLanguage.fromLanguageTag(source);
         String targetTag = TranslateLanguage.fromLanguageTag(mTarget);
@@ -200,13 +431,32 @@ public final class TranslatorService
             mTranslator = Translation.getClient(new TranslatorOptions.Builder()
                 .setSourceLanguage(sourceTag).setTargetLanguage(targetTag).build());
             mTranslatorSource = sourceTag;
-            status("Descargando el idioma (" + sourceTag + " → " + targetTag + "), solo la primera vez");
-            Tasks.await(mTranslator.downloadModelIfNeeded(new DownloadConditions.Builder().build()), 180, TimeUnit.SECONDS);
+            mModelDownload = null;
         }
+        if (mModelDownload == null) {
+            mModelDownload = mTranslator.downloadModelIfNeeded(new DownloadConditions.Builder().build());
+        }
+        if (!mModelDownload.isComplete()) {
+            throw new IOException("Preparando el idioma");
+        }
+        if (!mModelDownload.isSuccessful()) {
+            Exception failure = mModelDownload.getException();
+            mModelDownload = null;
+            throw new IOException("No se pudo descargar el modelo de idioma", failure);
+        }
+        int failures = 0;
         for (String t : texts) {
-            Task<String> task = mTranslator.translate(t);
-            out.add(Tasks.await(task, 20, TimeUnit.SECONDS));
+            try {
+                Task<String> task = mTranslator.translate(t);
+                out.add(Tasks.await(task, 5, TimeUnit.SECONDS));
+            } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
+                Log.w(TAG, "ML Kit could not translate a phrase", failure);
+                out.add(null);
+                failures++;
+                mModelDownload = null;
+            }
         }
+        if (failures == texts.size()) throw new IOException("El modelo de idioma no pudo traducir el texto. Reintentando.");
         return out;
     }
 
@@ -229,32 +479,48 @@ public final class TranslatorService
 
     private List<String> deepl(List<String> texts) throws Exception
     {
-        if (mKey.isEmpty()) throw new IllegalStateException("Falta la clave de DeepL");
         List<String> out = new ArrayList<>();
-        for (int from = 0; from < texts.size(); from += 40) {
-            List<String> part = texts.subList(from, Math.min(texts.size(), from + 40));
+        for (int from = 0; from < texts.size();) {
+            int end = from;
             JSONObject body = new JSONObject();
-            body.put("text", new JSONArray(part));
             body.put("target_lang", deeplTarget(mTarget));
-            body.put("preserve_formatting", true);
+            byte[] payload;
+            do {
+                end++;
+                body.put("text", new JSONArray(texts.subList(from, end)));
+                payload = body.toString().getBytes(StandardCharsets.UTF_8);
+                if (payload.length > 120_000) {
+                    if (end - from == 1) throw new IOException("La frase supera el límite de DeepL");
+                    end--;
+                    body.put("text", new JSONArray(texts.subList(from, end)));
+                    payload = body.toString().getBytes(StandardCharsets.UTF_8);
+                    break;
+                }
+            } while (end < texts.size());
             String host = mKey.endsWith(":fx") ? "https://api-free.deepl.com" : "https://api.deepl.com";
             HttpURLConnection c = (HttpURLConnection) new URL(host + "/v2/translate").openConnection();
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(20000);
-            c.setRequestMethod("POST");
-            c.setRequestProperty("Authorization", "DeepL-Auth-Key " + mKey);
-            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            c.setDoOutput(true);
-            try (OutputStream os = c.getOutputStream()) { os.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
-            int code = c.getResponseCode();
-            if (code == 403) throw new IllegalStateException("DeepL rechazó la clave");
-            if (code == 456) throw new IllegalStateException("Se acabó la cuota de DeepL");
-            if (code / 100 != 2) throw new IllegalStateException("DeepL respondió " + code);
-            String text;
-            try (InputStream is = c.getInputStream()) { text = readAll(is); }
-            JSONArray arr = new JSONObject(text).getJSONArray("translations");
-            for (int i = 0; i < arr.length(); i++) out.add(arr.getJSONObject(i).getString("text"));
-            if (arr.length() != part.size()) throw new IllegalStateException("DeepL devolvió otra cantidad de textos");
+            try {
+                c.setConnectTimeout(10000);
+                c.setReadTimeout(20000);
+                c.setRequestMethod("POST");
+                c.setRequestProperty("Authorization", "DeepL-Auth-Key " + mKey);
+                c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                c.setDoOutput(true);
+                c.setFixedLengthStreamingMode(payload.length);
+                try (OutputStream os = c.getOutputStream()) { os.write(payload); }
+                int code = c.getResponseCode();
+                if (code == 403) throw new IllegalStateException("DeepL rechazó la clave");
+                if (code == 456) throw new IllegalStateException("Se acabó la cuota de DeepL");
+                if (code / 100 != 2) throw new IllegalStateException("DeepL respondió " + code);
+                String response;
+                try (InputStream is = c.getInputStream()) { response = readAll(is); }
+                JSONArray translated = new JSONObject(response).getJSONArray("translations");
+                if (translated.length() != end - from) throw new IOException("DeepL devolvió otra cantidad de textos");
+                for (int i = 0; i < translated.length(); i++) out.add(translated.getJSONObject(i).getString("text"));
+            } finally {
+                c.disconnect();
+            }
+            from = end;
         }
         return out;
     }
@@ -268,60 +534,6 @@ public final class TranslatorService
         }
     }
 
-    // ---------------------------------------------------------------- control codes
-
-    private static final Pattern CODES = Pattern.compile("\\\\[A-Za-z]+(?:\\[[^\\]]*\\])?|\\\\[.!|^<>{}$\\\\]|<[^>\\n]{1,40}>|\\[[A-Za-z_]+\\]");
-
-    static String shield(String text, List<String> codes)
-    {
-        Matcher m = CODES.matcher(text);
-        StringBuffer sb = new StringBuffer();
-        while (m.find()) {
-            codes.add(m.group());
-            m.appendReplacement(sb, Matcher.quoteReplacement("⟦" + (codes.size() - 1) + "⟧"));
-        }
-        m.appendTail(sb);
-        return sb.toString();
-    }
-
-    /** Puts the control codes back. Null when one is missing, so the original text is kept instead. */
-    static String unshield(String text, List<String> codes)
-    {
-        if (text == null) return null;
-        String r = text;
-        for (int i = 0; i < codes.size(); i++) {
-            String marker = "⟦" + i + "⟧";
-            if (!r.contains(marker)) return null;
-            r = r.replace(marker, codes.get(i));
-        }
-        return r.contains("⟦") ? null : r;
-    }
-
-    // ---------------------------------------------------------------- files
-
-    private void loadKnown()
-    {
-        if (!mFile.isFile()) return;
-        try {
-            for (String line : readLines(mFile)) {
-                int tab = line.indexOf('\t');
-                if (tab > 0) mKnown.add(unescape(line.substring(0, tab)));
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Could not read the saved translations", e);
-        }
-    }
-
-    private static List<String> readLines(File f) throws Exception
-    {
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
-            String l;
-            while ((l = r.readLine()) != null) if (!l.isEmpty()) lines.add(l);
-        }
-        return lines;
-    }
-
     private static String readAll(InputStream is) throws Exception
     {
         StringBuilder sb = new StringBuilder();
@@ -333,31 +545,18 @@ public final class TranslatorService
         return sb.toString();
     }
 
-    static String escape(String s)
-    {
-        return s.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r");
-    }
-
-    static String unescape(String s)
-    {
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '\\' && i + 1 < s.length()) {
-                char n = s.charAt(++i);
-                sb.append(n == 'n' ? '\n' : n == 't' ? '\t' : n == 'r' ? '\r' : n);
-            } else sb.append(c);
-        }
-        return sb.toString();
-    }
-
     /** A failure in words the player can act on. */
     private static String friendly(Throwable e)
     {
         String all = e.getClass().getSimpleName() + " " + e.getMessage() + " " + (e.getCause() == null ? "" : e.getCause().getMessage());
         String low = all.toLowerCase(Locale.ROOT);
+        if (low.contains("preparando el idioma")) return "Preparando el idioma. La primera descarga necesita conexión.";
+        if ("No se pudo iniciar el traductor del teléfono".equals(e.getMessage())) return e.getMessage();
+        if ("No se pudo descargar el modelo de idioma".equals(e.getMessage()))
+            return "No pude descargar el modelo de idioma. Revisa la conexión y vuelve a abrir el juego.";
+        if (low.contains("el modelo de idioma no pudo traducir")) return e.getMessage();
         if (low.contains("mlkitexception") || low.contains("google play") || low.contains("gms"))
-            return "El traductor del teléfono falló (necesita servicios de Google Play y conexión la primera vez). Si no funciona, usa DeepL.";
+            return "El traductor del teléfono falló. Revisa la conexión para descargar el modelo de idioma.";
         if (low.contains("timeout") || low.contains("unknownhost") || low.contains("unable to resolve"))
             return "Sin conexión: no pude traducir. Las frases ya traducidas siguen funcionando.";
         return "Error: " + shorten(e);
@@ -373,9 +572,15 @@ public final class TranslatorService
     /** What the app shows in Ajustes: the last thing this translator did. */
     private void status(String message)
     {
-        mMessage = message;
-        try (OutputStream os = new FileOutputStream(mStatus)) {
-            os.write((mDone + "\n" + mMessage + "\n" + System.currentTimeMillis() + "\n").getBytes(StandardCharsets.UTF_8));
-        } catch (Exception ignored) { }
+        File temporary = new File(mStatus.getParentFile(), mStatus.getName() + ".tmp");
+        try {
+            try (OutputStream os = new FileOutputStream(temporary)) {
+                os.write((mDone + "\n" + message.replace('\n', ' ').replace('\r', ' ') + "\n"
+                    + System.currentTimeMillis() + "\n").getBytes(StandardCharsets.UTF_8));
+            }
+            if (!temporary.renameTo(mStatus)) Log.w(TAG, "Could not publish translator status");
+        } catch (IOException failure) {
+            Log.w(TAG, "Could not save translator status", failure);
+        }
     }
 }

@@ -126,7 +126,8 @@ RUBY_CONFIGURE_ARGS := \
 	--disable-install-doc \
 	--disable-rubygems \
 	--with-static-linked-ext \
-	--with-out-ext=readline,dbm,gdbm,win32,win32ole,fiddle,openssl,ripper,nkf,pty,syslog,objspace,coverage,etc,-test-/* \
+	--with-openssl-dir="$(RUBY_PREFIX)" \
+	--with-out-ext=readline,dbm,gdbm,win32,win32ole,fiddle,ripper,nkf,pty,syslog,objspace,coverage,etc,-test-/* \
 	--without-gmp
 
 CONFIGURE := $(CONFIGURE_ENV) ./configure $(CONFIGURE_ARGS)
@@ -171,7 +172,7 @@ openssl/Makefile: openssl/Configure
 # -------------------- Ruby --------------------
 ruby: init openssl $(LIBDIR)/libruby.so.3.1.0
 
-$(LIBDIR)/libruby.so.3.1.0: ruby/Makefile
+$(LIBDIR)/libruby.so.3.1.0: ruby/Makefile $(LIBDIR)/libssl.a
 	cd ruby; make -j$(NPROC); make install
 
 ruby/Makefile: ruby/configure

@@ -1191,12 +1191,15 @@ void Bitmap::clear()
     GUARD_ANIMATED;
     
     p->bindFBO();
+    // This clears the whole bitmap, independent of the current drawing clip.
+    glState.scissorTest.pushSet(false);
     
     glState.clearColor.pushSet(Vec4());
     
     FBO::clear();
     
     glState.clearColor.pop();
+    glState.scissorTest.pop();
     
     p->clearTaintedArea();
     

@@ -30,7 +30,9 @@ object Launcher {
 
     /** The engine a game really starts with. The classic one only when the APK carries it. */
     fun engineFor(a: Activity, game: Game): String {
-        val wanted = if (game.engine == Game.ENGINE_AUTO) (Settings(a).learnedEngine(game.path) ?: autoEngine(game)) else game.engine
+        val wanted = if (game.engine == Game.ENGINE_AUTO) {
+            profile(game).automaticEngine(Settings(a).learnedEngine(game.path))
+        } else game.engine
         return if (wanted == Game.ENGINE_CLASSIC && classicAvailable(a)) GameActivity.ENGINE_CLASSIC else GameActivity.ENGINE_MODERN
     }
 
@@ -68,7 +70,7 @@ object Launcher {
             android.app.ApplicationExitInfo.REASON_SIGNALED -> "lo terminó una señal del sistema"
             android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "el sistema lo cerró por poca memoria"
             android.app.ApplicationExitInfo.REASON_CRASH -> "excepción de Java"
-            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo del código nativo del motor"
+            android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "fallo nativo en el proceso del juego"
             android.app.ApplicationExitInfo.REASON_ANR -> "dejó de responder"
             android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "usó demasiados recursos"
             android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "lo cerraste tú"
@@ -83,7 +85,19 @@ object Launcher {
             else -> false
         }
         if (!abnormal) return null
-        return "Android dice: $reason (estado ${i.status}). ${i.description.orEmpty()} Memoria al cerrar: ${i.pss / 1024} MB (RSS ${i.rss / 1024} MB)."
+        val trace = if (android.os.Build.VERSION.SDK_INT >= 31 && i.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            runCatching { i.traceInputStream?.use(NativeCrashTrace::read) }.getOrNull()
+        } else null
+        val memory = listOfNotNull(
+            "PSS ${i.pss / 1024} MB".takeIf { i.pss > 0 },
+            "RSS ${i.rss / 1024} MB".takeIf { i.rss > 0 }
+        ).joinToString(", ")
+        return buildString {
+            append("Android dice: $reason (estado ${i.status}).")
+            i.description?.takeIf { it.isNotBlank() }?.let { append(" $it") }
+            if (memory.isNotEmpty()) append("\nÚltima medición de memoria: $memory.")
+            if (trace != null) append("\n$trace")
+        }
     }
 
     /** The other engine, or null when it is not in this APK. */
@@ -110,8 +124,18 @@ object Launcher {
         while (gameRunning(a) && System.currentTimeMillis() < end) Thread.sleep(80)
     }
 
+    fun scanTranslation(a: Activity, game: Game, catalog: File) {
+        val dir = File(game.path)
+        // The scan never executes the game or initializes its save directory.
+        val intent = GameActivity.intent(a, dir, game.title, dir, engineFor(a, game),
+            GameActivity.SCREEN_ORIGINAL, Storage.rtpRoot(), false, "Preparar traducción", colors(a))
+            .putExtra(GameActivity.EXTRA_TRANSLATION_CATALOG, catalog.absolutePath)
+        a.startActivity(intent)
+    }
+
     /** Opens the game; [override] forces one engine (the automatic retry). Returns the engine it started with. */
-    fun play(a: Activity, game: Game, override: String? = null): String {
+    fun play(a: Activity, game: Game, override: String? = null, launchAt: Long = 0,
+             skipTranslationPreparation: Boolean = false, translationDiagnostics: Boolean = false): String {
         val dir = File(game.path)
         val saves = saveDir(game)
         val engine = override ?: engineFor(a, game)
@@ -125,12 +149,15 @@ object Launcher {
                 else -> GameActivity.SCREEN_ORIGINAL
             },
             Storage.rtpRoot(), game.touch, info(game, engine), colors(a))
+            .putExtra(GameActivity.EXTRA_LAUNCH_AT, launchAt)
+            .putExtra(GameActivity.EXTRA_SKIP_TR_PREPARATION, skipTranslationPreparation)
+            .putExtra(GameActivity.EXTRA_TR_DIAGNOSTICS, translationDiagnostics)
             .putExtra(GameActivity.EXTRA_PAD, st.pad(game.path))
             .putExtra(GameActivity.EXTRA_COVER, cover)
             .putExtra(GameActivity.EXTRA_FILTER, if (st.retro(game.path)) "crt" else "")
             .putExtra(GameActivity.EXTRA_TILT, st.tilt(game.path))
-        // Translation runs only when it is on in Ajustes AND for this game, and DeepL only with a key.
-        if (st.translateOn && st.translateGame(game.path) && (st.translateProvider != "deepl" || st.deeplKey.isNotEmpty())) {
+        // The private memory is available even when the selected provider has no key.
+        if (st.translateOn && st.translateGame(game.path)) {
             intent.putExtra(GameActivity.EXTRA_TR_DIR, Translations.dirFor(a, game).absolutePath)
                 .putExtra(GameActivity.EXTRA_TR_PROVIDER, st.translateProvider)
                 .putExtra(GameActivity.EXTRA_TR_TARGET, st.translateTarget)
