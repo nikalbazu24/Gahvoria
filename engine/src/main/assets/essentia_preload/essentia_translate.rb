@@ -28,7 +28,11 @@ module EssentiaTranslate
   DIALOGUE_WAIT = 0.65
   SPANISH = ENV['ESSENTIA_TR_TARGET'] == 'es'
   SOLAR_ECLIPSE = ENV['ESSENTIA_TR_GAME'].to_s.downcase.gsub(/[^a-z]/, '').include?('solareclipse')
+  TRANSLATION_ROOT = ENV['ESSENTIA_TR_ROOT'].to_s
   REBORN = (defined?(Essentia) && Essentia.respond_to?(:reborn_game?) && Essentia.reborn_game?) ||
+    (!TRANSLATION_ROOT.empty? &&
+      File.file?(File.join(TRANSLATION_ROOT, 'Scripts/Reborn/Bootstrap.rb')) &&
+      File.file?(File.join(TRANSLATION_ROOT, 'Scripts/Online/DiscordRichPresence.rb'))) ||
     ENV['ESSENTIA_TR_GAME'].to_s.gsub('é', 'e').gsub('É', 'E').downcase.gsub(/[^a-z0-9]/, '') =~ /\A(?:pokemon)?reborn\d*\z/
   REBORN_INTRO_SPANISH = {
     "station master here. we've got your boarding passes." =>
@@ -59,6 +63,17 @@ module EssentiaTranslate
     'grandview station' => 'Estación Grandview', 'one' => 'UNO'
   }
   REBORN_INTRO_MAPS = [37, 51, 667]
+  REBORN_GLITCH_TEXT = 'TH~ R0GUE DAa/ta cor$upt?@####'
+  SPANISH_BATTLE_TEXT = {
+    'Ingrain' => 'Arraigo', 'Lv{1}' => 'Nv.{1}',
+    '{1} - {2} Pokémon' => '{1} - Pokémon {2}',
+    "{1}'s {2}" => '{2} de {1}'
+  }
+  # Some catalog entries are display formats, with no words to translate.
+  QUANTITY_FORMAT = /\Ax?\{\d+:[ 0-9]*d\}(?:\/\{\d+:[ 0-9]*d\})?\z/
+  FORMATTED_NUMBER = /\Ax? *\d+(?:\/ *\d+)?\z/
+  LEVEL_NUMBER = /\ALv *(\d+)\z/
+  PP_FORMAT = /\A(?: \(\{\d+\}\) )?PP: ?(?:\d+|\{\d+\})\/(?:\d+|\{\d+\})\z/
   REBORN_TICKET_REGIONS = [
     [108, 28, 294, 24, '¡RUMBO A CIUDAD REBORN!'],
     [110, 179, 75, 20, 'Nombre'], [280, 179, 108, 20, 'Género'],
@@ -282,6 +297,9 @@ module EssentiaTranslate
     def lookup(text, wait = 0)
       return text unless text.is_a?(String) && !text.empty?
       return text if text.instance_variable_get(:@gahvoria_translated) || player_name?(text)
+      return text if display_format?(text)
+      label = battle_label(text)
+      return marked(label) if label
       return text unless text =~ /[A-Za-z]/ || (text.respond_to?(:ascii_only?) ? !text.ascii_only? : text.unpack('C*').any? { |byte| byte >= 128 })
       load_if_due
       return translated_copy(text) if @map.has_key?(text)
@@ -379,6 +397,21 @@ module EssentiaTranslate
       result
     end
 
+    def display_format?(text)
+      return false unless text.size <= 100
+      text == 'Pokémon' || text == "{1:s}\1" || text == '{1:s}\1' ||
+        (REBORN && text == REBORN_GLITCH_TEXT) ||
+        QUANTITY_FORMAT.match(text) || PP_FORMAT.match(text) ||
+        FORMATTED_NUMBER.match(text) || /\ANv\. ?\d+\z/.match(text)
+    end
+
+    def battle_label(text)
+      return nil unless SPANISH
+      label = SPANISH_BATTLE_TEXT[text]
+      label ||= 'Nv.' + $1 if LEVEL_NUMBER.match(text)
+      label
+    end
+
     def ui_label(text)
       label = UI_SPANISH[text]
       return label if label
@@ -396,6 +429,7 @@ module EssentiaTranslate
       return nil unless match
       body = match[2].gsub("’", "'").gsub("…", "...").gsub(/\s+/, ' ').strip
       label = ui_label(body)
+      label ||= battle_label(body)
       label ||= SOLAR_TEXT_SPANISH[body.downcase] if SOLAR_ECLIPSE
       marked(match[1] + label + match[3]) if label
     end
@@ -905,6 +939,10 @@ module EssentiaTranslate
     end
 
     def message_catalog_text(text)
+      if text.is_a?(String) && !player_name?(text)
+        label = battle_label(text)
+        return marked(label) if label
+      end
       # Keep UI originals available for the selector or drawing hook to resolve in context.
       return text if SPANISH && text.is_a?(String) && (ui_label(text) ||
         (REBORN && (REBORN_GENDER_SPANISH.has_key?(text.downcase) || reborn_intro_label(text))) ||

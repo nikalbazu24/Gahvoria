@@ -234,7 +234,7 @@ module GahvoriaPretranslate
           text = EssentiaTranslate.utf8(text.dup)
           next if text.respond_to?(:valid_encoding?) && !text.valid_encoding?
           next if text.strip.empty? || text !~ /[[:alpha:]]/ || seen[text]
-          next if EssentiaTranslate::SPANISH && EssentiaTranslate::UI_SPANISH.has_key?(text)
+          next if resolved_text?(text)
           row = EssentiaTranslate.esc(text) + "\n"
           if file.pos + (row.respond_to?(:bytesize) ? row.bytesize : row.size) > 32 * 1024 * 1024 || seen.size >= 120_000
             truncated = true
@@ -258,6 +258,12 @@ module GahvoriaPretranslate
       Time.now.to_f
     end
 
+    def resolved_text?(text)
+      EssentiaTranslate.display_format?(text) ||
+        (EssentiaTranslate::SPANISH && (EssentiaTranslate::UI_SPANISH.has_key?(text) ||
+          EssentiaTranslate.battle_label(text)))
+    end
+
     def run(root, base, marker = '', budget = STARTUP_BUDGET_SECONDS)
       return if root.empty? || base.empty?
       ready = base + '.ready'
@@ -276,7 +282,7 @@ module GahvoriaPretranslate
           text = EssentiaTranslate.utf8(text.dup)
           next if text.respond_to?(:valid_encoding?) && !text.valid_encoding?
           next if text.strip.empty? || text !~ /[[:alpha:]]/ || seen[text]
-          next if EssentiaTranslate::SPANISH && EssentiaTranslate::UI_SPANISH.has_key?(text)
+          next if resolved_text?(text)
           row = EssentiaTranslate.esc(text) + "\n"
           break if seen.size >= MAX_TEXTS || file.pos + row.size > MAX_SPOOL_BYTES
           seen[text] = true

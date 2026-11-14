@@ -131,3 +131,5 @@ En las opciones de un juego con catálogo, abre **Pantalla → Cobertura del cat
 El escáner ahora incluye archivos Ruby de la carpeta Scripts directamente bajo el juego, además de los de Data/Scripts. Al pulsar **Preparar traducción** por primera vez tras actualizar, se regenera el catálogo anterior y se reutiliza la memoria. Si el escáner llega a su límite, la pantalla señala que el catálogo es parcial.
 
 La revisión de Reborn mostró rótulos del editor de animaciones en la lista de pendientes. El escáner excluye los literales del editor y sus copias en los catálogos compilados. Si la misma frase aparece en un mapa, un evento u otro script que el escáner lee, sigue contando. La revisión del catálogo se actualiza al volver a preparar el juego.
+
+El escáner evita enviar formatos de cantidades, PP y pausas al traductor. El puente conserva los marcadores y localiza rótulos de combate como «Nv.», «Arraigo» y la plantilla posesiva antes de que el juego sustituya sus argumentos. Reborn conserva el texto distorsionado del Campo Glitch. Estos textos resueltos directamente quedan fuera del catálogo de traducciones que necesita el modelo.

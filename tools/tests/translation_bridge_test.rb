@@ -152,6 +152,21 @@ Dir.mktmpdir('gahvoria-translation') do |directory|
     EssentiaTranslate.install
     assert_equal(:controls, PokemonMenu.new($pause_test_scene).pbStartPokemonMenu)
     assert_equal(true, $pause_test_scene.visible)
+    module MessageTypes
+      def self.getFromHash(_type, key); key; end
+    end
+    EssentiaTranslate.install
+    assert_equal('{2} de {1}', MessageTypes.getFromHash(0, "{1}'s {2}"))
+    assert_equal('Nv.35', EssentiaTranslate.lookup('Lv35'))
+    assert_equal('Arraigo', EssentiaTranslate.lookup('Ingrain'))
+    assert_equal('{1} - Pokémon {2}', MessageTypes.getFromHash(0, '{1} - {2} Pokémon'))
+    formats = ['x{1: 2d}', 'x{1:03d}', 'PP: {1}/{2}', 'PP: 3/15', '{1: 2d}/{2: 2d}',
+               "{1:s}\1", '{1:s}\1', ' ({1}) PP: {2}/{3}', 'Pokémon',
+               'TH~ R0GUE DAa/ta cor$upt?@####']
+    pending_before = Dir[File.join(requests, '*.req')].size
+    formats.each { |format| assert_equal(format, EssentiaTranslate.lookup(format)) }
+    EssentiaTranslate.flush
+    assert_equal(pending_before, Dir[File.join(requests, '*.req')].size)
     puts 'Reborn intro translation checks passed'
     exit
   end

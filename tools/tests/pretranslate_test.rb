@@ -133,6 +133,18 @@ EDITOR
   lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
   check(opening_first + ['Only in the player catalog'], lines)
 
+  $RGSS_SCRIPTS << [3, 'Combat', nil, <<'FORMATS']
+_ISPRINTF("x{1: 2d}", qty)
+_ISPRINTF("{1:s}\1", text)
+_INTL("PP: {1}/{2}", remaining, total)
+_INTL("Pokémon")
+_INTL("Pokémon restored its power!")
+FORMATS
+  GahvoriaPretranslate.export_catalog(dir, catalog)
+  lines = File.readlines(catalog + '.ready').map { |line| EssentiaTranslate.unesc(line.chomp) }
+  check(opening_first[0...8] + ['Pokémon restored its power!'] +
+        opening_first[8..-1] + ['Only in the player catalog'], lines)
+
   aborted = File.join(dir, 'aborted')
   File.write(aborted + '.skip', '')
   GahvoriaPretranslate.export_catalog(dir, aborted)
