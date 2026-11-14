@@ -77,7 +77,7 @@ class AppState(private val activity: Activity) {
     var optionsFor by mutableStateOf<Game?>(null)
     var gameOptionsTab by mutableIntStateOf(0)
     fun openGameOptions(game: Game, tab: Int = 0) {
-        gameOptionsTab = tab.coerceIn(0, 4)
+        gameOptionsTab = tab.coerceIn(-1, 4)
         optionsFor = game
     }
     var games by mutableStateOf(Library.ordered(library.load()))

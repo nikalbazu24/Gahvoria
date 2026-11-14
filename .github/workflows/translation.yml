@@ -16,6 +16,7 @@ on:
       - 'tools/tests/*Translation*'
       - 'tools/tests/translation*'
       - 'tools/tests/NeuralInferenceProbe.java'
+      - 'tools/tests/neural-possessives.txt'
       - 'tools/neural_probe.mjs'
       - 'tools/stage_neural_probe.py'
       - 'engine/neural/model-en-es.json'
@@ -66,7 +67,7 @@ jobs:
           python3 tools/stage_neural_probe.py "$RUNNER_TEMP/neural-probe"
           java -cp "$RUNNER_TEMP/translation-test" com.hatkid.mkxpz.translate.NeuralInferenceProbe \
             "$(command -v node)" tools/neural_probe.mjs "$RUNNER_TEMP/neural-probe/package" \
-            "$RUNNER_TEMP/neural-probe" > "$RUNNER_TEMP/neural-probe-results.tsv"
+            "$RUNNER_TEMP/neural-probe" tools/tests/neural-possessives.txt > "$RUNNER_TEMP/neural-probe-results.tsv"
       - uses: actions/upload-artifact@v4
         with:
           name: neural-sentence-comparison

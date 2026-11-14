@@ -202,7 +202,7 @@ private fun Info(s: AppState, g: Game, modifier: Modifier) {
                 } }) { s.play(g) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (g.kind.isRpgMaker) SecondaryButton("Traducción", Modifier.weight(1f)) { s.openGameOptions(g) }
-            SecondaryButton("Opciones", Modifier.weight(1f)) { s.openGameOptions(g, 1) }
+            SecondaryButton("Opciones", Modifier.weight(1f)) { s.openGameOptions(g, -1) }
         }
     }
 }

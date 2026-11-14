@@ -7,7 +7,7 @@ import java.util.*;
 /** Optional real-model probe. Uses the exact app pipeline and a local Node/WASM worker. */
 public final class NeuralInferenceProbe {
     public static void main(String[] args) throws Exception {
-        List<String> sources = Arrays.asList(
+        List<String> sources = new ArrayList<>(Arrays.asList(
             "What will {1} do?", "Welcome, {1}!", "You found {1}!",
             "Please follow {1}.", "The gate opens after {1} badges.",
             "Give {1} to {2}.", "{1} is waiting at the station.",
@@ -24,7 +24,9 @@ public final class NeuralInferenceProbe {
             "{1} has returned safely.", "Take {1} to {2}, then return here.",
             "\\c[1]Welcome, {1}!", "You have {1:03d} points.",
             "The score is {1}/{2}.", "Welcome, \\PN! We have been waiting for you."
-        );
+        ));
+        if (args.length > 4) sources.addAll(java.nio.file.Files.readAllLines(
+            java.nio.file.Paths.get(args[4]), StandardCharsets.UTF_8));
         NeuralText.Inference plain = texts -> infer(args, false, texts);
         NeuralText.Inference aligned = texts -> infer(args, true, texts);
         Map<String,String> before = TranslationBatch.translate(sources,
@@ -37,6 +39,11 @@ public final class NeuralInferenceProbe {
         System.err.println("Valid template inventories: " + before.size() + "/" + sources.size()
             + " before; " + after.size() + "/" + sources.size() + " after. This is not a fluency score.");
         if (!"¿Qué hará {1}?".equals(after.get(sources.get(0)))) throw new AssertionError("Lost grammatical subject");
+        for (String source : sources) {
+            if (!after.containsKey(source)) throw new AssertionError("Missing template: " + source);
+            String answer = after.get(source);
+            if (answer.matches(".*\\}[’']s.*")) throw new AssertionError("Retained English possessive: " + answer);
+        }
         if (after.size() < before.size()) throw new AssertionError("Template preservation regressed");
     }
     private static String encode(String s) {

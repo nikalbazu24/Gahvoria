@@ -73,46 +73,106 @@ final class NeuralText {
         return "ZXQV" + suffix;
     }
 
-    /** Empty HTML markers erase the grammatical subject. Keep values visible to
-     * inference as opaque words, then restore only an exact, complete inventory.
-     * Never send real player/Pokémon names through this template path. */
+    private static final Pattern POSSESSIVE = Pattern.compile("['’]s\\s+", Pattern.CASE_INSENSITIVE);
+
+    private static final class ValueGroup {
+        final int index, start;
+        int end;
+        String expansion;
+        boolean combined;
+        ValueGroup(int index, int start, int end, String expansion) {
+            this.index = index; this.start = start; this.end = end; this.expansion = expansion;
+        }
+    }
+
+    // A dynamic possessive is one noun phrase. Keep its values together during
+    // inference, then expand "{1}'s {2}" as "{2} de {1}". Adjacent values such as
+    // passwords also form one unit, retaining their original concatenation.
+    // Never group across an RGSS effect, color, pause or unnumbered printf value.
+    private static List<ValueGroup> groups(String original, String text) {
+        List<String> tokens = TranslationBatch.tokens(original);
+        List<ValueGroup> groups = new ArrayList<>();
+        Matcher markers = MARKER.matcher(text);
+        ValueGroup previous = null;
+        while (markers.find()) {
+            int index = Integer.parseInt(markers.group(1));
+            if (index >= tokens.size() || !TranslationBatch.movable(tokens.get(index))) {
+                previous = null;
+                continue;
+            }
+            String gap = previous == null ? null : text.substring(previous.end, markers.start());
+            boolean possessive = gap != null && POSSESSIVE.matcher(gap).matches()
+                && !numericSlot(original, tokens.get(index));
+            if (previous != null && (gap.isEmpty() || possessive)) {
+                previous.expansion = possessive ? markers.group() + " de " + previous.expansion
+                                               : previous.expansion + markers.group();
+                previous.end = markers.end();
+                previous.combined = true;
+            } else {
+                previous = new ValueGroup(index, markers.start(), markers.end(), markers.group());
+                groups.add(previous);
+            }
+        }
+        return groups;
+    }
+
+    private static boolean letterAt(String text, int index) {
+        return index >= 0 && index < text.length() && Character.isLetter(text.charAt(index));
+    }
+
+    static boolean needsSlotRepair(String original) {
+        String protectedText = TranslationBatch.shield(original, new ArrayList<>());
+        for (ValueGroup group : groups(original, protectedText)) {
+            if (group.combined || letterAt(protectedText, group.start - 1) || letterAt(protectedText, group.end)) return true;
+        }
+        return false;
+    }
+
+    /** Keep grammatical values visible to the model, without sending real names.
+     * Restore each unit exactly once; incomplete or duplicated units are rejected. */
     static List<String> translate(List<String> originals, List<String> texts,
                                   Inference plain, Inference aligned) throws IOException {
         List<String> prepared = new ArrayList<>(texts);
-        List<Map<Integer, String>> slots = new ArrayList<>();
+        List<Map<String, String>> slots = new ArrayList<>();
         for (int row = 0; row < texts.size(); row++) {
-            Map<Integer, String> indices = new LinkedHashMap<>();
+            Map<String, String> values = new LinkedHashMap<>();
             String text = texts.get(row);
             if (!text.toUpperCase(java.util.Locale.ROOT).contains("ZXQV")) {
-                List<String> tokens = TranslationBatch.tokens(originals.get(row));
-                for (int i = 0; i < tokens.size(); i++) {
-                    if (TranslationBatch.movable(tokens.get(i))) {
-                        String value = slot(i);
-                        if (numericSlot(originals.get(row), tokens.get(i))) {
-                            int number = 73189 + i;
-                            while (originals.get(row).contains(String.valueOf(number)) || indices.containsValue(String.valueOf(number))) number++;
-                            value = String.valueOf(number);
-                        }
-                        indices.put(i, value);
-                        text = text.replace("⟦" + i + "⟧", value);
+                String original = originals.get(row);
+                List<String> tokens = TranslationBatch.tokens(original);
+                StringBuilder input = new StringBuilder();
+                int cursor = 0;
+                for (ValueGroup group : groups(original, text)) {
+                    String value = slot(group.index);
+                    if (!group.combined && numericSlot(original, tokens.get(group.index))) {
+                        int number = 73189 + group.index;
+                        while (original.contains(String.valueOf(number)) || values.containsKey(String.valueOf(number))) number++;
+                        value = String.valueOf(number);
                     }
+                    values.put(value, group.expansion);
+                    input.append(text, cursor, group.start);
+                    // A variable next to a verb is not part of the verb's spelling.
+                    if (letterAt(text, group.start - 1)) input.append(' ');
+                    input.append(value);
+                    if (letterAt(text, group.end)) input.append(' ');
+                    cursor = group.end;
                 }
+                text = input.append(text, cursor, text.length()).toString();
             }
             prepared.set(row, text);
-            slots.add(indices);
+            slots.add(values);
         }
         List<String> result = translate(prepared, plain, aligned);
         for (int row = 0; row < result.size(); row++) {
             if (slots.get(row).isEmpty() || result.get(row) == null) continue;
             String output = result.get(row);
             boolean valid = true;
-            for (Map.Entry<Integer, String> entry : slots.get(row).entrySet()) {
-                int index = entry.getKey();
-                Matcher token = Pattern.compile("(?i)(?<![A-Za-z0-9])" + entry.getValue() + "(?![A-Za-z0-9])").matcher(output);
+            for (Map.Entry<String, String> entry : slots.get(row).entrySet()) {
+                Matcher token = Pattern.compile("(?i)(?<![\\p{L}\\p{N}_])" + entry.getKey() + "(?![\\p{L}\\p{N}_])").matcher(output);
                 if (!token.find()) { valid = false; break; }
                 int start = token.start(), end = token.end();
                 if (token.find()) { valid = false; break; }
-                output = output.substring(0, start) + "⟦" + index + "⟧" + output.substring(end);
+                output = output.substring(0, start) + entry.getValue() + output.substring(end);
             }
             if (output.toUpperCase(java.util.Locale.ROOT).contains("ZXQV")) valid = false;
             result.set(row, valid ? output : null);

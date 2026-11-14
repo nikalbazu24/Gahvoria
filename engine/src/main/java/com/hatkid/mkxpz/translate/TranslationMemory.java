@@ -17,6 +17,7 @@ final class TranslationMemory implements Closeable {
     private static final int MAX_ROW_BYTES = 64 * 1024;
     private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
     private static final String CONNECTOR_PREFIX = "\u001Fconnector-v1:";
+    private static final String GROUP_PREFIX = "\u001Fgroups-v1:";
     private static final String SLOT_PREFIX = "\u001Fslots-v1:";
     private final RandomAccessFile file;
     private final boolean contextual;
@@ -55,6 +56,8 @@ final class TranslationMemory implements Closeable {
     }
 
     private String key(String original) {
+        String group = GROUP_PREFIX + original;
+        if (entries.containsKey(group) || (contextual && NeuralText.needsSlotRepair(original))) return group;
         String slots = SLOT_PREFIX + original;
         if (entries.containsKey(slots) || (contextual && NeuralText.usesValueSlots(original))) return slots;
         String connector = CONNECTOR_PREFIX + original;
@@ -69,7 +72,7 @@ final class TranslationMemory implements Closeable {
         if (entries.containsKey(key)) return null;
         TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
         if (issue == null && !key.equals(original)) {
-            for (String previous : new String[]{CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original}) {
+            for (String previous : new String[]{SLOT_PREFIX + original, CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original}) {
                 if (previous.equals(key)) continue;
                 issue = rejected == null ? null : rejected.get(previous);
                 if (issue != null) break;
@@ -138,6 +141,7 @@ final class TranslationMemory implements Closeable {
         String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
         if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
         if (original.startsWith(SLOT_PREFIX)) source = original.substring(SLOT_PREFIX.length());
+        if (original.startsWith(GROUP_PREFIX)) source = original.substring(GROUP_PREFIX.length());
         if (!contextual) {
             if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
             return;

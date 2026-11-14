@@ -44,7 +44,7 @@ final class TranslationBatch {
         return answers;
     }
 
-    private static String shield(String original, List<String> codes) {
+    static String shield(String original, List<String> codes) {
         Matcher matcher = CODES.matcher(original);
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {

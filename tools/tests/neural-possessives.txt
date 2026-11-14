@@ -1,0 +1,24 @@
+{1}'s {2} {3}boosted its {4}!
+{1}'s {2} {3}lowered its {4}!
+{1}'s dreams jolted them right back up!
+{1}'s {2} {3}fell!
+{1}'s {2} cuts {3}'s Defense!
+{1}'s {2} cuts {3}'s Attack!
+{1}'s {2} drastically raised its Special Attack!
+{1}'s {2} blocks {3}!
+{1}'s {2} cured {3}'s love problem!
+It reduced the PP of {1}'s {2} by {3}!
+{1} got free of {2}'s {3}!
+{1}'s Z-Power {2}boosted its {3}!
+{1}'s {2} is ready.
+{1}’s bag is full.
+This is {1}'s house.
+Return {1}'s book to {2}.
+{1}'s friends are waiting for {2}.
+{1}'s {2} restored {3}'s health.
+{1}'s score is higher than {2}'s score.
+{1}'s team won {2:03d} points.
+The password is {1}{2}.
+Welcome,{1}!
+{1}boosted the team's morale.
+The reward is ${1}.

@@ -23,7 +23,75 @@ public final class TranslationPhaseOneTest {
         auditRepairsOnlyFlaggedRows();
         templatesKeepSubjectsAndValidateValues();
         migratesOnlyOldValueTemplates();
-        System.out.println("11 JVM translation checks passed");
+        groupsPossessivesAndAdjacentValues();
+        migratesOnlyDamagedSlotStructures();
+        System.out.println("13 JVM translation checks passed");
+    }
+
+    private static void groupsPossessivesAndAdjacentValues() throws Exception {
+        String source = "{1}'s {2} {3}boosted its {4}!";
+        String translated = "¡{2} de {1} {3} aumentó su {4}!";
+        Map<String, String> result = TranslationBatch.translate(Collections.singletonList(source),
+            (raw, protectedText) -> NeuralText.translate(raw, protectedText, input -> {
+                equal(Collections.singletonList("ZXQVA ZXQVC boosted its ZXQVD!"), input);
+                return Collections.singletonList("¡ZXQVA ZXQVC aumentó su ZXQVD!");
+            }, input -> { throw new AssertionError("No literal controls in this template"); }));
+        equal(translated, result.get(source));
+        equal(null, TranslationAudit.check(source, translated));
+        equal(TranslationAudit.Issue.ENGLISH, TranslationAudit.check("{1}'s {2} is ready.", "{1}'s {2} está listo."));
+        equal(true, NeuralText.needsSlotRepair(source));
+        equal(true, NeuralText.needsSlotRepair("{1}boosted morale."));
+        equal(false, NeuralText.needsSlotRepair("What will {1} do?"));
+        equal(false, NeuralText.needsSlotRepair("{1}'s {2:03d} years old."));
+        String joined = "The password is {1}{2}.";
+        result = TranslationBatch.translate(Collections.singletonList(joined),
+            (raw, protectedText) -> NeuralText.translate(raw, protectedText, input -> {
+                equal(Collections.singletonList("The password is ZXQVA."), input);
+                return Collections.singletonList("La contraseña es ZXQVA.");
+            }, input -> null));
+        equal("La contraseña es {1}{2}.", result.get(joined));
+        // Neither a pause nor a formatting region may be pulled inside the noun phrase.
+        String colored = "\\c[1]{1}'s {2}\\c[0] blocks {3}!";
+        result = TranslationBatch.translate(Collections.singletonList(colored),
+            (raw, protectedText) -> NeuralText.translate(raw, protectedText, input -> null, input -> {
+                equal(Collections.singletonList("<img data-gahvoria=\"0\">ZXQVB<img data-gahvoria=\"3\"> blocks ZXQVE!"), input);
+                return Collections.singletonList("<img data-gahvoria=\"0\">ZXQVB<img data-gahvoria=\"3\"> bloquea ZXQVE!");
+            }));
+        equal("\\c[1]{2} de {1}\\c[0] bloquea {3}!", result.get(colored));
+        equal(false, NeuralText.needsSlotRepair("{1}'s \\c[2]{2}"));
+        // The model must not duplicate, mutate or silently lose a grouped value.
+        for (String output : Arrays.asList("ZXQVA ZXQVA", "ZXQVAó", "Sin valor", "ZXQVB")) {
+            equal(0, TranslationBatch.translate(Collections.singletonList("{1}'s {2}"),
+                (raw, protectedText) -> NeuralText.translate(raw, protectedText,
+                    input -> Collections.singletonList(output), input -> null)).size());
+        }
+    }
+
+    private static void migratesOnlyDamagedSlotStructures() throws Exception {
+        Path cache = Files.createTempFile("gahvoria-groups", ".tsv");
+        String source = "{1}'s {2} blocks {3}!";
+        String replacement = "¡{2} de {1} bloquea {3}!";
+        Files.write(cache, Arrays.asList("Hello\tHola",
+            "\u001Fslots-v1:What will {1} do?\t¿Qué hará {1}?",
+            "\u001Fslots-v1:" + source + "\t¡{1} {2} bloquea {3}!"), StandardCharsets.UTF_8);
+        try {
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal(TranslationAudit.Issue.OUTDATED, memory.audit(source));
+                equal(null, memory.get(source));
+                equal("¿Qué hará {1}?", memory.get("What will {1} do?"));
+                equal("Hola", memory.get("Hello"));
+            }
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                memory.remember(Collections.singletonMap(source, replacement));
+            }
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal(replacement, memory.get(source));
+                equal(null, memory.audit(source));
+            }
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile())) {
+                equal(replacement, memory.get(source));
+            }
+        } finally { Files.delete(cache); }
     }
 
     private static void templatesKeepSubjectsAndValidateValues() throws Exception {

@@ -14,6 +14,7 @@ public final class TranslationAudit {
     private static final Pattern ENGLISH = Pattern.compile(
         "\\b(?:jammies|gonna|we['’]ve|you['’]re|they['’]re|we['’]ll)\\b",
         Pattern.CASE_INSENSITIVE);
+    private static final Pattern RETAINED_POSSESSIVE = Pattern.compile("\\{[0-9]+(?::[^}]+)?\\}[’']s\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]+");
 
     private TranslationAudit() {}
@@ -42,6 +43,8 @@ public final class TranslationAudit {
         if (original.equals(answer)) return Issue.UNCHANGED;
         String term = glossary(original);
         if (term != null && !term.equalsIgnoreCase(answer)) return Issue.TERMINOLOGY;
+
+        if (RETAINED_POSSESSIVE.matcher(original).find() && RETAINED_POSSESSIVE.matcher(answer).find()) return Issue.ENGLISH;
 
         String rendered = TranslationBatch.visibleText(answer);
         String source = TranslationBatch.visibleText(original);
