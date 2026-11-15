@@ -18,7 +18,9 @@ final class TranslationDialogue {
     }
     static String body(String text) { return text.substring(speaker(text).length()); }
     static String localizedSpeaker(String text) {
-        String prefix = speaker(text);
+        return localizePrefix(speaker(text));
+    }
+    static String localizePrefix(String prefix) {
         if (prefix.isEmpty()) return prefix;
         int colon = prefix.indexOf(':');
         String role = prefix.substring(0, colon);
@@ -27,6 +29,7 @@ final class TranslationDialogue {
         return translated + prefix.substring(colon);
     }
     static boolean possibleCreditList(String text) {
+        if (text.indexOf(',') < 0) return false;
         String[] entries = text.split(",");
         if (entries.length < 6) return false;
         int names = 0;
@@ -77,6 +80,19 @@ final class TranslationDialogue {
     }
     private static final Pattern WORD = Pattern.compile("[\\p{L}0-9]+(?:['’][\\p{L}]+|['’])?");
     private static final Pattern EMPHASIS = Pattern.compile("([a-z])\\1{2,}", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LETTER = Pattern.compile("[A-Za-z]");
+    private static final Pattern LEET_DIGIT = Pattern.compile("[013457]");
+    private static final Pattern MIXED_CASE = Pattern.compile("[a-z][A-Z]");
+    private static final Pattern MIXED_DIGIT = Pattern.compile("[A-Za-z][0-9]|[0-9][A-Za-z]");
+    private static final Pattern SLANG;
+    static {
+        StringBuilder choices = new StringBuilder();
+        for (String word : NORMALIZE.keySet()) {
+            if (choices.length() > 0) choices.append('|');
+            choices.append(Pattern.quote(word));
+        }
+        SLANG = Pattern.compile("(?<![\\p{L}])(?:" + choices + ")(?![\\p{L}])", Pattern.CASE_INSENSITIVE);
+    }
     static String baseWord(String text) {
         String lower = text.toLowerCase(Locale.ROOT).replace('’', '\'');
         String shorter = EMPHASIS.matcher(lower).replaceAll("$1");
@@ -90,19 +106,21 @@ final class TranslationDialogue {
         StringBuffer result = new StringBuffer();
         while (words.find()) {
             String raw = words.group(), word = baseWord(raw), replacement = raw;
-            if (raw.matches("(?s).*[A-Za-z].*") && raw.matches("(?s).*[013457].*")) {
+            if (LETTER.matcher(raw).find() && LEET_DIGIT.matcher(raw).find()) {
                 String decoded = word.replace('0', 'o').replace('1', 'i').replace('3', 'e')
                     .replace('4', 'a').replace('5', 's').replace('7', 't');
                 if (LEET_WORDS.contains(decoded)) replacement = word = decoded;
             }
             if (NORMALIZE.containsKey(word)) replacement = NORMALIZE.get(word);
             else if (LEET_WORDS.contains(word) && (!raw.equals(word) && !raw.equalsIgnoreCase(word)
-                    || raw.matches(".*[a-z][A-Z].*"))) replacement = word;
+                    || MIXED_CASE.matcher(raw).find())) replacement = word;
             words.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
         return prefix + words.appendTail(result).toString();
     }
     static boolean normalizes(String original) {
+        if (!SLANG.matcher(original.replace('’', '\'')).find() && !EMPHASIS.matcher(original).find()
+                && !MIXED_DIGIT.matcher(original).find() && !MIXED_CASE.matcher(original).find()) return false;
         String shielded = TranslationBatch.shield(original, new ArrayList<>());
         return !normalize(shielded).equals(shielded);
     }

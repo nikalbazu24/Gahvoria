@@ -54,6 +54,9 @@ import io.github.nikalbazu24.gahvoria.core.Support
 import io.github.nikalbazu24.gahvoria.core.ThemeMode
 import io.github.nikalbazu24.gahvoria.data.Storage
 import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationWork
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import com.hatkid.mkxpz.translate.TranslationAudit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -309,16 +312,27 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
         if (uri != null) s.exportTranslationPending(g, uri)
     }
     var result by remember(g.path, revision) { mutableStateOf<Result<Pair<TranslationCoverage, Boolean>>?>(null) }
+    var loading by remember(g.path, revision) { mutableStateOf("Revisando traducciones guardadas…") }
+    val uiHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     LaunchedEffect(g.path, revision) {
-        result = withContext(Dispatchers.IO) { runCatching { s.translationCoverage(g) } }
+        val context = currentCoroutineContext()
+        val work = TranslationWork({ !context.isActive }) { phase, reviewed ->
+            val message = when (phase) {
+                TranslationWork.Phase.CATALOG -> "Revisando textos · $reviewed leídos"
+                TranslationWork.Phase.MEMORY -> "Cargando traducciones · $reviewed revisadas"
+                TranslationWork.Phase.COVERAGE -> "Calculando cobertura · $reviewed textos revisados"
+            }
+            uiHandler.post { if (context.isActive) loading = message }
+        }
+        result = withContext(Dispatchers.IO) { runCatching { s.translationCoverage(g, work) } }
     }
     Page("Cobertura del catálogo", onBack) {
         val state = result
         val report = state?.getOrNull()
         Glass(Modifier.fillMaxWidth()) {
             if (report == null) {
-                RowItem(g.title, if (state == null) "Revisando traducciones guardadas…"
-                    else "No pude leer el catálogo. Puedes volver a prepararlo desde Traducción.")
+                RowItem(g.title, if (state == null) loading
+                    else "No pude completar la revisión. Puedes copiar el diagnóstico para revisarlo.")
             } else {
                 val (coverage, stale) = report
                 val pending = coverage.pending
@@ -359,6 +373,11 @@ private fun TranslationCoveragePage(s: AppState, g: Game, onBack: () -> Unit) {
                 }
                 Divider()
                 RowItem("Qué mide", "Comprobaciones de las traducciones guardadas, no la fluidez del español. Vuelve a preparar para corregir pendientes. Las imágenes y los textos generados al jugar se revisan en partida.")
+            }
+        }
+        state?.exceptionOrNull()?.let { failure ->
+            SecondaryButton("Copiar diagnóstico", Modifier.fillMaxWidth()) {
+                s.copyText("Gahvoria ${BuildConfig.VERSION_NAME}\nCobertura: ${g.title}\n$loading\n${failure.stackTraceToString()}", "Diagnóstico")
             }
         }
         val examples = report?.first?.examples.orEmpty()

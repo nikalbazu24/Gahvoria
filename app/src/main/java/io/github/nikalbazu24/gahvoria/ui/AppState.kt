@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hatkid.mkxpz.translate.TranslationCoverage
+import com.hatkid.mkxpz.translate.TranslationWork
 import com.hatkid.mkxpz.translate.TranslationOpening
 import com.hatkid.mkxpz.GameActivity
 import io.github.nikalbazu24.gahvoria.data.GameplayTranslationReport
@@ -375,9 +376,9 @@ class AppState(private val activity: Activity) {
         File(Translations.dirFor(activity, g), GameActivity.TRANSLATION_DIAGNOSTICS_FILE)
     )
 
-    fun translationCoverage(g: Game): Pair<TranslationCoverage, Boolean> {
+    fun translationCoverage(g: Game, work: TranslationWork = TranslationWork()): Pair<TranslationCoverage, Boolean> {
         val base = Translations.catalog(activity, g)
-        val result = TranslationCoverage.read(base)
+        val result = TranslationCoverage.read(base, work)
         val revision = runCatching { File(base.path + ".revision").readText() }.getOrNull()
         return result to (revision != Translations.catalogRevision(g))
     }

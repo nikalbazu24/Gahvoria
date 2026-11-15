@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.hatkid.mkxpz.translate.TranslationPreparation
+import com.hatkid.mkxpz.translate.TranslationWork
 import io.github.nikalbazu24.gahvoria.MainActivity
 import java.io.File
 import java.io.IOException
@@ -68,14 +69,27 @@ class TranslationPreparationService : Service() {
                     Thread.sleep(150)
                 }
                 if (!cancelled && catalog.isFile) {
-                    TranslationPreparation.run(this, catalog, { cancelled }) { reviewed, total, translated ->
-                        status = Status(base, "Traduciendo", reviewed, total, translated, true)
+                    val work = TranslationWork({ cancelled }) { phase, reviewed ->
+                        val label = when (phase) {
+                            TranslationWork.Phase.CATALOG -> "Revisando textos: $reviewed leídos"
+                            TranslationWork.Phase.MEMORY -> "Cargando traducciones: $reviewed revisadas"
+                            TranslationWork.Phase.COVERAGE -> "Comprobando resultados: $reviewed revisados"
+                        }
+                        status = Status(base, label, active = true)
                         val update = status
                         handler.post {
                             state.value = update
                             runCatching { manager.notify(ID, notification(title, update)) }
                         }
                     }
+                    TranslationPreparation.run(this, catalog, { cancelled }, { reviewed, total, translated ->
+                        status = Status(base, "Traduciendo", reviewed, total, translated, true)
+                        val update = status
+                        handler.post {
+                            state.value = update
+                            runCatching { manager.notify(ID, notification(title, update)) }
+                        }
+                    }, work)
                 }
                 val phase = when {
                     cancelled || !catalog.isFile -> "En pausa"
@@ -87,7 +101,7 @@ class TranslationPreparationService : Service() {
                 status = status.copy(phase = phase, active = false)
             } catch (failure: Exception) {
                 Log.w("TranslationPreparation", "Preparation interrupted", failure)
-                status = status.copy(phase = failure.message ?: "Error al preparar", active = false)
+                status = status.copy(phase = if (cancelled) "En pausa" else failure.message ?: "Error al preparar", active = false)
             } catch (failure: LinkageError) {
                 Log.w("TranslationPreparation", "Model unavailable", failure)
                 status = status.copy(phase = "Modelo Neural no disponible", active = false)

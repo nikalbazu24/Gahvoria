@@ -62,7 +62,7 @@ public final class TranslationAudit {
         String body = TranslationBatch.visibleText(TranslationDialogue.body(original));
         Matcher damaged = DAMAGED_WORD.matcher(body);
         if (damaged.find() && damaged.find()) return Issue.REVIEW;
-        if (MIXED_CODE.matcher(TranslationDialogue.normalize(body)).find()) return Issue.REVIEW;
+        if (MIXED_CODE.matcher(body).find() && MIXED_CODE.matcher(TranslationDialogue.normalize(body)).find()) return Issue.REVIEW;
         // Known invariant labels/names were classified above. Punctuation alone is no progress.
         if (sameWords(source, rendered)) return Issue.UNCHANGED;
 

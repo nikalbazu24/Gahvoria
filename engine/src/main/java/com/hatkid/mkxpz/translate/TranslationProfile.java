@@ -11,12 +11,17 @@ final class TranslationProfile {
     private final Set<String> names;
     private TranslationProfile(Set<String> names) { this.names = names; }
     static TranslationProfile read(File catalog) throws IOException {
+        return read(catalog, new TranslationWork());
+    }
+    static TranslationProfile read(File catalog, TranslationWork work) throws IOException {
+        work.checkpoint(TranslationWork.Phase.CATALOG, 0);
         if (!catalog.isFile()) return EMPTY;
         Map<String, Integer> counts = new HashMap<>();
         try (BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream(catalog), StandardCharsets.UTF_8))) {
             String row;
+            int reviewed = 0;
             while ((row = input.readLine()) != null) {
-                if (Thread.currentThread().isInterrupted()) throw new IOException("Lectura interrumpida");
+                if ((reviewed++ & 255) == 0) work.checkpoint(TranslationWork.Phase.CATALOG, reviewed);
                 String text = TranslationMemory.unescape(row);
                 if (text == null) continue;
                 String prefix = TranslationDialogue.speaker(text).trim();
@@ -38,20 +43,24 @@ final class TranslationProfile {
         "pokémon", "pokédex", "pp", "ivs", "evs", "id", "pc", "gts", "m", "kg", "cm", "mm", "km",
         "normal", "simple", "retro", "general", "total", "color", "tempo", "chocolate", "doctor"));
     boolean preserve(String original) {
-        if (!TranslationDialogue.speaker(original).equals(TranslationDialogue.localizedSpeaker(original))) return false;
+        String prefix = TranslationDialogue.speaker(original);
+        if (!prefix.equals(TranslationDialogue.localizePrefix(prefix))) return false;
         if (original.contains("\\ch[") || original.contains("\\choice[")) return false;
         if (UNKNOWN_MARKUP.matcher(original).find()) return false;
         if (TranslationLabels.invariant(original)) return true;
-        String text = TranslationBatch.visibleText(TranslationDialogue.body(original)).trim();
+        String text = TranslationBatch.visibleText(original.substring(prefix.length())).trim();
         if (text.isEmpty()) return true;
         Matcher word = WORDS.matcher(text);
         while (word.find()) {
-            String value = word.group().toLowerCase(Locale.ROOT);
-            if (NUMBER_OR_KEY.matcher(value).matches() || INVARIANT.contains(value)
-                    || names.contains(value) || SOUNDS.matcher(value).matches()) continue;
+            if (preserveWord(word.group())) continue;
             return false;
         }
         return true;
+    }
+    boolean preserveWord(String word) {
+        String value = word.toLowerCase(Locale.ROOT);
+        return NUMBER_OR_KEY.matcher(value).matches() || INVARIANT.contains(value)
+            || names.contains(value) || SOUNDS.matcher(value).matches();
     }
     static boolean internal(String original) {
         return INTERNAL.matcher(original).matches();

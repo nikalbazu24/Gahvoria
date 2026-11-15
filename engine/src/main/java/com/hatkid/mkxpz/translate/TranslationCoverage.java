@@ -42,6 +42,9 @@ public final class TranslationCoverage {
     }
 
     public static TranslationCoverage read(File catalogBase) throws IOException {
+        return read(catalogBase, new TranslationWork());
+    }
+    public static TranslationCoverage read(File catalogBase, TranslationWork work) throws IOException {
         File catalog = new File(catalogBase.getPath() + ".ready");
         File memoryFile = new File(catalogBase.getParentFile(), "es.tsv");
         int translated = 0, preserved = 0, internal = 0;
@@ -51,11 +54,13 @@ public final class TranslationCoverage {
         boolean partial = new File(catalogBase.getPath() + ".limited").isFile();
         try (BufferedReader rows = new BufferedReader(
                  new InputStreamReader(new FileInputStream(catalog), StandardCharsets.UTF_8.newDecoder()));
-             TranslationMemory memory = memoryFile.isFile() ? TranslationMemory.snapshot(memoryFile) : null) {
-            TranslationProfile profile = memory == null ? TranslationProfile.read(catalog) : memory.profile;
+             TranslationMemory memory = memoryFile.isFile() ? TranslationMemory.snapshot(memoryFile, work) : null) {
+            TranslationProfile profile = memory == null ? TranslationProfile.read(catalog, work) : memory.profile;
+            work.checkpoint(TranslationWork.Phase.COVERAGE, 0);
             String row;
+            int reviewed = 0;
             while ((row = rows.readLine()) != null) {
-                if (Thread.currentThread().isInterrupted()) throw new IOException("Revisión interrumpida");
+                if ((reviewed++ & 255) == 0) work.checkpoint(TranslationWork.Phase.COVERAGE, reviewed);
                 String original = TranslationMemory.unescape(row);
                 if (original == null || original.trim().isEmpty()) {
                     partial = true;

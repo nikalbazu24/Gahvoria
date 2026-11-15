@@ -7,6 +7,8 @@ import java.util.regex.*;
 final class TranslationLabels {
     private static final Map<String, String> LABELS = new LinkedHashMap<>();
     private static final Map<String, String> FIELDS = new LinkedHashMap<>();
+    private static final Set<String> FIELD_HEADS = new HashSet<>();
+    private static final Set<String> SHORT_HEADS = new HashSet<>();
     // These move names also occur in ordinary menus. The Ruby bridge has typed
     // move context; a bare catalog string does not. Let the sentence model decide.
     private static final Set<String> CONTEXT_REQUIRED = new HashSet<>(Arrays.asList(
@@ -35,10 +37,16 @@ final class TranslationLabels {
         for (String[] pair : fields) FIELDS.put(pair[0], pair[1]);
         StringBuilder choices = new StringBuilder();
         for (String field : FIELDS.keySet()) {
+            Matcher word = WORDS.matcher(field);
+            if (word.find()) FIELD_HEADS.add(word.group());
             if (choices.length() > 0) choices.append('|');
             choices.append(Pattern.quote(field));
         }
         FIELD = Pattern.compile("(?<![\\p{L}])(?:" + choices + ")(?![\\p{L}])");
+        for (String reply : TranslationDialogue.SHORT.keySet()) {
+            Matcher first = WORDS.matcher(reply);
+            if (first.find()) SHORT_HEADS.add(first.group());
+        }
     }
     private static String matchCase(String original, String replacement) {
         if (original.length() > 1 && original.equals(original.toUpperCase(Locale.ROOT))) return replacement.toUpperCase(Locale.ROOT);
@@ -58,6 +66,19 @@ final class TranslationLabels {
         if (label == null && !CONTEXT_REQUIRED.contains(trimmed)) label = NeuralLabels.LABELS.get(trimmed);
         if (label != null) return original.substring(0, original.indexOf(trimmed)) + label
             + original.substring(original.indexOf(trimmed) + trimmed.length());
+
+        // Most catalog entries are prose. Reject non-label candidates before
+        // trying every field pattern at every character of the sentence.
+        String firstBody = TranslationDialogue.body(original);
+        if (firstBody.indexOf('\\') < 0 && firstBody.indexOf('<') < 0 && firstBody.indexOf('{') < 0
+                && firstBody.indexOf('[') < 0 && firstBody.indexOf('%') < 0) {
+            Matcher first = WORDS.matcher(firstBody);
+            if (first.find()) {
+                String word = first.group();
+                if (!FIELD_HEADS.contains(word) && !SHORT_HEADS.contains(TranslationDialogue.baseWord(word))
+                        && !profile.preserveWord(word) && !invariant(word)) return null;
+            }
+        }
 
         List<String> codes = new ArrayList<>();
         String shielded = TranslationBatch.shield(original, codes);

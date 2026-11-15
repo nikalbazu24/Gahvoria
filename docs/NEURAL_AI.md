@@ -188,3 +188,13 @@ Validación local con los mismos pesos del APK y el worker WASM fijado: 381 trad
 Pruebas: 19 grupos JVM; 67 casos de inventario y gramática básica; 963 combinaciones sintéticas con inferencia, auditoría, persistencia, reapertura y exportación; glosario Ruby de 3.417 entradas. El nuevo `TranslationPendingProbe` acepta un informe local para repetir el recorrido completo; sus entradas y resultados no deben publicarse.
 
 Pendiente: comprobar Android/Thor, calidad lingüística, créditos y gritos ambiguos, texto en imágenes y los 773 casos aún rechazados. No se ha medido aceleración en el teléfono ni un nuevo porcentaje sobre las 85.484 entradas completas. Instalar encima, preparar otra vez y exportar el nuevo informe; el porcentaje puede bajar al endurecer las comprobaciones y cambiar el denominador. No se modifican partidas ni archivos del juego.
+
+## Carga de preparación y cobertura tras 0.1.111
+
+El usuario informa que no accede a preparación/cobertura. Sin registro Android del fallo concreto, se reproduce una regresión de carga con un catálogo sintético de 85.484 entradas y memoria ya traducida: cobertura ~9,9 s y apertura de memoria ~4,9 s en la JVM de desarrollo (0.1.107: ~3,6/1,8 s). Los nuevos clasificadores repetían análisis de etiquetas y normalización en frases ordinarias.
+
+Se añaden salidas rápidas para prosa, patrones de normalización compilados y reutilización del prefijo del hablante. En el mismo ensayo la cobertura queda aproximadamente en 6,7–7,8 s y la carga en 3,2–3,4 s; no son tiempos de Android ni una resolución confirmada del síntoma en el teléfono. Comparación de las 1.581 filas del informe: etiquetas, decisiones de normalización y auditoría iguales a 0.1.111.
+
+`TranslationWork` comunica las fases de lectura del catálogo, lectura de memoria y cálculo de cobertura; comprueba cancelación durante la lectura, no solo durante la inferencia. Al salir de Cobertura se cancela el trabajo de esa pantalla, y Pausar interrumpe también la carga de preparación. Una cancelación cierra el archivo y libera el bloqueo del escritor, sin modificar las traducciones. Los contadores aparecen desde la carga inicial. Un error de cobertura permite copiar su diagnóstico local; no se envía automáticamente.
+
+Nueva prueba `TranslationLoadingTest`: catálogo completo de 85.484 filas con 256 MiB de heap, progreso en las tres fases, cancelación previa y en cada fase, cancelación del escritor, reapertura y conservación del tamaño de los archivos. CI ejecuta además los 19 grupos JVM y las regresiones del modelo/Ruby. La cobertura lingüística se mantiene; esta entrega aborda carga y diagnóstico. Pendiente confirmar ambos botones en Android y usar el diagnóstico si la causa del teléfono es distinta.

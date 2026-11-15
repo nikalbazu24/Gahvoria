@@ -24,6 +24,9 @@ public final class TranslationPreparation {
     }
 
     public static void run(Context context, File catalog, Cancellation cancel, Progress progress) throws Exception {
+        run(context, catalog, cancel, progress, new TranslationWork(cancel::requested, (phase, count) -> {}));
+    }
+    public static void run(Context context, File catalog, Cancellation cancel, Progress progress, TranslationWork work) throws Exception {
         int total = 0;
         try (BufferedReader input = open(catalog)) {
             while (!cancel.requested() && input.readLine() != null) total++;
@@ -36,7 +39,7 @@ public final class TranslationPreparation {
         progress.update(reviewed, total, translated);
         try (BufferedReader input = open(catalog);
              Inference model = new Inference(context);
-             TranslationMemory memory = new TranslationMemory(new File(catalog.getParentFile(), "es.tsv"), true)) {
+             TranslationMemory memory = new TranslationMemory(new File(catalog.getParentFile(), "es.tsv"), true, work)) {
             List<String> pending = new ArrayList<>(BATCH_SIZE);
             while (!cancel.requested() && reviewed < total) {
                 pending.clear();

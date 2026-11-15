@@ -108,3 +108,5 @@ Actualización de interfaz y retirada de profundidad simulada: se mostró `docs/
 ## Neural: informe completo de Reborn y cobertura legible
 
 La siguiente beta procesa el TSV completo de 1.581 pendientes: 381 traducciones guardadas/reabiertas, 424 entradas conservadas, 3 referencias internas y 773 pendientes en la prueba local. Se corrigen límites de escapes, hablantes, respuestas breves, etiquetas exactas y nombres poseídos; se endurece la auditoría de respuestas dudosas. Cobertura distingue traducciones y conservación, sin presentarlo como calidad del juego. Ver `docs/NEURAL_AI.md`. Pendientes Android/Thor y fluidez; no se ha validado un juego completo en español.
+
+- Corrección de carga tras 0.1.111: menor trabajo repetido al revisar grandes memorias, progreso de lectura visible y cancelación cooperativa al volver/pausar. Prueba de 85.484 filas y liberación del escritor. La causa exacta del síntoma en Android sigue por confirmar; se puede copiar el diagnóstico si falla la cobertura. No se incrementa la cobertura de traducción por esta corrección.

@@ -65,6 +65,9 @@ public final class TranslationPhaseOneTest {
         equal("ELENA: Espera aquí.", answers.get(text));
         equal(TranslationAudit.Issue.NAMES, TranslationAudit.check(text, "HELENA: Espera aquí."));
         equal("please wait", TranslationDialogue.normalize("plz wait"));
+        equal(true, TranslationDialogue.normalizes("C’mon, it is time to go."));
+        equal("ELENA: Qué va.", TranslationLabels.fixed("ELENA: Nu-uh.", TranslationProfile.EMPTY));
+        equal("ELENA: Tachán!", TranslationLabels.fixed("ELENA: Ta-daaa!", TranslationProfile.EMPTY));
         equal("T3RR4: there are no forfeits in MY domain", TranslationDialogue.normalize("T3RR4: TH3R3 4R3 N0 F0RF3ITS 1N MY D0M41N"));
         equal("The password is 31337", TranslationDialogue.normalize("The password is 31337"));
         equal(false, TranslationProfile.EMPTY.preserve("\\ch[1,Yes,No]"));

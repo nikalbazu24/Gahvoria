@@ -40,17 +40,26 @@ final class TranslationMemory implements Closeable {
     static TranslationMemory snapshot(File path) throws IOException {
         return new TranslationMemory(path, true, false);
     }
+    static TranslationMemory snapshot(File path, TranslationWork work) throws IOException {
+        return new TranslationMemory(path, true, false, work);
+    }
+    TranslationMemory(File path, boolean contextual, TranslationWork work) throws IOException {
+        this(path, contextual, true, work);
+    }
 
     private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
+        this(path, contextual, writable, new TranslationWork());
+    }
+    private TranslationMemory(File path, boolean contextual, boolean writable, TranslationWork work) throws IOException {
         this.contextual = contextual;
-        profile = contextual ? TranslationProfile.read(new File(path.getParentFile(), "catalog.ready")) : TranslationProfile.EMPTY;
+        profile = contextual ? TranslationProfile.read(new File(path.getParentFile(), "catalog.ready"), work) : TranslationProfile.EMPTY;
         rejected = writable ? null : new HashMap<>();
         rejectedAnswers = writable ? null : new HashMap<>();
         file = new RandomAccessFile(path, writable ? "rw" : "r");
         try {
             lock = writable ? file.getChannel().tryLock() : null;
             if (writable && lock == null) throw new IOException("La memoria de traducción está en uso");
-            load(writable, file.length());
+            load(writable, file.length(), work);
         } catch (IOException | RuntimeException failure) {
             file.close();
             throw failure;
@@ -133,15 +142,18 @@ final class TranslationMemory implements Closeable {
         entries.putAll(fresh);
     }
 
-    private void load(boolean writable, long length) throws IOException {
+    private void load(boolean writable, long length, TranslationWork work) throws IOException {
+        work.checkpoint(TranslationWork.Phase.MEMORY, 0);
         byte[] block = new byte[8192];
         ByteArrayOutputStream row = new ByteArrayOutputStream();
         long offset = 0;
         long complete = 0;
         int count;
+        int reviewed = 0;
         while (offset < length && (count = file.read(block, 0, (int) Math.min(block.length, length - offset))) != -1) {
             for (int i = 0; i < count; i++) {
                 if (block[i] == '\n') {
+                    if ((reviewed++ & 255) == 0) work.checkpoint(TranslationWork.Phase.MEMORY, reviewed);
                     if (row.size() <= MAX_ROW_BYTES) readRow(row.toByteArray());
                     row.reset();
                     complete = offset + i + 1;
