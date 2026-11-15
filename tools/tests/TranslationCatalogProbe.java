@@ -15,6 +15,10 @@ public final class TranslationCatalogProbe {
             unique.add("{1}'s " + term[0] + " raised its {2}!");
             unique.add("The effect of {1}'s " + term[0] + " wore off!");
         }
+        unique.add("Choose a type.\\ch[4,-1,Fire,Water,Grass]");
+        unique.add("Choose a nature.\\ch[6,-1,Hardy,Brave,Bold]");
+        unique.add("Choose a color.\\ch[7,0,Red,Blue,Green]");
+        unique.add("Choose a type.\\ch[8,-1,\nFire,\nWater,\nGrass]");
         List<String> sources = new ArrayList<>(unique);
         NeuralText.Inference plain = texts -> NeuralInferenceProbe.infer(args, false, texts);
         NeuralText.Inference aligned = texts -> NeuralInferenceProbe.infer(args, true, texts);

@@ -12,7 +12,7 @@ import java.util.Map;
 
 /** A bounded copy of prepared translations, readable before the game's worker responds. */
 public final class TranslationOpening {
-    public static final String FILE_NAME = "opening-es-dialogue-v1.txt";
+    public static final String FILE_NAME = "opening-es-choices-v1.txt";
     static final int MAX_ROWS = 768;
 
     private TranslationOpening() {}

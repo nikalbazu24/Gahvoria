@@ -17,6 +17,8 @@ public final class TranslationAudit {
     private static final Pattern RETAINED_POSSESSIVE = Pattern.compile("\\{[0-9]+(?::[^}]+)?\\}[’']s\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]+");
     private static final Pattern DAMAGED_WORD = Pattern.compile("[A-Za-z]\\.{1,2}[A-Za-z]");
+    private static final Pattern ABBREVIATION = Pattern.compile("\\b(?:Sp\\.(?:Atk|Def)|(?:[A-Z]\\.){2,}[A-Z]?)");
+    private static final Pattern ORDINAL = Pattern.compile("\\b[0-9]+(?:st|nd|rd|th)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern MIXED_CODE = Pattern.compile("\\b(?=[A-Za-z0-9]{4,}\\b)(?=[A-Za-z0-9]*[013457])(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]+\\b");
 
     private TranslationAudit() {}
@@ -27,15 +29,32 @@ public final class TranslationAudit {
 
     static Map<String, String> translate(List<String> originals, TranslationBatch.Provider provider, TranslationProfile profile) throws Exception {
         Map<String, String> answers = new LinkedHashMap<>();
-        List<String> pending = new ArrayList<>();
+        Map<String, TranslationChoices.Document> choices = new LinkedHashMap<>();
+        java.util.Set<String> fragments = new java.util.LinkedHashSet<>();
         for (String original : originals) {
+            TranslationChoices.Document document = TranslationChoices.parse(original);
+            if (document != null) {
+                choices.put(original, document);
+                for (TranslationChoices.Part part : document.parts) {
+                    if (part.fixed == null && !part.text.trim().isEmpty()) fragments.add(part.text);
+                }
+            } else if (!TranslationChoices.contains(original)) fragments.add(original);
+        }
+        List<String> pending = new ArrayList<>();
+        for (String original : fragments) {
             String term = profile.preserve(original) || TranslationProfile.internal(original)
                 ? original : TranslationLabels.fixed(original, profile);
             if (term == null) pending.add(original);
             else answers.put(original, term);
         }
         if (!pending.isEmpty()) answers.putAll(TranslationBatch.translate(pending, provider));
-        return answers;
+        Map<String, String> complete = new LinkedHashMap<>();
+        for (String original : originals) {
+            TranslationChoices.Document document = choices.get(original);
+            String answer = document == null ? answers.get(original) : document.rebuild(answers);
+            if (answer != null) complete.put(original, answer);
+        }
+        return complete;
     }
 
     static Issue check(String original, String answer) {
@@ -44,14 +63,32 @@ public final class TranslationAudit {
 
     static Issue check(String original, String answer, TranslationProfile profile) {
         if (answer == null || answer.trim().isEmpty()) return Issue.MISSING;
+        if (TranslationChoices.contains(original) || TranslationChoices.contains(answer)) {
+            TranslationChoices.Document source = TranslationChoices.parse(original);
+            TranslationChoices.Document translated = TranslationChoices.parse(answer);
+            if (!TranslationChoices.sameStructure(source, translated)) return Issue.FORMAT;
+            for (int i = 0; i < source.parts.size(); i++) {
+                TranslationChoices.Part part = source.parts.get(i);
+                String result = translated.parts.get(i).text;
+                if (part.text.trim().isEmpty()) {
+                    if (!part.text.equals(result)) return Issue.FORMAT;
+                } else if (part.fixed != null) {
+                    if (!part.fixed.equals(result)) return Issue.TERMINOLOGY;
+                } else {
+                    Issue issue = check(part.text, result, profile);
+                    if (issue != null) return issue;
+                }
+            }
+            return null;
+        }
         if (!TranslationBatch.isSafe(original, answer)) return Issue.FORMAT;
         if (profile.preserve(original) || TranslationProfile.internal(original)) return original.equals(answer) ? null : Issue.FORMAT;
         if (original.equals(answer)) return Issue.UNCHANGED;
         if (TranslationDialogue.possibleCreditList(original)) return Issue.NAMES;
         String term = TranslationLabels.fixed(original, profile);
         if (term != null && !term.equalsIgnoreCase(answer)) return Issue.TERMINOLOGY;
-        String speaker = TranslationDialogue.localizedSpeaker(original);
-        if (!speaker.isEmpty() && !answer.startsWith(speaker)) return Issue.NAMES;
+        if (!TranslationLabels.retainsListTerms(original, answer)) return Issue.TERMINOLOGY;
+        if (!TranslationDialogue.sameSpeaker(original, answer)) return Issue.NAMES;
 
         if (RETAINED_POSSESSIVE.matcher(original).find() && RETAINED_POSSESSIVE.matcher(answer).find()) return Issue.ENGLISH;
 
@@ -60,11 +97,17 @@ public final class TranslationAudit {
         if (WORDS.matcher(source).find() && !WORDS.matcher(rendered).find()) return Issue.REVIEW;
         // A distorted source needs review; punctuation changes are not a translation.
         String body = TranslationBatch.visibleText(TranslationDialogue.body(original));
-        Matcher damaged = DAMAGED_WORD.matcher(body);
+        Matcher damaged = DAMAGED_WORD.matcher(ABBREVIATION.matcher(body).replaceAll(" "));
         if (damaged.find() && damaged.find()) return Issue.REVIEW;
-        if (MIXED_CODE.matcher(body).find() && MIXED_CODE.matcher(TranslationDialogue.normalize(body)).find()) return Issue.REVIEW;
+        String withoutOrdinals = ORDINAL.matcher(body).replaceAll(" ");
+        if (MIXED_CODE.matcher(withoutOrdinals).find()
+                && MIXED_CODE.matcher(TranslationDialogue.normalize(withoutOrdinals)).find()) return Issue.REVIEW;
+        if (ORDINAL.matcher(source).find() && ORDINAL.matcher(rendered).find()) return Issue.ENGLISH;
         // Known invariant labels/names were classified above. Punctuation alone is no progress.
         if (sameWords(source, rendered)) return Issue.UNCHANGED;
+        if (!TranslationDialogue.speaker(original).isEmpty() && !profile.preserve(TranslationDialogue.body(original))
+                && sameWords(TranslationBatch.visibleText(TranslationDialogue.body(original)),
+                    TranslationBatch.visibleText(answer.substring(answer.indexOf(':') + 1)))) return Issue.UNCHANGED;
 
         Matcher english = ENGLISH.matcher(source);
         while (english.find()) {

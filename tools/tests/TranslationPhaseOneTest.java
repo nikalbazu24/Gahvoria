@@ -31,7 +31,128 @@ public final class TranslationPhaseOneTest {
         preservesSpeakersAndLocalizesWholeLabels();
         countsPreservedEntriesSeparately();
         rejectsSuperficialAndDamagedReplies();
-        System.out.println("19 JVM translation checks passed");
+        translatesChoiceLabelsWithoutChangingCommands();
+        choiceContextSeparatesNaturesFromNames();
+        migratesOpaqueChoicesAndReopensTranslations();
+        auditDistinguishesFormattingFromCorruption();
+        System.out.println("23 JVM translation checks passed");
+    }
+
+    private static void translatesChoiceLabelsWithoutChangingCommands() throws Exception {
+        String source = "Choose.\\ch[7,-1,Yes,No] Again.\\ch[8,0,Yes,No]";
+        Map<String, String> answers = TranslationAudit.translate(Collections.singletonList(source), (raw, protectedTexts) -> {
+            equal(Arrays.asList("Choose.", " Again."), raw);
+            return Arrays.asList("Elige.", " Otra vez.");
+        });
+        String expected = "Elige.\\ch[7,-1,Sí,No] Otra vez.\\ch[8,0,Sí,No]";
+        equal(expected, answers.get(source));
+        equal(null, TranslationAudit.check(source, expected));
+        equal(true, TranslationBatch.isSafe(source, expected));
+        equal(TranslationAudit.Issue.FORMAT, TranslationAudit.check(source, expected.replace("[7,-1", "[8,-1")));
+        equal(TranslationAudit.Issue.TERMINOLOGY, TranslationAudit.check(source, expected.replace("Sí,No", "No,Sí")));
+        equal(TranslationAudit.Issue.UNCHANGED, TranslationAudit.check(source, expected.replace("Sí", "Yes")));
+        equal(false, TranslationBatch.isSafe(source, expected.replace(",No]", "]")));
+        equal(false, TranslationBatch.isSafe(source, expected.replace("Sí,No", "Sí,quizás,No")));
+        String colored = "\\ch[9,-1,\\c[2]Hello {1},\\c[3]Wait {2}]";
+        String translated = "\\ch[9,-1,\\c[2]Hola {1},\\c[3]Espera {2}]";
+        equal(true, TranslationBatch.isSafe(colored, translated));
+        equal(null, TranslationAudit.check(colored, translated));
+        equal(false, TranslationBatch.isSafe(colored, translated.replace("{1}", "{2}")));
+        equal(false, TranslationBatch.isSafe(colored, translated.replace("\\c[2]", "\\c[3]")));
+        String rgb = "\\ch[9,-1,<c3=FF0000,FFFFFF>Hello,Wait]";
+        equal(true, TranslationBatch.isSafe(rgb, rgb.replace("Hello", "Hola").replace("Wait", "Espera")));
+        equal(false, TranslationBatch.isSafe(rgb, rgb.replace("FFFFFF", "000000")));
+        equal(true, TranslationProfile.EMPTY.preserve("\\ch[9,-1,1,2,3]"));
+        equal(false, TranslationProfile.EMPTY.preserve("\\ch[9,-1,Yes,No]"));
+        String attributes = "\\ch[3,-1,Happy/Kind,Quiet/Calm]";
+        equal(TranslationAudit.Issue.UNCHANGED, TranslationAudit.check(attributes, "\\ch[3,-1,Happy/Amable,Tranquilo/Sereno]"));
+        equal(null, TranslationAudit.check(attributes, "\\ch[3,-1,Feliz/Amable,Tranquilo/Sereno]"));
+        for (String malformed : Arrays.asList("\\ch[1,-\n1,Yes,No]", "\\ch[1,Yes,No]", "\\ch[1,-1,Yes,No", "\\ch[1,-1,Yes,]")) {
+            equal(null, TranslationChoices.parse(malformed));
+            equal(0, TranslationAudit.translate(Collections.singletonList(malformed), (a,b) -> {
+                throw new AssertionError("Malformed command sent to inference");
+            }).size());
+            equal(TranslationAudit.Issue.FORMAT, TranslationAudit.check(malformed, malformed));
+        }
+    }
+
+    private static void choiceContextSeparatesNaturesFromNames() throws Exception {
+        Path catalog = Files.createTempFile("gahvoria-names", ".ready");
+        try {
+            Files.write(catalog, Arrays.asList("HARDY: Hello.", "HARDY: Goodbye."), StandardCharsets.UTF_8);
+            TranslationProfile profile = TranslationProfile.read(catalog.toFile());
+            String nature = "\\ch[5,-1,Hardy, Brave ,Bold,Cancel]";
+            String type = "\\ch[6,-1,\nFire,\nWater,\nGrass]";
+            Map<String, String> answers = TranslationAudit.translate(Arrays.asList("Hardy", nature, type), (a,b) -> {
+                throw new AssertionError("Typed labels sent to inference");
+            }, profile);
+            equal("Hardy", answers.get("Hardy"));
+            equal(null, TranslationLabels.fixed("Quiet", profile));
+            equal("\\ch[5,-1,Fuerte, Audaz ,Osada,Cancelar]", answers.get(nature));
+            equal("\\ch[6,-1,\nFuego,\nAgua,\nPlanta]", answers.get(type));
+            equal(null, TranslationAudit.check(nature, answers.get(nature), profile));
+            equal(null, TranslationAudit.check(type, answers.get(type), profile));
+            equal(TranslationAudit.Issue.TERMINOLOGY, TranslationAudit.check(nature, answers.get(nature).replace("Fuerte", "Hardy"), profile));
+            equal(false, TranslationBatch.isSafe(type, answers.get(type).replace("\n", "")));
+            equal(false, TranslationDialogue.possibleCreditList("\\ch[4,-1,Books,Music,Maps,Tools,Help]"));
+        } finally { Files.delete(catalog); }
+    }
+
+    private static void migratesOpaqueChoicesAndReopensTranslations() throws Exception {
+        Path dir = Files.createTempDirectory("gahvoria-choices");
+        Path catalog = dir.resolve("catalog.ready"), cache = dir.resolve("es.tsv");
+        String source = "Choose.\\ch[2,-1,Yes,No]";
+        String translated = "Elige.\\ch[2,-1,Sí,No]";
+        try {
+            Files.write(catalog, Arrays.asList(TranslationMemory.escape(source), "Hello."), StandardCharsets.UTF_8);
+            Files.write(cache, Arrays.asList(TranslationMemory.escape("\u001Fcontext-v1:" + source) + "\t"
+                + TranslationMemory.escape("Elige.\\ch[2,-1,Yes,No]"), "Hello.\tHola."), StandardCharsets.UTF_8);
+            try (TranslationMemory memory = new TranslationMemory(cache.toFile(), true)) {
+                equal(null, memory.get(source));
+                equal("Hola.", memory.get("Hello."));
+                memory.remember(Collections.singletonMap(source, translated));
+                TranslationOpening.publish(catalog.toFile(), memory);
+            }
+            try (TranslationMemory memory = TranslationMemory.snapshot(cache.toFile())) {
+                equal(translated, memory.get(source));
+                equal(null, memory.audit(source));
+                equal("Hola.", memory.get("Hello."));
+            }
+            equal(2, TranslationCoverage.read(dir.resolve("catalog").toFile()).translated);
+            equal(true, new String(Files.readAllBytes(dir.resolve(TranslationOpening.FILE_NAME)), StandardCharsets.UTF_8)
+                .contains(TranslationMemory.escape(translated)));
+        } finally {
+            for (Path path : Arrays.asList(cache, catalog, dir.resolve(TranslationOpening.FILE_NAME), dir)) Files.deleteIfExists(path);
+        }
+    }
+
+    private static void auditDistinguishesFormattingFromCorruption() throws Exception {
+        equal(null, TranslationAudit.check("ELENA:  Wait here.", "ELENA: Espera aquí."));
+        equal(null, TranslationAudit.check("ELENA: Wait here.", "Elena: Espera aquí."));
+        equal(TranslationAudit.Issue.NAMES, TranslationAudit.check("ELENA: Wait here.", "HELENA: Espera aquí."));
+        equal(null, TranslationAudit.check("PATIENT: Hello.", "PACIENTE: Hola."));
+        equal(TranslationAudit.Issue.UNCHANGED, TranslationAudit.check("PATIENT: Hello.", "PACIENTE: Hello."));
+        equal(null, TranslationAudit.check("Meet at the 12th gate.", "Nos vemos en la puerta 12."));
+        equal(TranslationAudit.Issue.ENGLISH, TranslationAudit.check("Meet at the 12th gate.", "Nos vemos en la puerta 12th."));
+        equal(null, TranslationAudit.check("U.S.A. passport, U.K. passport", "Pasaporte de U.S.A., pasaporte de U.K."));
+        equal(TranslationAudit.Issue.REVIEW, TranslationAudit.check("Passcode XX7X", "Contraseña XXX"));
+        String stats = "Sp.Atk: {1}\\nSp.Def: {2} Speed: {3}";
+        String expected = "At. Esp.: {1}\\nDef. Esp.: {2} Velocidad: {3}";
+        equal(expected, TranslationLabels.fixed(stats, TranslationProfile.EMPTY));
+        equal(null, TranslationAudit.check(stats, expected));
+        equal(null, TranslationAudit.check("AP: {1}", "AP: {1}"));
+        equal(null, TranslationAudit.check("{1}h {2}m", "{1}h {2}m"));
+        equal(null, TranslationAudit.check("x{1}<r>$ {2}", "x{1}<r>$ {2}"));
+        equal("Bayas Zreza", TranslationLabels.fixed("Cheri Berries", TranslationProfile.EMPTY));
+        equal(null, TranslationLabels.fixed("Mystery Berries", TranslationProfile.EMPTY));
+        equal(false, TranslationDialogue.possibleCreditList("Bubble, Growl, Surf, Water Gun, Hydro Pump, Whirlpool"));
+        String list = "Bubble, Growl, Surf, Water Gun, Hydro Pump, Whirlpool";
+        String localized = "Burbuja, Gruñido, Surf, Pistola Agua, Hidrobomba, Torbellino";
+        equal(localized, TranslationLabels.fixed(list, TranslationProfile.EMPTY));
+        equal(null, TranslationAudit.check(list, localized));
+        equal(TranslationAudit.Issue.TERMINOLOGY, TranslationAudit.check(list, localized.replace("Burbuja", "Bubble")));
+        equal(TranslationAudit.Issue.TERMINOLOGY, TranslationAudit.check("Moves: Bubble, Growl, Surf, Water Gun, Hydro Pump, Whirlpool",
+            "Movimientos: Bubble, Growl, Surf, Water Gun, Hydro Pump, Whirlpool"));
     }
 
     private static void separatesAdjacentEscapeCodesFromDialogue() throws Exception {

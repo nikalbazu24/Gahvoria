@@ -704,6 +704,21 @@ module EssentiaTranslate
       @scene_message = [id, Time.now.to_f, source] if id
     end
 
+    def grouped_choice_terms(normalized)
+      return nil unless defined?(GahvoriaPokemonTerms) && normalized.size >= 3
+      @choice_terms ||= [:type, :nature].map do |kind|
+        folded = {}
+        GahvoriaPokemonTerms::NAMES[kind].each { |source, spanish| folded[source.downcase] = spanish }
+        folded
+      end
+      @choice_terms.each do |terms|
+        known = normalized.select { |key| terms.has_key?(key) }.size
+        next unless known >= 3 && normalized.all? { |key| terms.has_key?(key) || key == 'cancel' || key == 'back' }
+        return terms.merge('cancel' => 'Cancelar', 'back' => 'Volver')
+      end
+      nil
+    end
+
     def render_choices(choices, question = nil)
       return choices unless choices.is_a?(Array)
       normalized = choices.map { |value| value.is_a?(String) ? value.gsub("’", "'").strip.downcase : nil }
@@ -718,6 +733,7 @@ module EssentiaTranslate
         elsif SOLAR_ECLIPSE && question.is_a?(String) && question =~ /how would you describe yourself as a trainer/i
           glossary = TRAINER_STYLE_SPANISH
         end
+        glossary ||= grouped_choice_terms(normalized)
       end
       if SPANISH && normalized.include?('left') && normalized.include?('right')
         question = 'Which way?'

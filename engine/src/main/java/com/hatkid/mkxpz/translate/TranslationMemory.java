@@ -21,6 +21,7 @@ final class TranslationMemory implements Closeable {
     private static final String NOUN_PREFIX = "\u001Fnouns-v1:";
     private static final String SLOT_PREFIX = "\u001Fslots-v1:";
     private static final String DIALOGUE_PREFIX = "\u001Fdialogue-v1:";
+    private static final String CHOICES_PREFIX = "\u001Fchoices-v1:";
     TranslationProfile profile;
     private final RandomAccessFile file;
     private final boolean contextual;
@@ -76,6 +77,7 @@ final class TranslationMemory implements Closeable {
     }
 
     private String key(String original) {
+        if (TranslationChoices.contains(original) || (contextual && TranslationLabels.requiresContext(original))) return CHOICES_PREFIX + original;
         String dialogue = DIALOGUE_PREFIX + original;
         if (entries.containsKey(dialogue) || (contextual && (TranslationLabels.fixed(original, profile) != null
                 || TranslationDialogue.normalizes(original) || original.matches("(?s).*\\\\(?:n|G)[A-Z].*")))) return dialogue;
@@ -109,7 +111,7 @@ final class TranslationMemory implements Closeable {
     }
 
     private static String[] previousKeys(String original) {
-        return new String[]{DIALOGUE_PREFIX + original, NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
+        return new String[]{CHOICES_PREFIX + original, DIALOGUE_PREFIX + original, NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
             CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original};
     }
 
@@ -189,6 +191,7 @@ final class TranslationMemory implements Closeable {
         if (original.startsWith(GROUP_PREFIX)) source = original.substring(GROUP_PREFIX.length());
         if (original.startsWith(NOUN_PREFIX)) source = original.substring(NOUN_PREFIX.length());
         if (original.startsWith(DIALOGUE_PREFIX)) source = original.substring(DIALOGUE_PREFIX.length());
+        if (original.startsWith(CHOICES_PREFIX)) source = original.substring(CHOICES_PREFIX.length());
         if (!contextual) {
             if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
             return;

@@ -4,6 +4,8 @@ package com.hatkid.mkxpz.translate;
 // BSD-3-Clause: engine/src/main/assets/licenses/pokeapi.txt.
 final class NeuralLabels {
     static final java.util.Map<String,String> LABELS = new java.util.HashMap<>();
+    static final java.util.Map<String,String> TYPES = new java.util.HashMap<>();
+    static final java.util.Map<String,String> NATURES = new java.util.HashMap<>();
     static final java.util.List<String[]> POSSESSED = new java.util.ArrayList<>();
     static {
         labels0();
@@ -44,6 +46,51 @@ final class NeuralLabels {
         labels35();
         labels36();
         labels37();
+        TYPES.put("???", "???");
+        TYPES.put("Bug", "Bicho");
+        TYPES.put("Dark", "Siniestro");
+        TYPES.put("Dragon", "Dragón");
+        TYPES.put("Electric", "Eléctrico");
+        TYPES.put("Fairy", "Hada");
+        TYPES.put("Fighting", "Lucha");
+        TYPES.put("Fire", "Fuego");
+        TYPES.put("Flying", "Volador");
+        TYPES.put("Ghost", "Fantasma");
+        TYPES.put("Grass", "Planta");
+        TYPES.put("Ground", "Tierra");
+        TYPES.put("Ice", "Hielo");
+        TYPES.put("Normal", "Normal");
+        TYPES.put("Poison", "Veneno");
+        TYPES.put("Psychic", "Psíquico");
+        TYPES.put("Rock", "Roca");
+        TYPES.put("Steel", "Acero");
+        TYPES.put("Stellar", "Astral");
+        TYPES.put("Water", "Agua");
+        NATURES.put("Adamant", "Firme");
+        NATURES.put("Bashful", "Tímida");
+        NATURES.put("Bold", "Osada");
+        NATURES.put("Brave", "Audaz");
+        NATURES.put("Calm", "Serena");
+        NATURES.put("Careful", "Cauta");
+        NATURES.put("Docile", "Dócil");
+        NATURES.put("Gentle", "Amable");
+        NATURES.put("Hardy", "Fuerte");
+        NATURES.put("Hasty", "Activa");
+        NATURES.put("Impish", "Agitada");
+        NATURES.put("Jolly", "Alegre");
+        NATURES.put("Lax", "Floja");
+        NATURES.put("Lonely", "Huraña");
+        NATURES.put("Mild", "Afable");
+        NATURES.put("Modest", "Modesta");
+        NATURES.put("Naive", "Ingenua");
+        NATURES.put("Naughty", "Pícara");
+        NATURES.put("Quiet", "Mansa");
+        NATURES.put("Quirky", "Rara");
+        NATURES.put("Rash", "Alocada");
+        NATURES.put("Relaxed", "Plácida");
+        NATURES.put("Sassy", "Grosera");
+        NATURES.put("Serious", "Seria");
+        NATURES.put("Timid", "Miedosa");
         for (String source : new String[]{
             "10,000,000 Volt Thunderbolt",
             "Menacing Moonraze Maelstrom",

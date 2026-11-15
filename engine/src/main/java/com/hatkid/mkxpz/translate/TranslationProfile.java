@@ -40,12 +40,20 @@ final class TranslationProfile {
     private static final Pattern INTERNAL = Pattern.compile("\\[(?:GLOBAL|MAP[0-9]+)\\]|(?i:(?:Graphics|Audio|Data|Pokedex|Pictures|Characters|Battlers|Icons|Fonts)/[A-Za-z0-9_./-]+)");
     private static final Pattern UNKNOWN_MARKUP = Pattern.compile("<(?!/?(?:ac|al|ar|br|r|b|i|u|s|c|c2|c3|fn|fs)(?:>|=|\\s))|(?<!\\\\)\\[[A-Za-z_]+\\]");
     private static final Set<String> INVARIANT = new HashSet<>(Arrays.asList(
-        "pokémon", "pokédex", "pp", "ivs", "evs", "id", "pc", "gts", "m", "kg", "cm", "mm", "km",
+        "pokémon", "pokédex", "pp", "ap", "ivs", "evs", "id", "pc", "gts", "h", "m", "kg", "cm", "mm", "km", "x", "y", "z",
         "normal", "simple", "retro", "general", "total", "color", "tempo", "chocolate", "doctor"));
     boolean preserve(String original) {
         String prefix = TranslationDialogue.speaker(original);
         if (!prefix.equals(TranslationDialogue.localizePrefix(prefix))) return false;
-        if (original.contains("\\ch[") || original.contains("\\choice[")) return false;
+        if (TranslationChoices.contains(original)) {
+            TranslationChoices.Document choices = TranslationChoices.parse(original);
+            if (choices == null) return false;
+            for (TranslationChoices.Part part : choices.parts) {
+                if (part.fixed != null ? !part.text.equals(part.fixed) : !preserve(part.text)) return false;
+            }
+            return true;
+        }
+        if (original.contains("\\choice[")) return false;
         if (UNKNOWN_MARKUP.matcher(original).find()) return false;
         if (TranslationLabels.invariant(original)) return true;
         String text = TranslationBatch.visibleText(original.substring(prefix.length())).trim();

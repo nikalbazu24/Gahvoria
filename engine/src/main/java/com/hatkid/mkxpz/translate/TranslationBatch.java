@@ -92,12 +92,28 @@ final class TranslationBatch {
     }
 
     static String visibleText(String text) {
+        TranslationChoices.Document choices = TranslationChoices.parse(text);
+        if (choices != null) {
+            StringBuilder visible = new StringBuilder();
+            for (TranslationChoices.Part part : choices.parts) visible.append(visibleText(part.text)).append(' ');
+            return visible.toString();
+        }
         return CODES.matcher(text).replaceAll(" ");
     }
 
     /** Check existing rows and restored results for added, dropped, or reordered game tokens. */
     static boolean isSafe(String original, String translated) {
         if (translated == null || translated.trim().isEmpty()) return false;
+        if (TranslationChoices.contains(original) || TranslationChoices.contains(translated)) {
+            TranslationChoices.Document source = TranslationChoices.parse(original);
+            TranslationChoices.Document answer = TranslationChoices.parse(translated);
+            if (!TranslationChoices.sameStructure(source, answer)) return false;
+            for (int i = 0; i < source.parts.size(); i++) {
+                String left = source.parts.get(i).text, right = answer.parts.get(i).text;
+                if (left.trim().isEmpty() ? !left.equals(right) : !isSafe(left, right)) return false;
+            }
+            return true;
+        }
         List<String> expected = tokens(original);
         List<String> actual = tokens(translated);
         if (expected.size() != actual.size()) return false;

@@ -9,6 +9,7 @@ import java.util.*;
 public final class TranslationPendingProbe {
     public static void main(String[] args) throws Exception {
         Set<String> sources = new LinkedHashSet<>();
+        Map<String, String> stored = new LinkedHashMap<>();
         for (String row : Files.readAllLines(Paths.get(args[4]), StandardCharsets.UTF_8)) {
             if (row.startsWith("#") || row.startsWith("motivo\t") || row.isEmpty()) continue;
             String[] cells = row.split("\t", -1);
@@ -16,6 +17,9 @@ public final class TranslationPendingProbe {
             String original = TranslationMemory.unescape(cells[1]);
             if (original == null) throw new IOException("Invalid escaped original");
             sources.add(original);
+            String candidate = TranslationMemory.unescape(cells[2]);
+            if (candidate == null) throw new IOException("Invalid escaped candidate");
+            if (!candidate.isEmpty()) stored.put(original, candidate);
         }
         Path dir = Files.createTempDirectory("gahvoria-pending-");
         try {
@@ -25,8 +29,10 @@ public final class TranslationPendingProbe {
             TranslationProfile profile = TranslationProfile.read(dir.resolve("catalog.ready").toFile());
             NeuralText.Inference plain = t -> NeuralInferenceProbe.infer(args, false, t);
             NeuralText.Inference html = t -> NeuralInferenceProbe.infer(args, true, t);
-            Map<String, String> answers = TranslationAudit.translate(new ArrayList<>(sources),
-                (o,t) -> NeuralText.translate(o,t,plain,html), profile);
+            // Audit-only replay measures stored candidates separately from fresh inference.
+            // The exported report has no cache-version keys, so this is not a phone migration simulation.
+            Map<String, String> answers = args.length > 5 && "--audit-stored".equals(args[5]) ? stored
+                : TranslationAudit.translate(new ArrayList<>(sources), (o,t) -> NeuralText.translate(o,t,plain,html), profile);
             try (TranslationMemory memory = new TranslationMemory(dir.resolve("es.tsv").toFile(), true)) {
                 memory.remember(answers);
             }

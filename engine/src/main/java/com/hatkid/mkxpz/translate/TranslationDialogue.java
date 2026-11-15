@@ -25,13 +25,23 @@ final class TranslationDialogue {
         int colon = prefix.indexOf(':');
         String role = prefix.substring(0, colon);
         String translated = role.equals("GRUNT") ? "RECLUTA" : role.equals("TRAINER") ? "ENTRENADOR"
-            : role.equals("BLACKBELT") ? "KARATEKA" : role.equals("SHOPKEEPER") ? "VENDEDOR" : role;
+            : role.equals("BLACKBELT") ? "KARATEKA" : role.equals("SHOPKEEPER") ? "VENDEDOR"
+            : role.equals("PATIENT") ? "PACIENTE" : role.equals("OFFICER") ? "OFICIAL"
+            : role.equals("BOY") || role.equals("KID") ? "NIÑO" : role.equals("GIRL") ? "NIÑA" : role;
         return translated + prefix.substring(colon);
     }
+    static boolean sameSpeaker(String original, String answer) {
+        String expected = localizedSpeaker(original);
+        if (expected.isEmpty()) return true;
+        int colon = expected.indexOf(':');
+        int actualColon = answer.indexOf(':');
+        return colon == actualColon && expected.substring(0, colon).equalsIgnoreCase(answer.substring(0, actualColon));
+    }
     static boolean possibleCreditList(String text) {
-        if (text.indexOf(',') < 0) return false;
+        if (text.indexOf(',') < 0 || TranslationChoices.contains(text)) return false;
         String[] entries = text.split(",");
         if (entries.length < 6) return false;
+        if (TranslationLabels.knownList(text) != null) return false;
         int names = 0;
         for (String entry : entries) {
             String value = entry.trim();
@@ -63,6 +73,7 @@ final class TranslationDialogue {
             {"gotcha", "entendido"}, {"gottem", "te pillé"}, {"dunno", "no sé"},
             {"checkmate", "jaque mate"}, {"c'mon", "vamos"}, {"nope", "no"}, {"yep", "sí"},
             {"yeah", "sí"}, {"yeh", "sí"}, {"yes", "sí"}, {"okay", "vale"}, {"ok", "vale"},
+            {"yay", "viva"}, {"nah", "no"}, {"oi", "oye"},
             {"kay", "vale"}, {"'kay", "vale"}, {"noob", "novato"}, {"noobs", "novatos"},
             {"shush", "silencio"}, {"boo", "bu"}, {"achoo", "achís"}, {"peekaboo", "cucú"},
             {"ta-da", "tachán"}, {"ta-daa", "tachán"}, {"bruh", "hermano"}, {"sheesh", "caramba"},

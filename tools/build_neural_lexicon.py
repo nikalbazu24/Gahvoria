@@ -31,10 +31,13 @@ print(f'{len(pairs)} scoped ability names shared with Neural')
 all_terms = {}
 ambiguous = set()
 possessed = {}
+typed = {}
 for category in ('move', 'item', 'ability', 'type', 'nature'):
+    typed[category] = {}
     section = asset.split('    :' + category + ' => {', 1)[1].split('    },', 1)[0]
     for a, b in re.findall(r'^      (".*") => (".*"),$', section, re.M):
         a, b = json.loads(a), json.loads(b)
+        typed[category][a] = b
         if a in all_terms and all_terms[a] != b: ambiguous.add(a)
         all_terms[a] = b
         if category in ('move', 'ability'): possessed[a] = b
@@ -46,10 +49,15 @@ lines = ['package com.hatkid.mkxpz.translate;', '',
     '// BSD-3-Clause: engine/src/main/assets/licenses/pokeapi.txt.',
     'final class NeuralLabels {',
     '    static final java.util.Map<String,String> LABELS = new java.util.HashMap<>();',
+    '    static final java.util.Map<String,String> TYPES = new java.util.HashMap<>();',
+    '    static final java.util.Map<String,String> NATURES = new java.util.HashMap<>();',
     '    static final java.util.List<String[]> POSSESSED = new java.util.ArrayList<>();',
     '    static {']
 chunks = [sorted(all_terms.items())[i:i+90] for i in range(0,len(all_terms),90)]
 for i in range(len(chunks)): lines.append('        labels' + str(i) + '();')
+for category, field in (('type', 'TYPES'), ('nature', 'NATURES')):
+    for a,b in sorted(typed[category].items()):
+        lines.append('        ' + field + '.put(' + json.dumps(a,ensure_ascii=False) + ', ' + json.dumps(b,ensure_ascii=False) + ');')
 lines += ['        for (String source : new String[]{']
 for a in sorted(possessed, key=lambda a:(-len(a),a)):
     lines.append('            ' + json.dumps(a,ensure_ascii=False) + ',')

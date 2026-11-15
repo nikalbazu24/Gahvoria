@@ -107,6 +107,14 @@ Dir.mktmpdir('gahvoria-templates') do |dir|
   custom = GameData::Move.new('Pound')
   check('Destructor', custom.name)
   check('Pound', custom.instance_variable_get(:@name))
+  # Type/nature context comes from the whole menu, not an isolated character name.
+  choices = ['Hardy', 'Brave', 'Bold', 'Cancel']
+  check(['Fuerte', 'Audaz', 'Osada', 'Cancelar'], t.render_choices(choices))
+  check(['Hardy', 'Brave', 'Bold', 'Cancel'], choices)
+  check(['Planta', 'Lucha', 'Siniestro', 'Volver'], t.render_choices(['Grass', 'Fighting', 'Dark', 'Back']))
+  check(nil, t.grouped_choice_terms(['hardy', 'elena', 'kai']))
+  check(nil, t.grouped_choice_terms(['hardy', 'brave']))
+  check('Hardy', MessageTypes.get(MessageTypes::Species, 'Hardy'))
   # Reinstallation must never stack wrappers or recurse.
   4.times { t.install }
   check('Lanzallamas', GameData::Move.new('Flamethrower').name)
