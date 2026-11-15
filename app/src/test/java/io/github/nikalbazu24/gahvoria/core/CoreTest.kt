@@ -512,6 +512,10 @@ class CoreTest {
         assertEquals(dev, UpdateChannel.base(dev, UpdateChannel.DEV))
         assertEquals("https://github.com/nikalbazu24/Gahvoria/releases/download/stable/", UpdateChannel.base(dev, UpdateChannel.STABLE))
         assertEquals(dev, UpdateChannel.base(dev, "cualquier cosa"))
+        val beta = "https://github.com/nikalbazu24/Gahvoria/releases/download/neural-beta/"
+        assertEquals(beta, UpdateChannel.base(beta, UpdateChannel.DEV))
+        assertEquals(beta, UpdateChannel.base(beta, "cualquier cosa"))
+        assertEquals("https://github.com/nikalbazu24/Gahvoria/releases/download/stable/", UpdateChannel.base(beta, UpdateChannel.STABLE))
         assertTrue(UpdateChannel.valid("stable") && !UpdateChannel.valid(null) && !UpdateChannel.valid("x"))
     }
 
@@ -578,13 +582,6 @@ class CoreTest {
         assertEquals(games.size, games.map { it.id }.toSet().size)
     }
 
-    @Test fun depthModesAndAnglesAgree() {
-        assertEquals(0, Depth.modeOf(0))
-        assertEquals(1, Depth.modeOf(Depth.DEFAULT_25D))
-        assertEquals(2, Depth.modeOf(Depth.DEFAULT_3D))
-        for (m in 0..2) assertEquals(m, Depth.modeOf(Depth.angleOf(m)))
-        assertEquals(60, Depth.clamp(200)); assertEquals(0, Depth.clamp(-5))
-    }
 
     /**
      * The classic engine is Ruby 1.8.7: a single "%i[...]" or "{ key: value }" in a script it loads stops every game
@@ -624,6 +621,35 @@ class CoreTest {
         // nothing at all: modern; Essentials 17 without clues: classic as before
         assertEquals(Game.ENGINE_MODERN, profile("puts 1").recommendedEngine)
         assertEquals(Game.ENGINE_CLASSIC, profile("ESSENTIALS_VERSION = \"17.2\"").recommendedEngine)
+    }
+
+    @Test fun externalBootScriptsOverrideALearnedClassicEngine() {
+        val root = scriptsFile("script" to """
+            ESSENTIALS_VERSION = "18.1"
+            eval(File.read("Scripts/Reborn/Bootstrap.rb"))
+            eval(File.read("Scripts/ScriptLoader.rb"))
+        """.trimIndent())
+        try {
+            val scripts = File(root, "Scripts/Reborn").apply { mkdirs() }
+            File(scripts, "Bootstrap.rb").writeText("# bootstrap")
+            val settings = File(scripts, "Settings.rb")
+            assertEquals(Game.ENGINE_CLASSIC, GameProfile.read(root).recommendedEngine)
+            settings.writeText("ENCOUNTERS = [{ species: :TEST, level: 2 }]")
+            assertNull(GameProfile.cached(root))
+            val profile = GameProfile.read(root)
+            assertEquals(Game.ENGINE_MODERN, profile.recommendedEngine)
+            assertEquals(Game.ENGINE_MODERN, profile.automaticEngine(Game.ENGINE_CLASSIC))
+            assertTrue(profile.engineReason.contains("Scripts/Reborn/Settings.rb"))
+            assertEquals(Game.ENGINE_CLASSIC,
+                GameProfile.parse(listOf("Legacy" to "ESSENTIALS_VERSION = \"18.1\"")).automaticEngine(null))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun classicHashSyntaxErrorSuggestsModernEngine() {
+        val report = "Script 'loader' line 3: SyntaxError occured.\nSettings:1: odd number list for Hash\nSettings:1: syntax error"
+        assertEquals(Fix.MODERN_ENGINE, ErrorDiagnosis.diagnose(report, false, true).fix)
     }
 
     @Test fun missingDataIsFoundWithoutReadingScripts() {

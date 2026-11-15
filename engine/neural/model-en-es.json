@@ -1,0 +1,33 @@
+{
+  "source": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models-v2/",
+  "version": "mozilla-en-es-3.0",
+  "files": [
+    {
+      "role": "model",
+      "name": "model.enes.intgemm.alphas.bin",
+      "attachment": "1d705201-9be0-40c4-a0b4-18d1e3973777.zst",
+      "size": 22085725,
+      "sha256": "ce7ba731d3352d7e595d96ed4fac513744568eaf9a271daf90b5fa8fa33b195d",
+      "rawSize": 31561787,
+      "rawSha256": "3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c"
+    },
+    {
+      "role": "lex",
+      "name": "lex.50.50.enes.s2t.bin",
+      "attachment": "51318160-1249-451f-80fb-12e61f8c1def.zst",
+      "size": 1687731,
+      "sha256": "0dd2945dc8a5bbccad6fb1e1dfce137d363de839f4492cab717f60f1f38c09e6",
+      "rawSize": 4198436,
+      "rawSha256": "7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c"
+    },
+    {
+      "role": "vocab",
+      "name": "vocab.enes.spm",
+      "attachment": "b2b5907b-8759-4cc8-a721-89c283e6e45b.zst",
+      "size": 348996,
+      "sha256": "76b9ef220b22cec379f097852ca6312cabf065d5ddfb05149d5af31aa050ec22",
+      "rawSize": 816054,
+      "rawSha256": "5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad"
+    }
+  ]
+}

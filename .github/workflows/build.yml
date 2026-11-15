@@ -1,11 +1,10 @@
-# Compila Gahvoria (APK Android de 64 bits) en cada cambio y la publica desde main.
-# La versión "dev" de Releases es el canal del actualizador de la app.
+# Compila Gahvoria (APK Android de 64 bits) y publica cada rama en su canal de Releases.
 
 name: Compilar APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, experimental/neural-ai-phase-1]
   pull_request:
   workflow_dispatch:
 
@@ -18,8 +17,10 @@ concurrency:
 
 env:
   GAHVORIA_BUILD_NUMBER: ${{ github.run_number }}
+  GAHVORIA_DEV_TAG: ${{ (github.ref == 'refs/heads/experimental/neural-ai-phase-1' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'experimental/neural-ai-phase-1')) && 'neural-beta' || 'dev' }}
   GAHVORIA_REPORT_TOKEN: ${{ secrets.GAHVORIA_REPORT_TOKEN }}
   NDK_VERSION: 25.2.9519653
+  BERGAMOT_NDK_VERSION: 29.0.14206865
   ABI: arm64-v8a
   HOST: aarch64-linux-android
   TARGET: aarch64-linux-android
@@ -51,7 +52,7 @@ jobs:
       - name: Instalar herramientas de compilación
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake libtool bison gperf pkg-config wget xxd
+          sudo apt-get install -y autoconf automake libtool bison gperf pkg-config wget xxd ninja-build
 
       - name: Instalar Android NDK
         timeout-minutes: 12
@@ -99,6 +100,28 @@ jobs:
         working-directory: engine/jni
         run: ARCH=linux-x86_64 make -j"$(nproc)"
 
+      - name: Empaquetar la configuración y OpenSSL del Ruby de Android
+        run: |
+          shopt -s nullglob
+          prefix="engine/jni/build-$ABI"
+          files=("$prefix"/lib/ruby/3.1.0/*/rbconfig.rb)
+          test "${#files[@]}" -eq 1
+          ruby -c "${files[0]}"
+          relative="${files[0]#"$prefix"/}"
+          install -D -m 644 "${files[0]}" "engine/src/main/assets/ruby-runtime/$relative"
+          lib="$prefix/lib/ruby/3.1.0"
+          runtime="engine/src/main/assets/ruby-runtime/lib/ruby/3.1.0"
+          test -s "$lib/openssl.rb"
+          test -s "$lib/openssl/ssl.rb"
+          cp "$lib/openssl.rb" "$runtime/"
+          cp -R "$lib/openssl" "$runtime/"
+          # The wrapper alone may be installed even when extconf skipped the native extension.
+          readelf -Ws "$prefix/lib/libruby.so" > "$RUNNER_TEMP/ruby-symbols.txt"
+          if ! grep -Eq '[[:space:]]Init_openssl$' "$RUNNER_TEMP/ruby-symbols.txt"; then
+            find engine/jni/ruby -path '*/openssl/mkmf.log' -exec tail -80 {} \;
+            exit 1
+          fi
+
       - name: Incrustar ícono, fuentes y shaders en el motor
         working-directory: engine/jni/mkxp-z
         run: sh ./make_xxd.sh
@@ -115,6 +138,28 @@ jobs:
         if: steps.ruby18-cache.outputs.cache-hit != 'true'
         working-directory: engine/jni
         run: ./build_ruby18.sh
+
+      - name: Recuperar el motor Neural compilado
+        id: bergamot-cache
+        uses: actions/cache@v4
+        with:
+          path: engine/src/main/jniLibs/arm64-v8a/libgahvoria_bergamot.so
+          key: bergamot-arm64-r29-${{ hashFiles('engine/neural/build.sh', 'engine/neural/CMakeLists.txt', 'engine/neural/bergamot_jni.cpp', 'engine/neural/jni.map') }}
+
+      - name: Compilar Bergamot para Android ARM64
+        if: steps.bergamot-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 55
+        run: |
+          ndk="$ANDROID_HOME/ndk/$BERGAMOT_NDK_VERSION"
+          if [ ! -f "$ndk/source.properties" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$BERGAMOT_NDK_VERSION"
+          fi
+          test "$(sed -n 's/^Pkg.Revision = //p' "$ndk/source.properties")" = "$BERGAMOT_NDK_VERSION"
+          ANDROID_NDK="$ndk" bash engine/neural/build.sh
+
+      - name: Preparar el modelo Neural verificado
+        timeout-minutes: 12
+        run: python3 engine/neural/fetch_model.py
 
       - name: Preparar la firma de Gahvoria
         env:
@@ -147,7 +192,8 @@ jobs:
           python3 tools/release_manifest.py app/build/outputs/apk/release/output-metadata.json version.json
           cat version.json
           python3 tools/verify_apk.py gahvoria.apk version.json
-          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$GAHVORIA_SIGNED" != "true" ]; then
+          python3 engine/neural/verify_package.py gahvoria.apk
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && { [ "$GITHUB_REF" = "refs/heads/main" ] || [ "$GAHVORIA_DEV_TAG" = "neural-beta" ]; } && [ "$GAHVORIA_SIGNED" != "true" ]; then
             echo "::error::La distribución requiere la firma fija de Gahvoria."
             exit 1
           fi
@@ -173,6 +219,22 @@ jobs:
             Compilación automática del último cambio (${{ github.sha }}).
             Descarga gahvoria.apk e instálala en tu Android de 64 bits.
             Gahvoria avisa sola cuando hay una versión nueva.
+          files: |
+            gahvoria.apk
+            version.json
+
+      - name: Publicar en Releases (canal Neural Beta)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/experimental/neural-ai-phase-1'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: neural-beta
+          target_commitish: ${{ github.sha }}
+          name: Gahvoria Neural AI (beta experimental)
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            Compilación experimental (${{ github.sha }}). Las instalaciones de esta beta pueden recibir nuevas betas desde Actualizaciones → Todas las versiones.
           files: |
             gahvoria.apk
             version.json

@@ -44,6 +44,9 @@ data class GameProfile(
             else -> Game.ENGINE_MODERN
         }
 
+    fun automaticEngine(learned: String?): String =
+        if (clues.modern.isNotEmpty()) Game.ENGINE_MODERN else learned ?: recommendedEngine
+
     /** Why [recommendedEngine] was chosen, in one sentence for the player. */
     val engineReason: String
         get() = when {
@@ -68,8 +71,17 @@ data class GameProfile(
         private val ESS_MODULE = Regex("""module\s+Essentials\b[\s\S]{0,400}?\bVERSION\s*=\s*"([^"]+)"""")
         private val GAME_VERSION = Regex("""(?m)^\s*GAME_VERSION\s*=\s*["']([^"'\n]{1,24})["']""")
 
+        private val EXTERNAL_SCRIPT = Regex("""\b(?:File\.(?:binread|read)|load)\s*\(?\s*["'](Scripts/[A-Za-z0-9_/ .-]+\.rb)["']""")
         private data class Stamp(val length: Long, val modified: Long)
-        private val cache = java.util.concurrent.ConcurrentHashMap<String, Pair<Stamp, GameProfile>>()
+        private data class Cached(val archive: Stamp, val sources: Map<File, Stamp?>, val profile: GameProfile) {
+            fun matches(scripts: File): Boolean =
+                archive == stampOf(scripts) && sources.all { (file, stamp) -> stampOf(file) == stamp }
+        }
+
+        private val cache = java.util.concurrent.ConcurrentHashMap<String, Cached>()
+
+        private fun stampOf(file: File): Stamp? =
+            if (file.isFile) Stamp(file.length(), file.lastModified()) else null
 
         /**
          * Reading a game's scripts means parsing a file of several MB, and the app asks for the profile again and again
@@ -79,16 +91,62 @@ data class GameProfile(
         fun cached(dir: File): GameProfile? {
             val scripts = scriptsFile(dir) ?: return GameProfile()
             val hit = cache[scripts.path] ?: return null
-            return hit.second.takeIf { hit.first == Stamp(scripts.length(), scripts.lastModified()) }
+            return hit.profile.takeIf { hit.matches(scripts) }
         }
 
         fun read(dir: File): GameProfile {
             val scripts = scriptsFile(dir) ?: return GameProfile()
-            val stamp = Stamp(scripts.length(), scripts.lastModified())
-            cache[scripts.path]?.let { (s, p) -> if (s == stamp) return p }
-            val profile = runCatching { parse(allSections(scripts.readBytes())) }.getOrDefault(GameProfile())
-            cache[scripts.path] = stamp to profile
+            cache[scripts.path]?.let { if (it.matches(scripts)) return it.profile }
+            val stamp = stampOf(scripts) ?: return GameProfile()
+            val sources = linkedMapOf<File, Stamp?>()
+            val profile = runCatching {
+                val sections = allSections(scripts.readBytes())
+                parse(sections + externalScripts(dir, sections, sources))
+            }.getOrDefault(GameProfile())
+            cache[scripts.path] = Cached(stamp, sources, profile)
             return profile
+        }
+
+        /** Follow literal boot-loader paths without executing Ruby or scanning unrelated external scripts. */
+        private fun externalScripts(
+            dir: File,
+            sections: List<Pair<String, String>>,
+            sources: MutableMap<File, Stamp?>,
+        ): List<Pair<String, String>> {
+            val root = dir.canonicalFile
+            val prefix = File(root, "Scripts").path + File.separator
+            val queue = java.util.ArrayDeque<String>()
+            val queued = HashSet<String>()
+            fun enqueue(code: String) {
+                for (match in EXTERNAL_SCRIPT.findAll(code)) {
+                    val name = match.groupValues[1]
+                    if (queued.add(name)) queue.addLast(name)
+                    if (queued.size >= 40) return
+                }
+            }
+            sections.forEach { (_, code) -> if (queued.size < 40) enqueue(code) }
+            // Reborn's loader discovers the rest of its scripts dynamically.
+            if ("Scripts/Reborn/Bootstrap.rb" in queued && "Scripts/ScriptLoader.rb" in queued)
+                queue.addFirst("Scripts/Reborn/Settings.rb")
+            val found = mutableListOf<Pair<String, String>>()
+            var bytes = 0L
+            while (queue.isNotEmpty() && bytes < 768_000) {
+                val name = queue.removeFirst()
+                val file = File(root, name).canonicalFile
+                if (!file.path.startsWith(prefix) || file in sources) continue
+                val stamp = stampOf(file)
+                sources[file] = stamp
+                if (stamp == null || stamp.length !in 1L..192_000L || bytes + stamp.length > 768_000) continue
+                val code = file.inputStream().buffered().use { input ->
+                    val content = ByteArray(stamp.length.toInt())
+                    java.io.DataInputStream(input).readFully(content)
+                    content.toString(Charsets.UTF_8)
+                }
+                bytes += stamp.length
+                found += name to code
+                if (queued.size < 40) enqueue(code)
+            }
+            return found
         }
 
         /**

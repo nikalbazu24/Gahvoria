@@ -126,6 +126,11 @@ struct SharedStatePrivate
 
 		std::string archPath = config.execName + gameArchExt();
 
+		// Reborn's engine checks patches before the original game assets.
+		for (const std::string &patch : config.patches)
+			if (mkxp_fs::directoryExists(patch.c_str()))
+				fileSystem.addPath(patch.c_str());
+
 		/* Check if a game archive exists */
 		FILE *tmp = fopen(archPath.c_str(), "rb");
 		if (tmp)

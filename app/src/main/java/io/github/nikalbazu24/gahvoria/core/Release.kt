@@ -24,9 +24,10 @@ object UpdateChannel {
 
     fun valid(id: String?) = id == DEV || id == STABLE
 
-    /** The download folder of a channel, from the dev one ("…/releases/download/dev/"). */
+    /** A build's development URL can point to the official or experimental release. */
     fun base(devBase: String, channel: String): String {
-        val root = devBase.removeSuffix("/").removeSuffix("/$DEV")
-        return root + "/" + (if (valid(channel)) channel else DEV) + "/"
+        val development = devBase.trimEnd('/')
+        if (channel != STABLE) return "$development/"
+        return development.substringBeforeLast('/') + "/$STABLE/"
     }
 }

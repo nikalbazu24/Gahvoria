@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -52,7 +53,7 @@ fun T(
     text: String, size: TextUnit = 14.sp, weight: FontWeight = FontWeight.Medium, color: Color = LocalColors.current.ink,
     modifier: Modifier = Modifier, align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE, spacing: TextUnit = TextUnit.Unspecified,
 ) = Text(text, modifier, color = color, fontSize = size, fontWeight = weight, fontFamily = Montserrat, textAlign = align,
-    maxLines = maxLines, letterSpacing = spacing, lineHeight = (size.value * 1.35f).sp)
+    maxLines = maxLines, overflow = TextOverflow.Ellipsis, letterSpacing = spacing, lineHeight = (size.value * 1.35f).sp)
 
 /** Small uppercase label above a group. */
 @Composable

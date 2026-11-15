@@ -1,0 +1,258 @@
+package com.hatkid.mkxpz.translate;
+
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Per-game, per-target UTF-8 TSV. The :game process owns the single writer. */
+final class TranslationMemory implements Closeable {
+    private static final int MAX_ROW_BYTES = 64 * 1024;
+    private static final String CONTEXT_PREFIX = "\u001Fcontext-v1:";
+    private static final String CONNECTOR_PREFIX = "\u001Fconnector-v1:";
+    private static final String GROUP_PREFIX = "\u001Fgroups-v1:";
+    private static final String NOUN_PREFIX = "\u001Fnouns-v1:";
+    private static final String SLOT_PREFIX = "\u001Fslots-v1:";
+    private static final String DIALOGUE_PREFIX = "\u001Fdialogue-v1:";
+    private static final String CHOICES_PREFIX = "\u001Fchoices-v1:";
+    TranslationProfile profile;
+    private final RandomAccessFile file;
+    private final boolean contextual;
+    private final java.nio.channels.FileLock lock;
+    private final Map<String, String> entries = new LinkedHashMap<>();
+    private final Map<String, TranslationAudit.Issue> rejected;
+    private final Map<String, String> rejectedAnswers;
+
+    TranslationMemory(File path) throws IOException {
+        this(path, false);
+    }
+
+    TranslationMemory(File path, boolean contextual) throws IOException {
+        this(path, contextual, true);
+    }
+
+    static TranslationMemory snapshot(File path) throws IOException {
+        return new TranslationMemory(path, true, false);
+    }
+    static TranslationMemory snapshot(File path, TranslationWork work) throws IOException {
+        return new TranslationMemory(path, true, false, work);
+    }
+    TranslationMemory(File path, boolean contextual, TranslationWork work) throws IOException {
+        this(path, contextual, true, work);
+    }
+
+    private TranslationMemory(File path, boolean contextual, boolean writable) throws IOException {
+        this(path, contextual, writable, new TranslationWork());
+    }
+    private TranslationMemory(File path, boolean contextual, boolean writable, TranslationWork work) throws IOException {
+        this.contextual = contextual;
+        profile = contextual ? TranslationProfile.read(new File(path.getParentFile(), "catalog.ready"), work) : TranslationProfile.EMPTY;
+        rejected = writable ? null : new HashMap<>();
+        rejectedAnswers = writable ? null : new HashMap<>();
+        file = new RandomAccessFile(path, writable ? "rw" : "r");
+        try {
+            lock = writable ? file.getChannel().tryLock() : null;
+            if (writable && lock == null) throw new IOException("La memoria de traducción está en uso");
+            load(writable, file.length(), work);
+        } catch (IOException | RuntimeException failure) {
+            file.close();
+            throw failure;
+        }
+    }
+
+    String get(String original) {
+        if (contextual && (profile.preserve(original) || TranslationProfile.internal(original))) return original;
+        return entries.get(key(original));
+    }
+
+    void refreshProfile(File catalog) throws IOException {
+        if (contextual) profile = TranslationProfile.read(catalog);
+    }
+
+    private String key(String original) {
+        if (TranslationChoices.contains(original) || (contextual && TranslationLabels.requiresContext(original))) return CHOICES_PREFIX + original;
+        String dialogue = DIALOGUE_PREFIX + original;
+        if (entries.containsKey(dialogue) || (contextual && (TranslationLabels.fixed(original, profile) != null
+                || TranslationDialogue.normalizes(original) || original.matches("(?s).*\\\\(?:n|G)[A-Z].*")))) return dialogue;
+        String noun = NOUN_PREFIX + original;
+        if (entries.containsKey(noun) || (contextual && NeuralText.needsNounRepair(original))) return noun;
+        String group = GROUP_PREFIX + original;
+        if (entries.containsKey(group) || (contextual && NeuralText.needsSlotRepair(original))) return group;
+        String slots = SLOT_PREFIX + original;
+        if (entries.containsKey(slots) || (contextual && NeuralText.usesValueSlots(original))) return slots;
+        String connector = CONNECTOR_PREFIX + original;
+        if (entries.containsKey(connector) || (contextual && NeuralText.hasColloquialConnector(original))) return connector;
+        String revised = CONTEXT_PREFIX + original;
+        if (entries.containsKey(revised) || (contextual && TranslationBatch.needsContext(original))) return revised;
+        return original;
+    }
+
+    TranslationAudit.Issue audit(String original) {
+        if (contextual && (profile.preserve(original) || TranslationProfile.internal(original))) return null;
+        String key = key(original);
+        if (entries.containsKey(key)) return null;
+        TranslationAudit.Issue issue = rejected == null ? null : rejected.get(key);
+        if (issue == null && !key.equals(original)) {
+            for (String previous : previousKeys(original)) {
+                if (previous.equals(key)) continue;
+                issue = rejected == null ? null : rejected.get(previous);
+                if (issue != null) break;
+                if (entries.containsKey(previous)) return TranslationAudit.Issue.OUTDATED;
+            }
+        }
+        return issue == null ? TranslationAudit.Issue.MISSING : issue;
+    }
+
+    private static String[] previousKeys(String original) {
+        return new String[]{CHOICES_PREFIX + original, DIALOGUE_PREFIX + original, NOUN_PREFIX + original, GROUP_PREFIX + original, SLOT_PREFIX + original,
+            CONNECTOR_PREFIX + original, CONTEXT_PREFIX + original, original};
+    }
+
+    // For local diagnostics only. Do not expose the game's filesystem path or
+    // synthesize an answer when the model never produced a storable row.
+    String storedCandidate(String original) {
+        for (String key : previousKeys(original)) {
+            String answer = entries.get(key);
+            if (answer == null && rejectedAnswers != null) answer = rejectedAnswers.get(key);
+            if (answer != null) return answer;
+        }
+        return "";
+    }
+
+    void remember(Map<String, String> answers) throws IOException {
+        Map<String, String> fresh = new LinkedHashMap<>();
+        for (Map.Entry<String, String> answer : answers.entrySet()) {
+            String original = answer.getKey();
+            String translated = answer.getValue();
+            if (original.isEmpty() || get(original) != null) continue;
+            if (contextual ? TranslationAudit.check(original, translated, profile) != null
+                           : original.equals(translated) || !TranslationBatch.isSafe(original, translated)) continue;
+            String key = key(original);
+            if (row(key, translated).getBytes(StandardCharsets.UTF_8).length <= MAX_ROW_BYTES) {
+                fresh.put(key, translated);
+            }
+        }
+        if (fresh.isEmpty()) return;
+        append(file, fresh, true);
+        entries.putAll(fresh);
+    }
+
+    private void load(boolean writable, long length, TranslationWork work) throws IOException {
+        work.checkpoint(TranslationWork.Phase.MEMORY, 0);
+        byte[] block = new byte[8192];
+        ByteArrayOutputStream row = new ByteArrayOutputStream();
+        long offset = 0;
+        long complete = 0;
+        int count;
+        int reviewed = 0;
+        while (offset < length && (count = file.read(block, 0, (int) Math.min(block.length, length - offset))) != -1) {
+            for (int i = 0; i < count; i++) {
+                if (block[i] == '\n') {
+                    if ((reviewed++ & 255) == 0) work.checkpoint(TranslationWork.Phase.MEMORY, reviewed);
+                    if (row.size() <= MAX_ROW_BYTES) readRow(row.toByteArray());
+                    row.reset();
+                    complete = offset + i + 1;
+                } else if (row.size() <= MAX_ROW_BYTES) {
+                    row.write(block[i]);
+                }
+            }
+            offset += count;
+        }
+        // A killed process may leave an incomplete last row. Drop it before appending.
+        if (writable && complete != offset) {
+            file.setLength(complete);
+            file.getFD().sync();
+        }
+    }
+
+    private void readRow(byte[] bytes) {
+        final String line;
+        try {
+            line = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException badRow) {
+            return;
+        }
+        int tab = line.indexOf('\t');
+        if (tab <= 0 || line.indexOf('\t', tab + 1) >= 0) return;
+        int end = line.endsWith("\r") ? line.length() - 1 : line.length();
+        String original = unescape(line.substring(0, tab));
+        String translated = unescape(line.substring(tab + 1, end));
+        if (original == null) return;
+        String source = original.startsWith(CONTEXT_PREFIX) ? original.substring(CONTEXT_PREFIX.length()) : original;
+        if (original.startsWith(CONNECTOR_PREFIX)) source = original.substring(CONNECTOR_PREFIX.length());
+        if (original.startsWith(SLOT_PREFIX)) source = original.substring(SLOT_PREFIX.length());
+        if (original.startsWith(GROUP_PREFIX)) source = original.substring(GROUP_PREFIX.length());
+        if (original.startsWith(NOUN_PREFIX)) source = original.substring(NOUN_PREFIX.length());
+        if (original.startsWith(DIALOGUE_PREFIX)) source = original.substring(DIALOGUE_PREFIX.length());
+        if (original.startsWith(CHOICES_PREFIX)) source = original.substring(CHOICES_PREFIX.length());
+        if (!contextual) {
+            if (!source.equals(translated) && TranslationBatch.isSafe(source, translated)) entries.put(original, translated);
+            return;
+        }
+        TranslationAudit.Issue issue = TranslationAudit.check(source, translated, profile);
+        if (issue == null) {
+            entries.put(original, translated);
+        } else if (rejected != null && !entries.containsKey(original)) {
+            rejected.put(original, issue);
+            rejectedAnswers.put(original, translated == null ? "" : translated);
+        }
+    }
+
+    static void append(RandomAccessFile file, Map<String, String> answers, boolean durable) throws IOException {
+        if (answers.isEmpty()) return;
+        StringBuilder batch = new StringBuilder();
+        for (Map.Entry<String, String> answer : answers.entrySet()) {
+            batch.append(row(answer.getKey(), answer.getValue()));
+        }
+        long start = file.length();
+        file.seek(start);
+        try {
+            file.write(batch.toString().getBytes(StandardCharsets.UTF_8));
+            if (durable) file.getFD().sync();
+        } catch (IOException failure) {
+            try {
+                file.setLength(start);
+            } catch (IOException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
+        }
+    }
+
+    private static String row(String original, String translated) {
+        return escape(original) + '\t' + escape(translated) + '\n';
+    }
+
+    static String escape(String value) {
+        return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r");
+    }
+
+    static String unescape(String value) {
+        StringBuilder result = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c != '\\') {
+                result.append(c);
+                continue;
+            }
+            if (++i == value.length()) return null;
+            switch (value.charAt(i)) {
+                case '\\': result.append('\\'); break;
+                case 'n': result.append('\n'); break;
+                case 't': result.append('\t'); break;
+                case 'r': result.append('\r'); break;
+                default: return null;
+            }
+        }
+        return result.toString();
+    }
+
+    @Override public void close() throws IOException { file.close(); }
+}
